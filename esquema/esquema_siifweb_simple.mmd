@@ -1,0 +1,62 @@
+erDiagram
+  INGRESOS }o..o{ CDP : "RECURSO = FONDO"
+  CDP ||--o{ COMPROMISO : "VIGENCIA + NRODOC_CDP"
+  CDP ||--o{ ORDEN_GASTO : "VIGENCIA + CDP"
+  COMPROMISO ||--o{ ORDEN_GASTO : "VIGENCIA + COMPROMISO"
+  COMPROMISO ||--o{ OBLIGACION : "VIGENCIA + NRO_RP"
+  ORDEN_GASTO ||--o{ OBLIGACION : "VIGENCIA + NRO_ORDEN_GASTO"
+  CDP ||--o{ RESERVA : "VIGENCIA-1 + NUMERO_CDP"
+  INGRESOS {
+    int VIGENCIA PK
+    int NRO_COMPROBANTEPPTAL PK
+    str RUBRO "clasificador 1.x"
+    int RECURSO FK "fuente"
+    num VALOR
+    date FECHA
+  }
+  CDP {
+    int VIGENCIA PK
+    int NRO_CDP PK
+    str RUBRO PK "clasificador 2.x"
+    int FONDO PK "fuente"
+    str PROYECTO
+    num VALOR_CERTIFICADO
+  }
+  COMPROMISO {
+    int VIGENCIA PK
+    int NRO_RP PK
+    str RUBRO PK
+    int FONDO PK
+    int NRODOC_CDP FK
+    num VALOR_COMPROMISO_DEF
+    num SALDO_RP
+  }
+  ORDEN_GASTO {
+    int VIGENCIA PK
+    str PREFIJO PK
+    int NRO_CONTRATO PK
+    int COMPROMISO PK "tambien FK"
+    int CDP FK
+    str TERCERO "NIT contratista"
+    num TOTAL
+  }
+  OBLIGACION {
+    int VIGENCIA PK
+    int NRO_OBLIGACION PK
+    str RUBRO PK
+    int FONDO PK
+    int NRO_RP FK
+    int NRO_ORDEN_GASTO FK
+    int ORDEN_PAGO
+    num VALOR_OBLIGACION
+  }
+  RESERVA {
+    int VIGENCIA PK "constitucion"
+    int NRO_RESERVA PK
+    str RUBRO PK
+    int FONDO PK
+    int VIGENCIA_ORIGEN FK "= VIGENCIA - 1"
+    int NUMERO_CDP FK
+    str NIT "beneficiario"
+    num VALOR_RESERVA
+  }

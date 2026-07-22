@@ -1,0 +1,384 @@
+/* Importar fuente Montserrat desde Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap');
+
+
+/* Estilos generales */
+:root {
+  --sutec-green: #109D39;
+  --sutec-green-dark: #006030;
+  --sutec-yellow: #FFD700;
+  --font-family-base: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+/* Aplicar Montserrat a todo el sitio, excepto iconos */
+/* body, 
+html, 
+button, 
+input, 
+select, 
+textarea,
+.unfold-sidebar,
+.unfold-main,
+.unfold-content,
+.unfold-header,
+.unfold-footer {
+  font-family: var(--font-family-base) !important;
+} */
+
+/* Excluir iconos de la regla general de fuentes */
+/* .material-symbols-outlined,
+.material-icons,
+[class^="icon-"],
+[class*=" icon-"] {
+  font-family: inherit !important; /* Mantener la fuente original del icono */
+} */
+
+/* Ajustar pesos de fuente para diferentes elementos */
+h1, h2, h3, h4, h5, h6,
+.unfold-nav-item,
+.unfold-nav-section-title,
+.unfold-header-title,
+.unfold-form-title,
+.button, 
+.submit-row input, 
+input[type=submit], 
+input[type=button],
+.object-tools a {
+  font-family: var(--font-family-base) !important;
+  font-weight: 600 !important;
+}
+
+/* Elementos con peso normal */
+p, 
+span:not(.material-symbols-outlined):not(.material-icons), 
+div, 
+td, 
+th, 
+li, 
+label,
+.help, 
+.unfold-form-row,
+.unfold-field-box {
+  font-family: var(--font-family-base) !important;
+  font-weight: 400 !important;
+}
+
+/* Elementos con peso ligero */
+.help-text,
+.description,
+.quiet,
+.minor {
+  font-family: var(--font-family-base) !important;
+  font-weight: 300 !important;
+}
+
+/* Ajustar tamaño de fuente para mejorar legibilidad */
+body {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Personalización de la página de login */
+.login-logo {
+  max-width: 150px;
+  margin: 0 0 2rem;
+  display: block;
+}
+
+.base-logo {
+    margin: 0 auto;
+}
+
+.logo-gob {
+  max-width: 160px;
+  margin: 3rem 0 2rem;
+  display: block;
+}
+
+.img-franja {
+  width: 35px;
+  display: block;
+}
+
+/* ==========================================================================
+   Sidebar verde sobre admin en modo claro
+   Notas sobre unfold 0.1x:
+   - No usa clases semanticas (.unfold-sidebar, .unfold-nav-item): todo es Tailwind.
+   - #nav-sidebar tiene un <nav id="nav-sidebar-inner"> hijo con bg-base-50 que TAPA
+     el fondo del padre, asi que hay que pintar los dos.
+   - El item activo lleva la clase literal .active (no sirve [class*="text-primary"],
+     porque TODOS los items traen hover:text-primary-600 en su lista de clases).
+   - En modo claro los textos vienen en gris oscuro (text-base-400/500/700), ilegibles
+     sobre verde: hay que forzarlos a blanco.
+   ========================================================================== */
+
+#nav-sidebar,
+#nav-sidebar > nav,
+#nav-sidebar-inner {
+  background-color: var(--sutec-green-dark) !important;
+}
+
+#nav-sidebar {
+  border-right-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Texto principal: titulo, secciones, enlaces, iconos, atajos */
+/* El encabezado usa <div> con clases semanticas propias (text-important,
+   text-subtle), no h1/h2: hay que incluir div en la lista */
+#nav-sidebar h1,
+#nav-sidebar h2,
+#nav-sidebar h3,
+#nav-sidebar div,
+#nav-sidebar a,
+#nav-sidebar p,
+#nav-sidebar span,
+#nav-sidebar button,
+#nav-sidebar label,
+#nav-sidebar input,
+#nav-sidebar .text-important,
+#nav-sidebar .material-symbols-outlined {
+  color: #fff !important;
+}
+
+/* Texto secundario: subtitulo del sitio y titulos de grupo, atenuados */
+#nav-sidebar h2,
+#nav-sidebar .text-subtle,
+#nav-sidebar .text-base-400,
+#nav-sidebar .text-base-500 {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+#nav-sidebar h2 {
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+}
+
+/* Separadores entre grupos */
+#nav-sidebar .border-base-200,
+#nav-sidebar .border-base-100,
+#nav-sidebar hr {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Item del menu */
+#nav-sidebar ol li a {
+  border-radius: 4px;
+  transition: background-color .12s ease;
+}
+
+#nav-sidebar ol li a:hover {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Item activo: unfold le pone bg-base-100 text-primary-600 y la clase .active */
+#nav-sidebar ol li a.active,
+#nav-sidebar ol li a[aria-current="page"] {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  color: var(--sutec-yellow) !important;
+  font-weight: 600 !important;
+}
+
+#nav-sidebar ol li a.active span,
+#nav-sidebar ol li a.active .material-symbols-outlined {
+  color: var(--sutec-yellow) !important;
+}
+
+/* Buscador */
+#nav-sidebar input {
+  background-color: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+#nav-sidebar input::placeholder {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+/* Excepcion: el desplegable de resultados es un panel blanco flotante.
+   Va al final para ganarle a las reglas de arriba. */
+#nav-sidebar ul.absolute,
+#search-results,
+#search-results ul {
+  background-color: #fff !important;
+}
+
+#nav-sidebar ul.absolute a,
+#nav-sidebar ul.absolute span,
+#nav-sidebar ul.absolute div,
+#search-results a,
+#search-results span,
+#search-results div {
+  color: #111827 !important;
+}
+
+#nav-sidebar ul.absolute a:hover,
+#search-results ul a:hover {
+  background-color: #f3f4f6 !important;
+}
+
+/* Estilos para las tarjetas de estadísticas */
+.stat-card {
+  flex: 1;
+  background-color: #FFF9E6;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  border: 1px solid #FFE8A3;
+}
+
+.stat-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  background-color: #FFE8A3;
+  color: #8B6E00;
+  font-weight: 500;
+  margin-bottom: 10px;
+  float: right;
+}
+
+.stat-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.stat-number {
+  font-size: 36px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #000;
+}
+
+.stat-progress {
+  font-size: 13px;
+  color: var(--sutec-green);
+  font-weight: 500;
+}
+
+/* Ajustes específicos para cada tipo de tarjeta */
+.stat-card.yellow {
+  background-color: #FFF9E6;
+  border: 1px solid #FFE8A3;
+}
+
+.stat-card.blue {
+  background-color: #EFF8FF;
+  border: 1px solid #C2E0FF;
+}
+
+.stat-card.green {
+  background-color: #F0FFF4;
+  border: 1px solid #C6F6D5;
+}
+
+.stat-card.blue .stat-badge {
+  background-color: #C2E0FF;
+  color: #1A56DB;
+}
+
+.stat-card.green .stat-badge {
+  background-color: #C6F6D5;
+  color: #047857;
+}
+
+/* Logo de Sucre en el sidebar */
+.sidebar-logo-container {
+  padding: 20px 0;
+  margin-top: 20px;
+  text-align: center;
+}
+
+.sidebar-logo-sucre {
+  width: 160px;
+  height: auto;
+  opacity: 0.9;
+  margin: 0 auto;
+  left: 60px;
+  bottom: 60px;
+}
+
+/* Ajustar el padding-bottom del contenedor del sidebar */
+.unfold-sidebar .simplebar-content {
+  padding-bottom: 20px !important;
+}
+
+.vForeignKeyRawIdAdminField {
+  width: 60px !important;
+}
+
+/* Estilos para el dropdown del buscador del sidebar - Texto negro */
+#nav-sidebar ul.absolute.bg-white li a,
+#nav-sidebar ul.absolute.bg-white li a span,
+aside ul.absolute.bg-white li a,
+aside ul.absolute.bg-white li a span {
+  color: #000 !important;
+}
+
+#nav-sidebar ul.absolute.bg-white li a:hover,
+#nav-sidebar ul.absolute.bg-white li a:hover span,
+aside ul.absolute.bg-white li a:hover,
+aside ul.absolute.bg-white li a:hover span {
+  color: #000 !important;
+  background-color: #f3f4f6 !important;
+}
+
+#search-results ul {
+  background-color: #FFF !important;
+}
+
+/* ==========================================================================
+   Pie del sidebar: tarjeta del usuario (unfold/helpers/navigation_user.html)
+   El bloque vive dentro de #nav-sidebar, asi que hereda el texto blanco. Contra
+   el verde se rompen tres cosas:
+   - La fila usa hover:bg-base-100 (gris claro) y al abrir el menu se pinta
+     bg-base-100: el texto blanco forzado queda ilegible.
+   - El panel desplegable es un <nav> con bg-white; la excepcion del buscador
+     solo cubria <ul>, asi que su texto salia blanco sobre blanco.
+   - El avatar es un cuadro gris claro con la inicial en blanco.
+   Va al final para ganarle en cascada a las reglas generales de arriba.
+   ========================================================================== */
+
+/* Fila del usuario: hover y estado abierto en blanco translucido, no gris claro */
+#nav-sidebar .min-h-\[64px\]:hover,
+#nav-sidebar .min-h-\[64px\].bg-base-100 {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Avatar: cuadro translucido con la inicial en blanco */
+#nav-sidebar .min-h-\[64px\] > div:first-child {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Panel desplegable: blanco y flotante -> texto oscuro, igual que el buscador */
+#nav-sidebar nav.absolute {
+  background-color: #fff !important;
+}
+
+#nav-sidebar nav.absolute a,
+#nav-sidebar nav.absolute button,
+#nav-sidebar nav.absolute span,
+#nav-sidebar nav.absolute div,
+#nav-sidebar nav.absolute label,
+#nav-sidebar nav.absolute .material-symbols-outlined {
+  color: #374151 !important;
+}
+
+#nav-sidebar nav.absolute a:hover,
+#nav-sidebar nav.absolute button:hover {
+  background-color: #f3f4f6 !important;
+}
+
+/* Cerrar sesion se mantiene en rojo */
+#nav-sidebar nav.absolute button[type="submit"],
+#nav-sidebar nav.absolute button[type="submit"] .material-symbols-outlined {
+  color: #b91c1c !important;
+}
+
+#nav-sidebar nav.absolute button[type="submit"]:hover {
+  background-color: #fee2e2 !important;
+}

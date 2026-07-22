@@ -1,0 +1,30 @@
+# Entornos y herramientas
+.venv/
+.claude/
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Django: estado en runtime, no va al repo
+db.sqlite3
+db.sqlite3-journal
+db.sqlite3-wal
+*.log
+
+# Reportes subidos desde el admin (grandes; se recargan, no se versionan)
+media/
+
+# Salida de collectstatic (se regenera con manage.py collectstatic)
+staticfiles/
+
+# Secretos / configuracion local
+.env
+*.local
+
+# Sistema operativo
+Thumbs.db
+.DS_Store

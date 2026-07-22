@@ -1,0 +1,210 @@
+{# base_site (no base): base.html deja el bloque branding vacio y desaparece el encabezado #}
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block title %}Ficha de ejecucion {{ proyecto.bpin }} | SIIFWEB{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url 'admin:siifweb_proyecto_changelist' %}" class="font-medium text-primary-600">Proyectos</a></li>
+      <li class="mx-2">/</li>
+      <li>Ficha de ejecucion</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-6">
+
+  <div class="bg-white border rounded-default shadow-xs p-6 dark:bg-base-900 dark:border-base-800">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <div class="font-mono text-xs text-base-500 uppercase tracking-wider">BPIN {{ proyecto.bpin }}</div>
+        <h1 class="font-semibold text-xl mt-1 text-base-900 dark:text-base-100">
+          {{ proyecto.nombre|default:"(sin nombre en el historial)" }}
+        </h1>
+        <div class="text-sm text-base-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+          <span>Ejecuta: {% if proyecto.dependencia %}{{ proyecto.dependencia.nombre }}{% else %}—{% endif %}</span>
+          {% if proyecto.dependencia_responsable %}
+          <span>Responsable: {{ proyecto.dependencia_responsable.nombre }}</span>
+          {% endif %}
+        </div>
+        <div class="flex flex-wrap gap-1 mt-2">
+          {% for clasificacion in proyecto.clasificaciones.all %}
+          <span class="inline-block text-xs px-2 py-1 rounded-default border
+                       text-primary-600 border-primary-600">{{ clasificacion.nombre }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <a href="{{ volver }}" class="border font-medium px-3 py-2 rounded-default text-sm
+         text-base-700 dark:text-base-300 dark:border-base-700">Volver al detalle</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    {% for etiqueta, valor, nota in totales_tarjetas %}
+    <div class="bg-white border rounded-default shadow-xs p-4 dark:bg-base-900 dark:border-base-800">
+      <div class="text-xs text-base-500 uppercase tracking-wider">{{ etiqueta }}</div>
+      <div class="font-semibold text-lg mt-1 text-base-900 dark:text-base-100">${{ valor|floatformat:0|intcomma }}</div>
+      <div class="text-xs text-base-400 mt-1">{{ nota }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Cadena de ejecucion por vigencia</h2>
+      <p class="text-sm text-base-500 mt-1">Certificado &rarr; comprometido &rarr; obligado &rarr; pagado.
+        Los saldos son lo que quedo atrapado entre etapas.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+          <tr>
+            <th class="px-6 py-3 text-left">Vigencia</th>
+            <th class="px-6 py-3 text-right">Certificado</th>
+            <th class="px-6 py-3 text-right">Comprometido</th>
+            <th class="px-6 py-3 text-right">Obligado</th>
+            <th class="px-6 py-3 text-right">Pagado</th>
+            <th class="px-6 py-3 text-right">Sin comprometer</th>
+            <th class="px-6 py-3 text-right">Sin obligar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filas %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-6 py-3 font-medium">{{ f.vigencia }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.certificado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.comprometido|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.obligado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.pagado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono text-base-400">{{ f.sin_comprometer|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono {% if f.sin_obligar %}text-yellow-600{% else %}text-base-400{% endif %}">
+              {{ f.sin_obligar|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin ejecucion registrada</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="font-medium">
+          <tr>
+            <td class="px-6 py-3">Total</td>
+            <td class="px-6 py-3 text-right font-mono">{{ totales.certificado|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ totales.comprometido|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ totales.obligado|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ totales.pagado|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ totales.sin_comprometer|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ totales.sin_obligar|floatformat:0|intcomma }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
+        Contratos ({{ contratos|length }})</h2>
+      <p class="text-sm text-base-500 mt-1">Del historial de orden de gasto, incluidos los convenios
+        que la orden de gasto no trae.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+          <tr>
+            <th class="px-6 py-3 text-left">Contrato</th>
+            <th class="px-6 py-3 text-left">Contratista</th>
+            <th class="px-6 py-3 text-left">Firma</th>
+            <th class="px-6 py-3 text-right">Valor</th>
+            <th class="px-6 py-3 text-right">Actas</th>
+            <th class="px-6 py-3 text-right">Pagado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in contratos %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-6 py-3">
+              <a href="{% url 'admin:siifweb_contrato_change' c.pk %}" class="text-primary-600 font-medium">
+                {{ c.tipo_contrato }} {{ c.nro_contrato }}</a>
+            </td>
+            <td class="px-6 py-3">{{ c.tercero.nombre|truncatechars:42 }}</td>
+            <td class="px-6 py-3 whitespace-nowrap">{{ c.fecha_firma|date:"Y-m-d" }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ c.valor_contrato|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right">{{ c.n_actas }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ c.pagado|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="px-6 py-6 text-center text-base-500">
+            Sin contratos: puede ser nomina, transferencias o resoluciones.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+      <div class="border-b px-6 py-4 dark:border-base-800">
+        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Calendario de pagos</h2>
+        <p class="text-sm text-base-500 mt-1">Cada acta de pago del contrato, con su fecha.
+          Total ${{ total_pagado_bitacora|floatformat:0|intcomma }}</p>
+      </div>
+      <div class="max-h-96 overflow-y-auto">
+        <table class="w-full text-sm">
+          <tbody>
+            {% for p in calendario %}
+            <tr class="border-b dark:border-base-800">
+              <td class="px-6 py-2 whitespace-nowrap align-top">
+                {{ p.fecha_pago|date:"Y-m-d" }}
+                <div class="text-xs text-base-500">acta {{ p.nrodoc_acta|default:"-" }} · {{ p.tipo_orden }}</div>
+              </td>
+              <td class="px-6 py-2 w-full align-top">
+                <div style="height:8px;border-radius:3px;background:#3987e5;width:{{ p.ancho|floatformat:0 }}%;min-width:2px"></div>
+                <div class="text-xs text-base-500 mt-1">{{ p.tercero|truncatechars:34 }}</div>
+              </td>
+              <td class="px-6 py-2 text-right font-mono whitespace-nowrap align-top">{{ p.t|floatformat:0|intcomma }}</td>
+            </tr>
+            {% empty %}
+            <tr><td class="px-6 py-6 text-center text-base-500">Sin actas de pago registradas</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+      <div class="border-b px-6 py-4 dark:border-base-800">
+        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
+          Reservas ({{ reservas|length }})</h2>
+        <p class="text-sm text-base-500 mt-1">Lo que quedo comprometido al cierre y sigue
+          ejecutando en la vigencia siguiente.</p>
+      </div>
+      <div class="p-6 flex flex-col gap-2">
+        {% for r in reservas %}
+        <div class="border-b pb-2 dark:border-base-800">
+          <div class="flex justify-between text-sm">
+            <span>Reserva {{ r.reserva.nro_reserva }}/{{ r.reserva.vigencia }}
+              <span class="text-base-500">&larr; CDP {{ r.cdp_origen.nro_cdp }}/{{ r.cdp_origen.vigencia }}</span></span>
+            <span class="font-mono">{{ r.valor_reserva|floatformat:0|intcomma }}</span>
+          </div>
+          <div class="flex justify-between text-xs text-base-500 mt-1">
+            <span>{{ r.reserva.beneficiario.nombre|truncatechars:38 }}</span>
+            <span>obligado {{ r.obligaciones_reserva|floatformat:0|intcomma }} ·
+              saldo {{ r.saldo_reserva|floatformat:0|intcomma }}</span>
+          </div>
+        </div>
+        {% empty %}
+        <div class="text-sm text-base-500">Este proyecto no dejo reservas.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

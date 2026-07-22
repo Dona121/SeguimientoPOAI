@@ -1,0 +1,154 @@
+// Esquema SIIFWEB simplificado (solo llaves y columnas esenciales, con notas)
+// Pegar en https://dbdiagram.io/d
+// Convenciones:
+//  - VIGENCIA se deriva del archivo de origen; la numeracion reinicia en 1 cada vigencia
+//  - PK compuestas = grano logico real de cada exporte (no hay constraints en SIIFWEB)
+//  - El grano incluye PROYECTO: un documento puede amparar mas de un proyecto sobre el mismo rubro+fondo
+
+Table INGRESOS {
+  VIGENCIA int [pk, note: 'derivada del archivo']
+  NRO_COMPROBANTEPPTAL int [pk]
+  RUBRO varchar [note: 'clasificador de ingresos 1.x']
+  RECURSO int [note: 'fuente de financiacion; mismo dominio que FONDO en gasto']
+  VALOR decimal(18,2) [note: 'en xlsx viene como texto con coma decimal']
+  FECHA date
+
+  Note: 'Auxiliar de ingresos por rubro. Transaccional: 300-420 mil filas por vigencia. Tipos de comprobante: DERECHOS_APROBADOS / DERECHOS_ADICIONADOS / EFECTIVO / REVERSIONES.'
+}
+
+Table CDP {
+  VIGENCIA int [pk]
+  NRO_CDP int [pk]
+  IDENTIFICACION_PRESUPUESTAL varchar [pk, note: 'rubro de gasto, clasificador 2.x']
+  FONDO int [pk, note: 'fuente de financiacion']
+  PROYECTO varchar [pk, note: '0 = funcionamiento; parte del grano: un CDP puede amparar 2 proyectos sobre el mismo rubro+fondo']
+  VALOR_CERTIFICADO decimal(18,2)
+
+  Note: 'Consolidado de disponibilidades. Grano: CDP x rubro x fondo x proyecto (imputacion). Afectacion preliminar de la apropiacion. Reporta acumulados de toda la cadena (compromisos, obligaciones, pagos).'
+}
+
+Table COMPROMISO {
+  VIGENCIA int [pk]
+  NRO_RP int [pk]
+  IDENTIFICACION_PRESUPUESTAL varchar [pk]
+  FONDO int [pk]
+  PROYECTO varchar [pk]
+  NRODOC_CDP int [note: 'FK al NRO_CDP de la misma vigencia']
+  VALOR_COMPROMISO_DEF decimal(18,2) [note: 'registro menos anulaciones/reducciones']
+  SALDO_RP decimal(18,2) [note: 'comprometido sin obligar; al cierre alimenta reservas']
+
+  Note: 'Consolidado de compromisos (RP). Grano: RP x rubro x fondo x proyecto.'
+}
+
+Table ORDEN_GASTO {
+  VIGENCIA int [pk]
+  PREFIJO varchar [pk]
+  NRO_CONTRATO int [pk]
+  COMPROMISO int [pk, note: 'parte de la PK y a la vez FK: un contrato se repite por cada compromiso']
+  CDP int
+  TERCERO varchar [note: 'NIT del contratista']
+  TOTAL decimal(18,2) [note: 'cuidado: se repite por fila; no sumar directo']
+
+  Note: 'Orden de gasto (vista contractual). Grano: contrato x compromiso. Conecta CDP y RP con el tercero. La nomina y las transferencias NO pasan por aqui. NO cubre convenios (esos estan en HISTORIAL_IMPUTACIONES).'
+}
+
+Table OBLIGACION {
+  VIGENCIA int [pk]
+  NRO_OBLIGACION int [pk]
+  IDENTIFICACION_PRESUPUESTAL varchar [pk]
+  FONDO int [pk]
+  PROYECTO varchar [pk]
+  NRO_RP int
+  NRO_ORDEN_GASTO int
+  ORDEN_PAGO int [note: 'relacion casi 1 a 1 con la obligacion']
+  VALOR_OBLIGACION decimal(18,2)
+
+  Note: 'Consolidado de obligaciones. Grano: obligacion x rubro x fondo x proyecto. SALDO_OBLI (obligado sin pagar) = cuenta por pagar al cierre. Excepcion 2023: 35 obligaciones de reservas con RPs de 2022.'
+}
+
+Table RESERVA {
+  VIGENCIA int [pk, note: 'vigencia de CONSTITUCION (2 de enero)']
+  NRO_RESERVA int [pk]
+  IDENTIFICACION_PRESUPUESTAL varchar [pk]
+  FONDO int [pk]
+  VIGENCIA_ORIGEN int [note: '= VIGENCIA - 1; regla verificada sin excepciones']
+  NUMERO_CDP int [note: 'CDP de la vigencia origen']
+  NIT varchar [note: 'beneficiario']
+  VALOR_RESERVA decimal(18,2)
+
+  Note: 'Compromisos de la vigencia anterior no obligados al cierre. Salto temporal v-1. Ojo: NRODOC y NRO_RESERVA del exporte NO son llaves hacia los RP.'
+}
+
+Table CXP {
+  VIGENCIA int [pk, note: 'constitucion (1 de enero)']
+  NRO_CXP int [pk, note: 'hereda el numero de la obligacion de origen']
+  IDENTIFICACION_PRESUPUESTAL varchar [pk]
+  FONDO int [pk]
+  VIGENCIA_ORIGEN int [note: '= VIGENCIA - 1']
+  NRO_RP int [note: 'RP de la vigencia origen']
+  NIT varchar [note: 'beneficiario']
+  VALOR_CXP decimal(18,2) [note: 'obligado sin girar al cierre de v-1']
+  PAGOS decimal(18,2) [note: 'girado; vive solo aqui']
+
+  Note: 'Cuentas por pagar: espejo de RESERVA para la etapa de obligacion. Salto temporal v-1.'
+}
+
+Table COMPROBANTES {
+  VIGENCIA int [pk]
+  NRO_COMPROBANTEPPTAL int [pk]
+  RUBRO varchar [pk]
+  TIPO_COMPPTAL varchar [note: '19 tipos de movimiento de toda la cadena']
+  NRODOC int [note: 'llave polimorfica: el numero del documento segun el tipo']
+  FECHA date [note: 'la fuente de fechas de pago']
+  RECURSO int
+  PROYECTO varchar
+  VALOR decimal(18,2)
+
+  Note: 'Bitacora del gasto (aux_comprobantes32w): cada evento con fecha; cuadra al peso con todos los consolidados. Sin FK dura: (TIPO_COMPPTAL, NRODOC) apunta a la tabla del tipo.'
+}
+
+Table HISTORIAL_IMPUTACIONES {
+  TIPO_CONTRATO varchar [pk]
+  NRO_CONTRATO int [pk]
+  FECHA_FIRMA date [pk]
+  TERCERO varchar [pk]
+  NRO_COMPROBANTEPPTAL int [pk]
+  PREFIJO int [note: 'vigencia de la imputacion']
+  NRODOC int [note: 'es el NRO_RP del compromiso (verificado 100%)']
+  RUBRO varchar
+  RECURSO int
+  PROYECTO varchar [note: 'vinculo contrato -> BPIN directo; incluye los convenios que ordengasto no trae']
+
+  Note: 'Imputacion presupuestal del contrato (del reporte Historial De Orden De Gasto 2, descarga por rango completo). Conecta el contrato a la cadena al grano RP x rubro x fondo x proyecto (99% verificado).'
+}
+
+// ---- Relaciones (tasas verificadas con datos 2025) ----
+
+// compromisos -> cdp, 100%
+Ref: COMPROMISO.(VIGENCIA, NRODOC_CDP, IDENTIFICACION_PRESUPUESTAL, FONDO, PROYECTO) > CDP.(VIGENCIA, NRO_CDP, IDENTIFICACION_PRESUPUESTAL, FONDO, PROYECTO)
+
+// obligaciones -> compromisos, 100% (salvo excepcion 2023 documentada)
+Ref: OBLIGACION.(VIGENCIA, NRO_RP, IDENTIFICACION_PRESUPUESTAL, FONDO, PROYECTO) > COMPROMISO.(VIGENCIA, NRO_RP, IDENTIFICACION_PRESUPUESTAL, FONDO, PROYECTO)
+
+// orden de gasto -> cdp y compromisos (nivel documento), 100%
+Ref: ORDEN_GASTO.(VIGENCIA, CDP) > CDP.(VIGENCIA, NRO_CDP)
+Ref: ORDEN_GASTO.(VIGENCIA, COMPROMISO) > COMPROMISO.(VIGENCIA, NRO_RP)
+
+// obligaciones -> orden de gasto: llave precisa (VIGENCIA, NRO_RP, NRO_ORDEN_GASTO) -> (VIGENCIA, COMPROMISO, NRO_CONTRATO), 96%
+Ref: OBLIGACION.(VIGENCIA, NRO_RP, NRO_ORDEN_GASTO) > ORDEN_GASTO.(VIGENCIA, COMPROMISO, NRO_CONTRATO)
+
+// reservas -> cdp de la vigencia anterior, 100% (salto temporal)
+Ref: RESERVA.(VIGENCIA_ORIGEN, NUMERO_CDP, IDENTIFICACION_PRESUPUESTAL, FONDO) > CDP.(VIGENCIA, NRO_CDP, IDENTIFICACION_PRESUPUESTAL, FONDO)
+
+// cxp -> obligaciones y compromisos de la vigencia anterior, 99%
+Ref: CXP.(VIGENCIA_ORIGEN, NRO_CXP) > OBLIGACION.(VIGENCIA, NRO_OBLIGACION)
+Ref: CXP.(VIGENCIA_ORIGEN, NRO_RP) > COMPROMISO.(VIGENCIA, NRO_RP)
+
+// imputacion del contrato -> compromiso al grano completo con proyecto, 99%
+Ref: HISTORIAL_IMPUTACIONES.(PREFIJO, NRODOC, RUBRO, RECURSO, PROYECTO) > COMPROMISO.(VIGENCIA, NRO_RP, IDENTIFICACION_PRESUPUESTAL, FONDO, PROYECTO)
+
+// imputacion del contrato -> bitacora, 100%
+Ref: HISTORIAL_IMPUTACIONES.(PREFIJO, NRO_COMPROBANTEPPTAL) > COMPROBANTES.(VIGENCIA, NRO_COMPROBANTEPPTAL)
+
+// ingresos <-> gasto: puente a nivel de fuente (70/82 codigos comparten dominio), no llave dura
+Ref: INGRESOS.RECURSO <> CDP.FONDO

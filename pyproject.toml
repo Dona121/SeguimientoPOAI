@@ -1,0 +1,17 @@
+[project]
+name = "siifweb-app"
+version = "0.1.0"
+requires-python = ">=3.12"
+# Dependencias del analisis (parquet, conciliaciones). La app oficial es el
+# proyecto Django del workspace: seguimiento_poai.
+dependencies = [
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.3",
+    "polars>=1.42.1",
+    "pyarrow>=25.0.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "seguimiento_poai",
+]
