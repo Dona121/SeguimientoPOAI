@@ -11,12 +11,15 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
+from django.contrib.auth import get_user_model  # noqa: E402
 from django.test import Client  # noqa: E402
 
 from siifweb.models import Cdp, Compromiso, Contrato, Obligacion, Proyecto, Reserva  # noqa: E402
 
+admin_user = get_user_model().objects.filter(is_superuser=True).first()
+assert admin_user, "no hay ningun superusuario en la base"
 cliente = Client()
-assert cliente.login(username="admin", password="siifweb2026")
+cliente.force_login(admin_user)
 
 LISTADOS = ["proyecto", "cargareporte", "cdp", "compromiso", "obligacion", "reserva",
             "contrato", "contratoacta", "contratoimputacion", "cdpimputacion",

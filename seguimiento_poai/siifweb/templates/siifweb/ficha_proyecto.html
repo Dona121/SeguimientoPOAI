@@ -105,7 +105,127 @@
         </tfoot>
       </table>
     </div>
-  </div>
+    </div>
+
+    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">CDPs ({{ cdps_proyecto|length }})</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+          <tr>
+            <th class="px-6 py-3 text-left">Vigencia</th>
+            <th class="px-6 py-3 text-right">Número CDP</th>
+            <th class="px-6 py-3 text-right">Fecha disponibilidad</th>
+            <th class="px-6 py-3 text-right">Objeto</th>
+            <th class="px-6 py-3 text-right">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in cdps_proyecto %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-6 py-3 font-medium">{{ f.vigencia }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.nro_cdp }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.fecha_disp }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.objeto_cert }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.valor_cdp|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin CDPs registrados</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="font-medium">
+          <tr>
+            <td class="px-6 py-3">Total</td>
+            <td class="px-6 py-3 text-right font-mono"></td>
+            <td class="px-6 py-3 text-right font-mono"></td>
+            <td class="px-6 py-3 text-right font-mono"></td>
+            <td class="px-6 py-3 text-right font-mono">{{ cdps_proyecto_total|floatformat:0|intcomma }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    </div>
+
+    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">RPs ({{ rps_por_proyecto|length }})</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+          <tr>
+            <th class="px-6 py-3 text-left">Vigencia</th>
+            <th class="px-6 py-3 text-right">Número RP</th>
+            <th class="px-6 py-3 text-right">Fecha registro</th>
+            <th class="px-6 py-3 text-right">Acto administrativo</th>
+            <th class="px-6 py-3 text-right">Valor comprometido</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in rps_por_proyecto %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-6 py-3 font-medium">{{ f.vigencia }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.nro_rp }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.fecha_reg }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.acto_admon }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.valor_rp|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin RPs registrados</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="font-medium">
+          <tr>
+            <td class="px-6 py-3">Total</td>
+            <td class="px-6 py-3 text-right font-mono"></td>
+            <td class="px-6 py-3 text-right font-mono"></td>
+            <td class="px-6 py-3 text-right font-mono"></td>
+            <td class="px-6 py-3 text-right font-mono">{{ rps_por_proyecto_total|floatformat:0|intcomma }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    </div>
+
+    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Fuentes de financiación ({{ rps_por_proyecto|length }})</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+          <tr>
+            <th class="px-6 py-3 text-left">Código</th>
+            <th class="px-6 py-3 text-right">Fuente</th>
+            <th class="px-6 py-3 text-right">Valor comprometido</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in fuentes_por_proyecto %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-6 py-3 font-medium">{{ f.codigo }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.nombre }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.valor_comprometido|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin fuentes de financiación registradas</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="font-medium">
+          <tr>
+            <td class="px-6 py-3">Total</td>
+            <td class="px-6 py-3 text-right font-mono"></td>
+            <td class="px-6 py-3 text-right font-mono">{{ fuentes_por_proyecto_total|floatformat:0|intcomma }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    </div>
 
   <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
     <div class="border-b px-6 py-4 dark:border-base-800">

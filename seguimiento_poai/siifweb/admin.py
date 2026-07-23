@@ -4,10 +4,11 @@ import hashlib
 from django import forms
 from django.contrib import admin, messages
 from django.forms.models import BaseInlineFormSet
-from django.db.models import Count, DecimalField, F, OuterRef, Subquery, Sum, Min
-from django.http import Http404
+from django.db.models import Count, DecimalField, F, OuterRef, Subquery, Sum, Min, StringAgg, Max
+from django.http import Http404, HttpResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
+from django.utils import timezone
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import (ChoicesDropdownFilter, RangeDateFilter,
@@ -536,6 +537,44 @@ class ReservaDelProyectoInline(InlineDeProyecto):
     readonly_fields = fields
 
 
+class ClasificacionPorDefectoFilter(admin.SimpleListFilter):
+    """Filtro del listado con valor por defecto.
+
+    Al entrar sin elegir nada, el listado muestra los proyectos que TIENEN alguna
+    clasificacion. Se puede pedir 'Todas' (incluye los sin clasificar) o filtrar
+    por una clasificacion puntual. Vive en el listado (lo aplica el ChangeList),
+    NO en get_queryset, asi que ningun proyecto queda inaccesible por su ficha o
+    su pagina de cambio: solo cambia lo que se ve, no lo que existe.
+    """
+    title = "Clasificacion"
+    parameter_name = "clasif"
+    TODAS = "__todas__"
+    CON = "__con__"
+
+    def lookups(self, request, model_admin):
+        return [(self.CON, "Con clasificacion"), (self.TODAS, "Todas")] + [
+            (str(c.pk), c.nombre) for c in Clasificacion.objects.all()]
+
+    def queryset(self, request, queryset):
+        valor = self.value() or self.CON         # por defecto: con clasificacion
+        if valor == self.TODAS:
+            return queryset
+        if valor == self.CON:
+            return queryset.filter(clasificaciones__isnull=False).distinct()
+        return queryset.filter(clasificaciones__pk=valor)
+
+    def choices(self, changelist):
+        # Sin la opcion vacia "Todos" de Django: el vacio ES el default (con
+        # clasificacion), y "Todas" es la valvula de escape explicita.
+        activo = self.value() or self.CON
+        for lookup, titulo in self.lookup_choices:
+            yield {
+                "selected": str(activo) == str(lookup),
+                "query_string": changelist.get_query_string({self.parameter_name: lookup}),
+                "display": titulo,
+            }
+
+
 @admin.register(Proyecto)
 class ProyectoAdmin(ModelAdmin):
     compressed_fields = False
@@ -544,8 +583,8 @@ class ProyectoAdmin(ModelAdmin):
                ContratoDelProyectoInline, ReservaDelProyectoInline)
     list_display = ("bpin", "nombre","responsable","ficha_link" ,"clasificacion_txt","primer_fecha_firma_contrato","fecha_inicio_primer_contrato_firmado","certificado",
                     "obligado")
-    list_filter = (("origen", ChoicesDropdownFilter),
-                   ("clasificaciones", AutocompleteSelectMultipleFilter),
+    list_filter = (ClasificacionPorDefectoFilter,
+                   ("origen", ChoicesDropdownFilter),
                    ("dependencia_responsable", RelatedDropdownFilter),
                    ("dependencia", RelatedDropdownFilter))
     search_fields = ("bpin", "nombre", "dependencia_responsable__nombre", "clasificaciones__nombre")
@@ -586,14 +625,15 @@ class ProyectoAdmin(ModelAdmin):
         return ", ".join(nombres) if nombres else "-"
 
     def get_queryset(self, request):
-        filtro_poai = Clasificacion.objects.filter(nombre__iexact="poai 2026").first()
-        qs = super().get_queryset(request).filter(clasificaciones=filtro_poai)
-        qs = (qs
+        # Sin filtro por clasificacion aqui: get_queryset gobierna tambien el
+        # acceso a cada objeto (get_object). El recorte del listado va por el
+        # ClasificacionPorDefectoFilter, que solo toca lo que se muestra.
+        return (super().get_queryset(request)
                 .select_related("dependencia", "dependencia_responsable")
                 .prefetch_related("clasificaciones")
                 .annotate(cert=suma_de(CdpImputacion, "valor_certificado"),
-                          oblig=suma_de(ObligacionImputacion, "valor_obligacion")))
-        return qs.order_by("-oblig")
+                          oblig=suma_de(ObligacionImputacion, "valor_obligacion"))
+                .order_by("-oblig"))
     
     def primer_fecha_firma_contrato(self,obj):
         fechas_contrato_proyecto = ContratoImputacion.objects.filter(
@@ -677,11 +717,7 @@ class ProyectoAdmin(ModelAdmin):
                      .select_related("tercero")
                      .annotate(n_actas=Count("actas_del_contrato", distinct=True),
                                pagado=suma_de(ContratoActa, "valor_pago", "contrato"))
-                     .order_by("-valor_contrato"))
-        
-        cdps_generados = CdpImputacion.objects.filter(
-            proyecto=proyecto
-        ).select_related("cdp")
+                    .order_by("-valor_contrato"))
 
         # El calendario sale de las actas del contrato: fecha y valor de cada pago,
         # con el contratista. La bitacora quedo fuera del alcance (proceso financiero).
@@ -700,7 +736,46 @@ class ProyectoAdmin(ModelAdmin):
         calendario = [{**p, "ancho": float(p["t"]) / float(max_pago) * 100 if max_pago else 0}
                       for p in pagos]
         
+        cdps_proyecto = (
+            Cdp.objects
+            .filter(cdps_imputados__proyecto=proyecto)
+            .annotate(valor_cdp=Sum("cdps_imputados__valor_certificado"))
+            .order_by("fecha_disp")
+        )
 
+        # NO re-agregar cdps_proyecto (ya trae annotate sobre la misma relacion).
+        # aggregate() sobre annotate() de la misma relacion aplica un DISTINCT implicito
+        # y colapsa valores repetidos legitimos (dos imputaciones del mismo CDP con igual
+        # valor), dando un total mas bajo. Se suma directo desde las imputaciones.
+        cdps_proyecto_total = (CdpImputacion.objects
+                               .filter(proyecto=proyecto)
+                               .aggregate(t=Sum("valor_certificado"))["t"] or 0)
+
+        rps_por_proyecto = (
+            Compromiso.objects
+            .filter(compromisos_imputados__proyecto = proyecto)
+            .annotate(valor_rp=Sum("compromisos_imputados__valor_compromiso_def"))
+            .order_by("fecha_reg")
+        )
+
+        rps_por_proyecto_total = (
+            Compromiso.objects
+            .filter(compromisos_imputados__proyecto = proyecto)
+            .aggregate(t=Sum("compromisos_imputados__valor_compromiso_def"))["t"] or 0
+        )
+
+        fuentes_por_proyecto = (
+            Fuente.objects
+            .filter(compromisos_imputados__proyecto=proyecto)
+            .annotate(valor_comprometido=Sum("compromisos_imputados__valor_compromiso_def"))
+        )
+
+        fuentes_por_proyecto_total = (
+            Fuente.objects
+            .filter(compromisos_imputados__proyecto=proyecto)
+            .aggregate(tcomprometido=Sum("compromisos_imputados__valor_compromiso_def"))["tcomprometido"] or 0
+        )
+        
         contexto = {
             **self.admin_site.each_context(request),
             "title": f"Ficha de ejecucion - {proyecto.bpin}",
@@ -713,6 +788,12 @@ class ProyectoAdmin(ModelAdmin):
                 ("Obligado", totales["obligado"], "recibido a satisfaccion"),
                 ("Pagado", totales["pagado"], "girado por tesoreria"),
             ],
+            "cdps_proyecto" : cdps_proyecto,
+            "cdps_proyecto_total" : cdps_proyecto_total,
+            "rps_por_proyecto" :rps_por_proyecto,
+            "rps_por_proyecto_total" : rps_por_proyecto_total,
+            "fuentes_por_proyecto":fuentes_por_proyecto,
+            "fuentes_por_proyecto_total":fuentes_por_proyecto_total,
             "contratos": contratos,
             "calendario": calendario,
             "total_pagado_bitacora": sum(p["t"] for p in pagos),
@@ -722,11 +803,67 @@ class ProyectoAdmin(ModelAdmin):
         }
         return TemplateResponse(request, "siifweb/ficha_proyecto.html", contexto)
 
+    def reportes_view(self, request):
+        """Constructor del reporte: filtra la cadena, elige columnas, baja Excel."""
+        from . import reportes
+        import io
+
+        preview = None
+        if request.method == "POST":
+            f = reportes.parse_filtros(request.POST)
+            seleccion = [c for c in reportes.ORDEN if c in request.POST.getlist("columnas")]
+            claves, filas = reportes.construir(f, seleccion)
+            if request.POST.get("accion") == "excel":
+                wb = reportes.a_excel(claves, filas)
+                buffer = io.BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
+                resp = HttpResponse(
+                    buffer.getvalue(),
+                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                resp["Content-Disposition"] = (
+                    f'attachment; filename="reporte_proyectos_{timezone.localdate():%Y%m%d}.xlsx"')
+                return resp
+            preview = {
+                "columnas": [(c, reportes.META[c]["label"], reportes.META[c]["tipo"]) for c in claves],
+                "filas": [[(c, fila[c], reportes.META[c]["tipo"]) for c in claves]
+                          for fila in filas[:50]],
+                "total": len(filas),
+            }
+            seleccion_actual = seleccion or list(reportes.DEF_SELECCION)
+            bpines_sel = set(f["bpines"])
+        else:
+            seleccion_actual = list(reportes.DEF_SELECCION)
+            bpines_sel = set()
+
+        grupos_columnas = [
+            (g, [(c[0], c[1], c[3]) for c in reportes.COLUMNAS if c[2] == g])
+            for g in reportes.GRUPOS]
+
+        contexto = {
+            **self.admin_site.each_context(request),
+            "title": "Reportes",
+            "grupos_columnas": grupos_columnas,
+            "meta": reportes.META,
+            "seleccion": set(seleccion_actual),
+            "proyectos": list(Proyecto.objects.exclude(bpin__isnull=True)
+                              .order_by("bpin").values("bpin", "nombre")),
+            "bpines_sel": bpines_sel,
+            "valores": request.POST if request.method == "POST" else {},
+            "preview": preview,
+            "volver": reverse("admin:siifweb_proyecto_changelist"),
+        }
+        return TemplateResponse(request, "siifweb/reportes.html", contexto)
+
     def get_urls(self):
-        # La URL propia va ANTES de las del admin: '<path:object_id>/' las capturaria
-        propia = [path("<path:object_id>/ficha-ejecucion/",
-                       self.admin_site.admin_view(self.ficha_ejecucion),
-                       name="siifweb_proyecto_ficha_ejecucion")]
+        # Las URLs propias van ANTES de las del admin: '<path:object_id>/' las capturaria
+        propia = [
+            path("reportes/", self.admin_site.admin_view(self.reportes_view),
+                 name="siifweb_proyecto_reportes"),
+            path("<path:object_id>/ficha-ejecucion/",
+                 self.admin_site.admin_view(self.ficha_ejecucion),
+                 name="siifweb_proyecto_ficha_ejecucion"),
+        ]
         return propia + super().get_urls()
 
 

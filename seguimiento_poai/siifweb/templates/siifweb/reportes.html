@@ -1,0 +1,291 @@
+{# base_site (no base): base.html deja el bloque branding vacio y desaparece el encabezado #}
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block title %}Reportes | SIIFWEB{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{{ volver }}" class="font-medium text-primary-600">Proyectos</a></li>
+      <li class="mx-2">/</li>
+      <li>Reportes</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  /* Unfold define --color-primary-600 como rgb(...) completo, no como triple:
+     hay que usar las variables directas, sin envolverlas otra vez en rgb(). */
+  .rep { --linea: var(--color-base-200); --verde: var(--color-primary-600);
+         --verde-osc: #065f30; }
+  .rep .in { width:100%; border:1px solid var(--linea); border-radius:6px; padding:.5rem .7rem;
+             font-size:.875rem; background:#fff; color:var(--color-base-800); }
+  .rep .in:focus { outline:2px solid var(--verde); outline-offset:-1px; border-color:transparent; }
+  .rep .lbl { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em;
+              color:var(--color-base-500); font-weight:600; margin-bottom:.3rem; display:block; }
+  .rep .etapa { display:inline-flex; align-items:center; gap:.4rem; font-size:.7rem; font-weight:700;
+                text-transform:uppercase; letter-spacing:.06em; color:var(--color-base-500); }
+  .rep .etapa::before { content:""; width:.5rem; height:.5rem; border-radius:9999px;
+                        background:var(--verde); }
+  /* Cada etapa de la cadena en su propio contenedor, para que se lean como grupos */
+  .rep .caja { display:flex; flex-direction:column; gap:.8rem; padding:1rem 1.1rem;
+               border:1px solid var(--color-base-300); border-radius:8px; }
+  .rep .caja > .etapa { padding-bottom:.65rem; border-bottom:1px dashed var(--color-base-300); }
+  /* La cadena presupuestal: es la columna vertebral del reporte, igual que en la ficha */
+  .rep .cadena { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
+  .rep .cadena b { font-size:.8rem; font-weight:600; color:var(--color-base-700); }
+  .rep .cadena i { color:var(--verde); font-style:normal; font-weight:700; }
+  .rep .col-check { display:flex; align-items:center; gap:.55rem; padding:.4rem .5rem; border-radius:6px;
+                    font-size:.875rem; color:var(--color-base-700); cursor:pointer; }
+  .rep .col-check:hover { background:var(--color-base-50); }
+  .rep .col-check input, .rep .proy input { width:1rem; height:1rem; accent-color:var(--verde); }
+  .rep .proy { display:flex; align-items:baseline; gap:.6rem; padding:.35rem .5rem; border-radius:6px;
+               cursor:pointer; font-size:.82rem; }
+  .rep .proy:hover { background:var(--color-base-50); }
+  .rep .lista-proy { max-height:16rem; overflow-y:auto; border:1px solid var(--linea); border-radius:8px; }
+  .rep .btn { border:1px solid var(--linea); border-radius:6px; padding:.55rem 1rem; font-size:.875rem;
+              font-weight:600; color:var(--color-base-700); background:#fff; cursor:pointer; }
+  .rep .btn:hover { background:var(--color-base-50); }
+  .rep .btn-verde { background:var(--verde); border-color:var(--verde); color:#fff; }
+  .rep .btn-verde:hover { background:var(--verde-osc); border-color:var(--verde-osc); }
+  .rep .chip { font-size:.72rem; font-weight:600; color:var(--verde);
+               background:var(--color-primary-50); border-radius:9999px; padding:.15rem .55rem; }
+</style>
+
+<form method="post" class="rep flex flex-col gap-6" id="form-reporte">
+  {% csrf_token %}
+
+  {# ---- Encabezado ---- #}
+  <div class="flex items-end justify-between gap-4 flex-wrap">
+    <div>
+      <div class="text-xs font-semibold uppercase tracking-widest text-primary-600">Extracto a Excel</div>
+      <h1 class="font-semibold text-2xl mt-1 text-base-900 dark:text-base-100">Reportes de proyectos</h1>
+      <p class="text-sm text-base-500 mt-1 max-w-2xl">Una fila por proyecto, como la ficha.
+        Acota la cadena de gasto con los filtros, elige las columnas y descarga el Excel.</p>
+    </div>
+    <a href="{{ volver }}" class="btn">Volver a proyectos</a>
+  </div>
+
+  {# ---- Alcance (filtros) ---- #}
+  <section class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800 flex items-center justify-between gap-3">
+      <div>
+        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Alcance</h2>
+        <p class="text-sm text-base-500 mt-0.5">Sin filtros, el reporte trae todos los proyectos.
+          Cada bloque acota su etapa de la cadena.</p>
+      </div>
+    </div>
+
+    <div class="p-6 flex flex-col gap-6">
+      {# Proyectos: multiseleccion por BPIN #}
+      <div>
+        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <span class="lbl mb-0">Proyectos (BPIN)</span>
+          <span class="text-xs text-base-500"><span id="proy-count">0</span> seleccionados ·
+            <button type="button" class="text-primary-600 font-medium" data-proy="visibles">marcar visibles</button> ·
+            <button type="button" class="text-primary-600 font-medium" data-proy="limpiar">limpiar</button>
+          </span>
+        </div>
+        <input type="text" class="in mb-2" id="buscar-proy" placeholder="Buscar por BPIN o nombre…" autocomplete="off">
+        <div class="lista-proy divide-y dark:divide-base-800">
+          {% for p in proyectos %}
+          <label class="proy" data-txt="{{ p.bpin }} {{ p.nombre|lower }}">
+            <input type="checkbox" name="bpines" value="{{ p.bpin }}" {% if p.bpin in bpines_sel %}checked{% endif %}>
+            <span class="font-mono text-xs text-base-500 shrink-0">{{ p.bpin }}</span>
+            <span class="text-base-700 dark:text-base-300 truncate">{{ p.nombre|default:"(sin nombre)"|truncatechars:70 }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Bloques por etapa, cada uno en su contenedor #}
+      <div class="grid gap-4 md:grid-cols-3">
+        <div class="caja">
+          <span class="etapa">Disponibilidad</span>
+          <div>
+            <span class="lbl">Fecha de disponibilidad</span>
+            <div class="flex items-center gap-2">
+              <input type="date" name="disp_desde" class="in" value="{{ valores.disp_desde }}">
+              <span class="text-base-400 text-sm">a</span>
+              <input type="date" name="disp_hasta" class="in" value="{{ valores.disp_hasta }}">
+            </div>
+          </div>
+          <div>
+            <span class="lbl">Numero de CDP</span>
+            <input type="text" name="nros_cdp" class="in" value="{{ valores.nros_cdp }}"
+                   placeholder="1, 2, 350…" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="caja">
+          <span class="etapa">Compromiso</span>
+          <div>
+            <span class="lbl">Fecha de registro</span>
+            <div class="flex items-center gap-2">
+              <input type="date" name="reg_desde" class="in" value="{{ valores.reg_desde }}">
+              <span class="text-base-400 text-sm">a</span>
+              <input type="date" name="reg_hasta" class="in" value="{{ valores.reg_hasta }}">
+            </div>
+          </div>
+          <div>
+            <span class="lbl">Numero de RP</span>
+            <input type="text" name="nros_rp" class="in" value="{{ valores.nros_rp }}"
+                   placeholder="12, 84…" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="caja">
+          <span class="etapa">Contratista</span>
+          <div>
+            <span class="lbl">Nombre</span>
+            <input type="text" name="contratista" class="in" value="{{ valores.contratista }}"
+                   placeholder="Parte del nombre…" autocomplete="off">
+          </div>
+          <div>
+            <span class="lbl">Documento</span>
+            <input type="text" name="doc_contratista" class="in" value="{{ valores.doc_contratista }}"
+                   placeholder="NIT o cedula…" autocomplete="off">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ---- Columnas ---- #}
+  <section class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Columnas del Excel</h2>
+      <div class="cadena mt-2">
+        <b>Certificado</b><i>&rarr;</i><b>Comprometido</b><i>&rarr;</i><b>Obligado</b><i>&rarr;</i><b>Pagado</b>
+        <span class="text-xs text-base-400 ml-1">la cadena de gasto, de punta a punta</span>
+      </div>
+    </div>
+    <div class="p-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {% for grupo, cols in grupos_columnas %}
+      <fieldset data-grupo>
+        <div class="flex items-center justify-between mb-1">
+          <legend class="etapa">{{ grupo }}</legend>
+          <button type="button" class="text-xs text-primary-600 font-medium" data-todas>todas</button>
+        </div>
+        <div>
+          {% for clave, label, tipo in cols %}
+          <label class="col-check">
+            <input type="checkbox" name="columnas" value="{{ clave }}" {% if clave in seleccion %}checked{% endif %}>
+            <span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---- Acciones ---- #}
+  <div class="sticky bottom-4 z-10">
+    <div class="bg-white border rounded-default shadow-lg px-6 py-3 flex items-center justify-between gap-3 flex-wrap dark:bg-base-900 dark:border-base-800">
+      <span class="text-sm text-base-500">El Excel trae una fila por proyecto y una fila de totales al final.</span>
+      <div class="flex items-center gap-2">
+        <button type="submit" name="accion" value="previsualizar" class="btn">Previsualizar</button>
+        <button type="submit" name="accion" value="excel" class="btn btn-verde flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-base leading-none">download</span> Descargar Excel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ---- Vista previa ---- #}
+  {% if preview %}
+  <section class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800 flex items-center gap-3 flex-wrap">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Vista previa</h2>
+      <span class="chip">{{ preview.total }} proyecto{{ preview.total|pluralize }}</span>
+      {% if preview.total > preview.filas|length %}
+      <span class="text-xs text-base-400">mostrando las primeras {{ preview.filas|length }}</span>
+      {% endif %}
+    </div>
+    {% if preview.filas %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm whitespace-nowrap">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+          <tr>
+            {% for clave, label, tipo in preview.columnas %}
+            <th class="px-4 py-3 {% if tipo == 'texto' %}text-left{% else %}text-right{% endif %}">{{ label }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in preview.filas %}
+          <tr class="border-b dark:border-base-800">
+            {% for clave, valor, tipo in fila %}
+            <td class="px-4 py-2.5 {% if tipo == 'texto' %}text-left{% else %}text-right font-mono{% endif %}">
+              {% if tipo == 'texto' %}{{ valor|default:""|truncatechars:60 }}{% else %}{{ valor|default:0|floatformat:0|intcomma }}{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="px-6 py-10 text-center text-base-500">Ningun proyecto cumple esos filtros.</div>
+    {% endif %}
+  </section>
+  {% endif %}
+</form>
+
+<script>
+(function () {
+  var form = document.getElementById("form-reporte");
+  if (!form) return;
+
+  // Buscador del listado de proyectos
+  var buscar = document.getElementById("buscar-proy");
+  var items = Array.prototype.slice.call(form.querySelectorAll(".proy"));
+  if (buscar) {
+    buscar.addEventListener("input", function () {
+      var q = buscar.value.trim().toLowerCase();
+      items.forEach(function (it) {
+        it.style.display = !q || it.dataset.txt.indexOf(q) !== -1 ? "" : "none";
+      });
+    });
+  }
+
+  // Contador de proyectos seleccionados
+  var count = document.getElementById("proy-count");
+  function refrescar() {
+    if (count) count.textContent = form.querySelectorAll('input[name="bpines"]:checked').length;
+  }
+  form.addEventListener("change", function (e) {
+    if (e.target.name === "bpines") refrescar();
+  });
+  refrescar();
+
+  // Marcar visibles / limpiar
+  form.querySelectorAll("[data-proy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var modo = btn.dataset.proy;
+      items.forEach(function (it) {
+        if (modo === "limpiar") it.querySelector("input").checked = false;
+        else if (it.style.display !== "none") it.querySelector("input").checked = true;
+      });
+      refrescar();
+    });
+  });
+
+  // "todas" por grupo de columnas
+  form.querySelectorAll("[data-todas]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var caja = btn.closest("[data-grupo]").querySelectorAll('input[name="columnas"]');
+      var faltan = Array.prototype.some.call(caja, function (c) { return !c.checked; });
+      caja.forEach(function (c) { c.checked = faltan; });
+    });
+  });
+})();
+</script>
+{% endblock %}

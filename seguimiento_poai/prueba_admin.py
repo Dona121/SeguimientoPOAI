@@ -28,8 +28,11 @@ def mensajes(respuesta):
     return [m.message for m in get_messages(respuesta.wsgi_request)]
 
 
+from django.contrib.auth import get_user_model
 cliente = Client()
-assert cliente.login(username="admin", password="siifweb2026"), "no pudo iniciar sesion"
+admin_user = get_user_model().objects.filter(is_superuser=True).first()
+assert admin_user, "no hay ningun superusuario en la base"
+cliente.force_login(admin_user)
 
 # Deja el escenario limpio para que la prueba sea repetible
 CdpImputacion.objects.filter(cdp__vigencia=2023).delete()
