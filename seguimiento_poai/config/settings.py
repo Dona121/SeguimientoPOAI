@@ -43,6 +43,12 @@ if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
     CSRF_TRUSTED_ORIGINS.append(f"https://{_railway_domain}")
 
+# Comodin para cualquier subdominio de Railway: RAILWAY_PUBLIC_DOMAIN no siempre
+# se inyecta. El punto inicial en ALLOWED_HOSTS matchea todos los subdominios;
+# CSRF (Django 4+) acepta el * en el origen.
+ALLOWED_HOSTS.append(".up.railway.app")
+CSRF_TRUSTED_ORIGINS.append("https://*.up.railway.app")
+
 ALLOWED_HOSTS += [h.strip() for h in os.getenv("EXTRA_ALLOWED_HOSTS", "").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS += [o.strip() for o in os.getenv("EXTRA_CSRF_ORIGINS", "").split(",") if o.strip()]
 
