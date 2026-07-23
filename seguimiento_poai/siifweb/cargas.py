@@ -13,6 +13,7 @@ Reglas de normalizacion (ver NOTAS_CRUCES.md del proyecto de analisis):
 """
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from io import BytesIO
 
 from django.db import transaction
 from openpyxl import load_workbook
@@ -64,6 +65,16 @@ def fecha(valor):
         except ValueError:
             continue
     return None
+
+
+def stream(archivo):
+    """Contenido del FieldFile como stream en memoria.
+
+    Sirve para almacenamiento local y remoto (S3): FileField.path NO existe en
+    S3 (lanza NotImplementedError). openpyxl lee igual de un file-object.
+    """
+    with archivo.open("rb") as fh:
+        return BytesIO(fh.read())
 
 
 def leer_filas(ruta, hoja=None):
@@ -244,7 +255,7 @@ def armar_detalle(base, previas, cat=None, extra=""):
 
 @transaction.atomic
 def cargar_cdp(carga):
-    filas = leer_filas(carga.archivo.path)
+    filas = leer_filas(stream(carga.archivo))
     cat = Catalogos()
     vigencia = carga.vigencia
 
@@ -281,7 +292,7 @@ def cargar_cdp(carga):
 
 @transaction.atomic
 def cargar_compromisos(carga):
-    filas = leer_filas(carga.archivo.path)
+    filas = leer_filas(stream(carga.archivo))
     cat = Catalogos()
     vigencia = carga.vigencia
     cdps = {c.nro_cdp: c for c in Cdp.objects.filter(vigencia=vigencia)}
@@ -324,7 +335,7 @@ def cargar_compromisos(carga):
 
 @transaction.atomic
 def cargar_obligaciones(carga):
-    filas = leer_filas(carga.archivo.path)
+    filas = leer_filas(stream(carga.archivo))
     cat = Catalogos()
     vigencia = carga.vigencia
     rps = {c.nro_rp: c for c in Compromiso.objects.filter(vigencia=vigencia)}
@@ -382,7 +393,7 @@ def cargar_obligaciones(carga):
 
 @transaction.atomic
 def cargar_reservas(carga):
-    filas = leer_filas(carga.archivo.path)
+    filas = leer_filas(stream(carga.archivo))
     cat = Catalogos()
     vigencia = carga.vigencia
     # Salto temporal: la reserva de v se constituye con CDPs de v-1
@@ -435,7 +446,7 @@ def cargar_historial(carga):
       - un evento de pago (acta)      -> VALOR_PAGO diligenciado
       - una imputacion presupuestal   -> NRO_COMPROBANTEPPTAL diligenciado
     """
-    filas = leer_filas(carga.archivo.path)
+    filas = leer_filas(stream(carga.archivo))
     cat = Catalogos()
 
     # Rango completo: cada descarga sustituye a la anterior. Se borran primero los
@@ -529,7 +540,7 @@ def cargar_poai(carga):
       - dependencia responsable y clasificaciones: SIIFWEB no los tiene, asi que este
         reporte es la fuente autoritativa y siempre los actualiza
     """
-    filas = leer_filas(carga.archivo.path, hoja="Completo")
+    filas = leer_filas(stream(carga.archivo), hoja="Completo")
 
     unicos = {}
     for f in filas:

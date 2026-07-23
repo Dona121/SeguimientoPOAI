@@ -30,9 +30,33 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "False").strip().lower() == "true"
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver","*"]
+# Railway inyecta RAILWAY_PUBLIC_DOMAIN por si solo: el dominio entra dinamico,
+# sin configurar hosts ni CSRF a mano. EXTRA_* (coma-separados) abre la puerta a
+# dominios propios o a ngrok en local.
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+CSRF_TRUSTED_ORIGINS = []
+
+_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+if _railway_domain:
+    ALLOWED_HOSTS.append(_railway_domain)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{_railway_domain}")
+
+ALLOWED_HOSTS += [h.strip() for h in os.getenv("EXTRA_ALLOWED_HOSTS", "").split(",") if h.strip()]
+CSRF_TRUSTED_ORIGINS += [o.strip() for o in os.getenv("EXTRA_CSRF_ORIGINS", "").split(",") if o.strip()]
+
+# Railway termina el TLS en su proxy: Django reconoce HTTPS por la cabecera reenviada.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+if not DEBUG:
+    # En produccion todo por HTTPS (Railway ya sirve TLS; con el proxy header
+    # de arriba, Django reconoce la conexion segura y redirige el resto).
+    SECURE_SSL_REDIRECT = True
+    # HSTS: opcional. Actívalo (p. ej. 31536000) cuando tengas un dominio estable;
+    # es dificil de revertir, por eso arranca apagado.
+    SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
 
 
 # Application definition
@@ -55,6 +79,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise justo despues de SecurityMiddleware: sirve los estaticos
+    # comprimidos y versionados sin depender de un servidor de archivos aparte.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -81,6 +108,41 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+
+AWS_ACCESS_KEY_ID = os.getenv("SUPABASE_S3_ACCESS_KEY")
+AWS_SECRET_ACCESS_KEY = os.getenv("SUPABASE_S3_SECRET_KEY")
+AWS_STORAGE_BUCKET_NAME = "media"
+
+
+AWS_S3_ENDPOINT_URL = "https://bhfkybfkgxerzvpatdkg.storage.supabase.co/storage/v1/s3"
+AWS_S3_REGION_NAME = "us-east-1"
+
+# Supabase exige path-style + firma v4
+AWS_S3_ADDRESSING_STYLE = "path"
+AWS_S3_SIGNATURE_VERSION = "s3v4"
+
+# Bucket privado -> URLs firmadas (default). No lo pongas en False para docs sensibles.
+AWS_QUERYSTRING_AUTH = True
+AWS_QUERYSTRING_EXPIRE = 3600  # segundos de validez del link firmado
+
+# Evita que dos archivos con el mismo nombre se sobreescriban silenciosamente
+AWS_S3_FILE_OVERWRITE = False
+
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": AWS_STORAGE_BUCKET_NAME,
+            # Sin prefijo: el modelo ya sube con upload_to="reportes/". El bucket
+            # se llama "media", asi que los archivos quedan en media/reportes/...
+            "location": "",
+        },
+    },
+    "staticfiles": {
+        # WhiteNoise: comprime y versiona los estáticos (cache-busting).
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 
 # Database
@@ -122,9 +184,8 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://chase-nondrinkable-editorially.ngrok-free.dev"
-]
+# CSRF_TRUSTED_ORIGINS se arma arriba desde RAILWAY_PUBLIC_DOMAIN + EXTRA_CSRF_ORIGINS.
+# Para ngrok en local: EXTRA_CSRF_ORIGINS=https://tu-dominio.ngrok-free.dev en el .env
 
 
 # Internationalization

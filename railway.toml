@@ -1,0 +1,18 @@
+# Despliegue en Railway.
+# Railway detecta uv (por uv.lock) y sincroniza el workspace en el build.
+# El app Django vive en la subcarpeta seguimiento_poai, por eso los comandos
+# usan `uv run --directory seguimiento_poai`.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+# Antes de exponer la version nueva: aplica migraciones y recolecta estaticos
+# (WhiteNoise los sirve comprimidos y versionados desde STATIC_ROOT).
+preDeployCommand = "uv run --directory seguimiento_poai python manage.py migrate --noinput && uv run --directory seguimiento_poai python manage.py collectstatic --noinput"
+
+# Servidor de produccion. Railway inyecta $PORT.
+startCommand = "uv run --directory seguimiento_poai gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
