@@ -1,314 +1,259 @@
 # -*- coding: utf-8 -*-
-"""Reporte de proyectos: filtra la cadena de gasto y arma un Excel con las
-columnas que el usuario elija. Parte del proyecto, igual que la ficha.
+"""Reporte Financiero del proyecto.
 
-Regla de oro (aprendida a golpes): los totales salen por Subquery sobre la tabla
-de imputaciones, nunca re-agregando un queryset ya anotado. Un aggregate() sobre
-un annotate() de la misma relacion mete un DISTINCT implicito (colapsa valores
-repetidos) o multiplica el join. Aqui cada columna es su propia subconsulta.
+Una fila por (proyecto, vigencia) con los valores agregados de toda la cadena:
+CDP -> compromiso -> obligacion -> reserva.
+
+La reserva se asocia a la vigencia de su CDP de origen (cdp_origen), NO a su
+vigencia de constitucion: una reserva constituida en v+1 arrastra la ejecucion
+pendiente de v, asi que se reporta bajo v (la vigencia del CDP/RP que la origino).
+
+Cada etapa se agrega por separado (una consulta por tabla, agrupada por
+proyecto+vigencia) y se cruzan en Python por la llave: nunca se anida un Sum
+sobre otro join, para no inflar ni colapsar valores.
 """
 from collections import defaultdict
-from datetime import datetime
 from decimal import Decimal
 
-from django.db.models import (Count, DecimalField, Exists, IntegerField, OuterRef,
-                              Subquery, Sum)
+from django.db.models import DurationField, ExpressionWrapper, F, Max, Min, Sum
 
 from .models import (CdpImputacion, CompromisoImputacion, ContratoImputacion,
                      ObligacionImputacion, Proyecto, ReservaImputacion)
 
-_MONEY = DecimalField(max_digits=20, decimal_places=2)
+CERO = Decimal("0")
 
-# --- catalogo de columnas -------------------------------------------------
-# (clave, etiqueta, grupo, tipo)   tipo: texto | money | entero
+# (clave, encabezado, tipo, grupo)   tipo: texto | fecha | money | entero
+# El grupo alimenta la fila 1 del Excel (celdas combinadas por bloque).
+G_BASICOS = "Datos básicos"
+G_DISP = "Disponibilidad presupuestal"
+G_REG = "Registro presupuestal"
+G_OBLI = "Obligaciones y pagos"
+G_RES = "Reservas"
+G_CONTR = "Contratación"
 COLUMNAS = [
-    ("bpin",                    "BPIN",                      "Identificacion", "texto"),
-    ("nombre",                  "Nombre del proyecto",       "Identificacion", "texto"),
-    ("dependencia",             "Dependencia (ejecuta)",     "Identificacion", "texto"),
-    ("dependencia_responsable", "Dependencia responsable",   "Identificacion", "texto"),
-    ("clasificaciones",         "Clasificaciones",           "Identificacion", "texto"),
-    ("origen",                  "Origen",                    "Identificacion", "texto"),
-
-    ("certificado",             "Certificado",               "Disponibilidad", "money"),
-    ("disponibilidad_def",      "Disponibilidad definitiva", "Disponibilidad", "money"),
-    ("sin_comprometer",         "Sin comprometer",           "Disponibilidad", "money"),
-    ("n_cdps",                  "N.o de CDPs",               "Disponibilidad", "entero"),
-
-    ("comprometido",            "Comprometido",              "Compromiso",     "money"),
-    ("sin_obligar",             "Sin obligar",               "Compromiso",     "money"),
-    ("n_rps",                   "N.o de RPs",                "Compromiso",     "entero"),
-
-    ("obligado",                "Obligado",                  "Obligacion",     "money"),
-    ("sin_girar",               "Sin girar",                 "Obligacion",     "money"),
-
-    ("pagado",                  "Pagado",                    "Pago",           "money"),
-
-    ("reservado",               "Reservado",                 "Cierre",         "money"),
-    ("saldo_reserva",           "Saldo de reserva",          "Cierre",         "money"),
-
-    ("n_contratos",             "N.o de contratos",          "Contractual",    "entero"),
-    ("valor_contratado",        "Valor contratado",          "Contractual",    "money"),
-    ("contratistas",            "Contratistas",              "Contractual",    "texto"),
+    ("bpin",                 "BPIN",                            "texto",  G_BASICOS),
+    ("nombre",               "Nombre del proyecto",             "texto",  G_BASICOS),
+    ("clasificaciones",      "Clasificacion",                   "texto",  G_BASICOS),
+    ("dependencia_responsable", "Dependencia responsable",      "texto",  G_BASICOS),
+    ("vigencia",             "Vigencia",                        "texto",  G_BASICOS),
+    ("fecha_primer_cdp",     "FechaPrimerCDP",                  "fecha",  G_DISP),
+    ("valor_certificado",    "ValorCertificado",                "money",  G_DISP),
+    ("valor_disp_def",       "ValorDisponibilidadDefinitiva",   "money",  G_DISP),
+    ("saldo_certf",          "ValorSaldoCertificado",           "money",  G_DISP),
+    ("fecha_primer_rp",      "FechaPrimerRP",                   "fecha",  G_REG),
+    ("valor_registro",       "ValorRegistro",                   "money",  G_REG),
+    ("valor_compromiso_def", "ValorCompromisoDefinitivo",       "money",  G_REG),
+    ("saldo_rp",             "ValorSaldoCompromiso",            "money",  G_REG),
+    ("fecha_primera_obli",   "FechaPrimeraObligacion",          "fecha",  G_OBLI),
+    ("valor_obligacion_def", "ValorObligacionDefinitiva",       "money",  G_OBLI),
+    ("saldo_obli",           "ValorSaldoObligacion",            "money",  G_OBLI),
+    ("pagos",                "ValorPagos",                      "money",  G_OBLI),
+    ("fecha_reserva",        "FechaReserva",                    "fecha",  G_RES),
+    ("valor_reserva",        "ValorReserva",                    "money",  G_RES),
+    ("valor_reserva_def",    "ValorReservaDefinitiva",          "money",  G_RES),
+    ("obligaciones_reserva", "ObligacionesReservasDefinitivas", "money",  G_RES),
+    ("saldo_reserva",        "ValorSaldoReservas",              "money",  G_RES),
+    ("pagos_reserva",        "ValorPagoReservas",               "money",  G_RES),
+    ("concepto",             "Tipo de orden de gasto",          "texto",  G_CONTR),
+    ("fecha_firma_primer_contrato", "FechaFirmaPrimerContrato", "fecha",  G_CONTR),
+    ("fecha_inicio_contrato", "FechaInicioContrato",            "fecha",  G_CONTR),
+    ("duracion_dias",        "DuracionDias (contrato mas largo)", "entero", G_CONTR),
+    ("contratos",            "Contratos (cantidad)",            "entero", G_CONTR),
 ]
 
-META = {c[0]: {"label": c[1], "grupo": c[2], "tipo": c[3]} for c in COLUMNAS}
-ORDEN = [c[0] for c in COLUMNAS]
 
-GRUPOS = []
-for _, _, g, _ in COLUMNAS:
-    if g not in GRUPOS:
-        GRUPOS.append(g)
-
-DEF_SELECCION = ["bpin", "nombre", "dependencia", "certificado", "comprometido",
-                 "obligado", "pagado"]
+def _indexar(qs):
+    """{(proyecto_id, vigencia): fila} a partir de un values(...).annotate(...)."""
+    return {(r["proyecto"], r["v"]): r for r in qs}
 
 
-# --- lectura de los filtros del formulario --------------------------------
+def construir(vigencias=None, bpines=None, nombre=None):
+    """Devuelve la lista de filas (dict) ordenadas por BPIN y vigencia.
 
-def parse_filtros(post):
-    def fecha(v):
-        try:
-            return datetime.strptime((v or "").strip(), "%Y-%m-%d").date()
-        except ValueError:
-            return None
+    Filtros opcionales: vigencia (aplicada a la etapa de cada tabla), BPIN
+    (lista exacta) y nombre del proyecto (contiene).
+    """
+    def base(qs, campo_vigencia):
+        qs = qs.filter(proyecto__isnull=False)
+        if vigencias:
+            qs = qs.filter(**{f"{campo_vigencia}__in": vigencias})
+        if bpines:
+            qs = qs.filter(proyecto__bpin__in=bpines)
+        if nombre:
+            qs = qs.filter(proyecto__nombre__icontains=nombre)
+        return qs
 
-    def numeros(v):
-        return [t for t in (v or "").replace(",", " ").split() if t]
+    cdp = _indexar(
+        base(CdpImputacion.objects, "cdp__vigencia")
+        .values("proyecto", v=F("cdp__vigencia"))
+        .annotate(fecha_primer_cdp=Min("cdp__fecha_disp"),
+                  valor_certificado=Sum("valor_certificado"),
+                  valor_disp_def=Sum("valor_disponibilidad_def"),
+                  saldo_certf=Sum("saldo_certf")))
+    comp = _indexar(
+        base(CompromisoImputacion.objects, "compromiso__vigencia")
+        .values("proyecto", v=F("compromiso__vigencia"))
+        .annotate(fecha_primer_rp=Min("compromiso__fecha_reg"),
+                  valor_registro=Sum("valor_registro"),
+                  valor_compromiso_def=Sum("valor_compromiso_def"),
+                  saldo_rp=Sum("saldo_rp")))
+    obli = _indexar(
+        base(ObligacionImputacion.objects, "obligacion__vigencia")
+        .values("proyecto", v=F("obligacion__vigencia"))
+        .annotate(fecha_primera_obli=Min("obligacion__fecha_obli"),
+                  valor_obligacion_def=Sum("valor_obligacion"),
+                  saldo_obli=Sum("saldo_obli"),
+                  pagos=Sum("pagos")))
+    # La reserva va bajo la vigencia de su CDP de origen (v-1 respecto a su constitucion)
+    res = _indexar(
+        base(ReservaImputacion.objects, "cdp_origen__vigencia")
+        .values("proyecto", v=F("cdp_origen__vigencia"))
+        .annotate(fecha_reserva=Min("reserva__fecha_reserva"),
+                  valor_reserva=Sum("valor_reserva"),
+                  valor_reserva_def=Sum("valor_reserva_def"),
+                  obligaciones_reserva=Sum("obligaciones_reserva"),
+                  saldo_reserva=Sum("saldo_reserva"),
+                  pagos_reserva=Sum("pagos_reserva")))
 
-    return {
-        "bpines": [b for b in post.getlist("bpines") if b],
-        "disp_desde": fecha(post.get("disp_desde")),
-        "disp_hasta": fecha(post.get("disp_hasta")),
-        "reg_desde": fecha(post.get("reg_desde")),
-        "reg_hasta": fecha(post.get("reg_hasta")),
-        "nros_cdp": numeros(post.get("nros_cdp")),
-        "nros_rp": numeros(post.get("nros_rp")),
-        "contratista": (post.get("contratista") or "").strip(),
-        "doc_contratista": (post.get("doc_contratista") or "").strip(),
-    }
+    # Datos de contrato por (proyecto, vigencia), via ContratoImputacion.vigencia.
+    # Duracion del proyecto = la del contrato mas largo (Max de fecha_final - fecha_inicio).
+    # Min/Max no se inflan aunque un contrato tenga varias imputaciones.
+    contr = _indexar(
+        base(ContratoImputacion.objects, "vigencia")
+        .values("proyecto", v=F("vigencia"))
+        .annotate(fecha_firma_primer_contrato=Min("contrato__fecha_firma"),
+                  fecha_inicio_contrato=Min("contrato__fecha_inicio"),
+                  duracion=Max(ExpressionWrapper(
+                      F("contrato__fecha_final") - F("contrato__fecha_inicio"),
+                      output_field=DurationField()))))
 
+    # Texto agregado (distinct, separado por coma)
+    conceptos = defaultdict(set)
+    for r in (base(ObligacionImputacion.objects, "obligacion__vigencia")
+              .values("proyecto", v=F("obligacion__vigencia"),
+                      val=F("obligacion__tipo_orden_gasto__nombre")).distinct()):
+        if r["val"]:
+            conceptos[(r["proyecto"], r["v"])].add(r["val"])
+    contratos = defaultdict(set)
+    for r in (base(ContratoImputacion.objects, "vigencia")
+              .values("proyecto", v=F("vigencia"), val=F("contrato__nro_contrato")).distinct()):
+        if r["val"]:
+            contratos[(r["proyecto"], r["v"])].add(r["val"])
 
-# --- aplicacion de filtros por etapa de la cadena -------------------------
-# Cada grupo de filtros acota su propia etapa: la fecha de disponibilidad y el
-# numero de CDP miden lo certificado; la fecha de registro y el numero de RP
-# miden lo comprometido/obligado/pagado (todo lo que cuelga del compromiso).
+    llaves = set(cdp) | set(comp) | set(obli) | set(res)
 
-def _f_cdp(qs, f):
-    if f["disp_desde"]:
-        qs = qs.filter(cdp__fecha_disp__gte=f["disp_desde"])
-    if f["disp_hasta"]:
-        qs = qs.filter(cdp__fecha_disp__lte=f["disp_hasta"])
-    if f["nros_cdp"]:
-        qs = qs.filter(cdp__nro_cdp__in=f["nros_cdp"])
-    return qs
+    # Metadatos del proyecto (nombre y clasificaciones), una sola pasada
+    ids = {pid for pid, _ in llaves}
+    meta = {}
+    for p in (Proyecto.objects.filter(id__in=ids)
+              .select_related("dependencia_responsable").prefetch_related("clasificaciones")):
+        meta[p.id] = (p.bpin or "", p.nombre or "",
+                      ", ".join(c.nombre for c in p.clasificaciones.all()),
+                      p.dependencia_responsable.nombre if p.dependencia_responsable_id else "")
 
-
-def _f_comp(qs, f):
-    if f["reg_desde"]:
-        qs = qs.filter(compromiso__fecha_reg__gte=f["reg_desde"])
-    if f["reg_hasta"]:
-        qs = qs.filter(compromiso__fecha_reg__lte=f["reg_hasta"])
-    if f["nros_rp"]:
-        qs = qs.filter(compromiso__nro_rp__in=f["nros_rp"])
-    return qs
-
-
-def _hay_filtro_cdp(f):
-    return bool(f["disp_desde"] or f["disp_hasta"] or f["nros_cdp"])
-
-
-def _hay_filtro_comp(f):
-    return bool(f["reg_desde"] or f["reg_hasta"] or f["nros_rp"])
-
-
-def base_proyectos(f):
-    """Que proyectos entran: los que cumplen TODOS los filtros que se pusieron."""
-    qs = Proyecto.objects.all()
-    if f["bpines"]:
-        qs = qs.filter(bpin__in=f["bpines"])
-    if f["contratista"] or f["doc_contratista"]:
-        ci = ContratoImputacion.objects.filter(proyecto=OuterRef("pk"))
-        if f["contratista"]:
-            ci = ci.filter(contrato__tercero__nombre__icontains=f["contratista"])
-        if f["doc_contratista"]:
-            ci = ci.filter(contrato__tercero__codigo__icontains=f["doc_contratista"])
-        qs = qs.filter(Exists(ci))
-    if _hay_filtro_cdp(f):
-        qs = qs.filter(Exists(_f_cdp(CdpImputacion.objects.filter(proyecto=OuterRef("pk")), f)))
-    if _hay_filtro_comp(f):
-        qs = qs.filter(Exists(_f_comp(CompromisoImputacion.objects.filter(proyecto=OuterRef("pk")), f)))
-    return qs
-
-
-def _suma(modelo, campo, filtro, f):
-    qs = modelo.objects.filter(proyecto=OuterRef("pk"))
-    if filtro:
-        qs = filtro(qs, f)
-    return Subquery(qs.values("proyecto").annotate(t=Sum(campo)).values("t")[:1],
-                    output_field=_MONEY)
-
-
-def _cuenta(modelo, campo, filtro, f):
-    qs = modelo.objects.filter(proyecto=OuterRef("pk"))
-    if filtro:
-        qs = filtro(qs, f)
-    return Subquery(qs.values("proyecto").annotate(n=Count(campo, distinct=True)).values("n")[:1],
-                    output_field=IntegerField())
-
-
-def _anotaciones(claves, f):
-    a = {}
-    if "certificado" in claves:
-        a["v_certificado"] = _suma(CdpImputacion, "valor_certificado", _f_cdp, f)
-    if "disponibilidad_def" in claves:
-        a["v_disponibilidad_def"] = _suma(CdpImputacion, "valor_disponibilidad_def", _f_cdp, f)
-    if "sin_comprometer" in claves:
-        a["v_sin_comprometer"] = _suma(CdpImputacion, "saldo_certf", _f_cdp, f)
-    if "n_cdps" in claves:
-        a["v_n_cdps"] = _cuenta(CdpImputacion, "cdp", _f_cdp, f)
-    if "comprometido" in claves:
-        a["v_comprometido"] = _suma(CompromisoImputacion, "valor_compromiso_def", _f_comp, f)
-    if "sin_obligar" in claves:
-        a["v_sin_obligar"] = _suma(CompromisoImputacion, "saldo_rp", _f_comp, f)
-    if "n_rps" in claves:
-        a["v_n_rps"] = _cuenta(CompromisoImputacion, "compromiso", _f_comp, f)
-    if "obligado" in claves:
-        a["v_obligado"] = _suma(ObligacionImputacion, "valor_obligacion", _f_comp, f)
-    if "sin_girar" in claves:
-        a["v_sin_girar"] = _suma(ObligacionImputacion, "saldo_obli", _f_comp, f)
-    if "pagado" in claves:
-        a["v_pagado"] = _suma(ObligacionImputacion, "pagos", _f_comp, f)
-    if "reservado" in claves:
-        a["v_reservado"] = _suma(ReservaImputacion, "valor_reserva", None, f)
-    if "saldo_reserva" in claves:
-        a["v_saldo_reserva"] = _suma(ReservaImputacion, "saldo_reserva", None, f)
-    return a
-
-
-def _contractual(ids, claves, f):
-    """N.o de contratos, valor contratado y contratistas: en Python para no
-    multiplicar el valor del contrato por sus imputaciones (fan-out del join)."""
-    if not any(k in claves for k in ("n_contratos", "valor_contratado", "contratistas")):
-        return {}
-    pares = (ContratoImputacion.objects.filter(proyecto_id__in=ids)
-             .values("proyecto_id", "contrato_id", "contrato__valor_contrato",
-                     "contrato__tercero__nombre")
-             .distinct())
-    if f["contratista"]:
-        pares = pares.filter(contrato__tercero__nombre__icontains=f["contratista"])
-    if f["doc_contratista"]:
-        pares = pares.filter(contrato__tercero__codigo__icontains=f["doc_contratista"])
-    acc = defaultdict(lambda: {"n": 0, "valor": Decimal("0"), "nombres": set()})
-    for r in pares:
-        d = acc[r["proyecto_id"]]
-        d["n"] += 1
-        d["valor"] += r["contrato__valor_contrato"] or 0
-        if r["contrato__tercero__nombre"]:
-            d["nombres"].add(r["contrato__tercero__nombre"])
-    return acc
-
-
-def construir(f, claves):
-    """Devuelve (claves_ordenadas, filas). Cada fila es un dict por proyecto."""
-    claves = [c for c in ORDEN if c in claves] or list(DEF_SELECCION)
-
-    base = (base_proyectos(f)
-            .select_related("dependencia", "dependencia_responsable")
-            .annotate(**_anotaciones(claves, f))
-            .order_by("bpin"))
-    proyectos = list(base)
-    ids = [p.id for p in proyectos]
-
-    clasif = {}
-    if "clasificaciones" in claves:
-        for p in Proyecto.objects.filter(id__in=ids).prefetch_related("clasificaciones"):
-            clasif[p.id] = ", ".join(c.nombre for c in p.clasificaciones.all())
-
-    contr = _contractual(ids, claves, f)
+    fuentes = (
+        (cdp,  ("fecha_primer_cdp", "valor_certificado", "valor_disp_def", "saldo_certf")),
+        (comp, ("fecha_primer_rp", "valor_registro", "valor_compromiso_def", "saldo_rp")),
+        (obli, ("fecha_primera_obli", "valor_obligacion_def", "saldo_obli", "pagos")),
+        (res,  ("fecha_reserva", "valor_reserva", "valor_reserva_def",
+                "obligaciones_reserva", "saldo_reserva", "pagos_reserva")),
+    )
+    tipos = {c[0]: c[2] for c in COLUMNAS}
 
     filas = []
-    for p in proyectos:
-        fila = {}
-        for clave in claves:
-            if clave == "bpin":
-                fila[clave] = p.bpin or ""
-            elif clave == "nombre":
-                fila[clave] = p.nombre or ""
-            elif clave == "dependencia":
-                fila[clave] = p.dependencia.nombre if p.dependencia_id else ""
-            elif clave == "dependencia_responsable":
-                fila[clave] = p.dependencia_responsable.nombre if p.dependencia_responsable_id else ""
-            elif clave == "clasificaciones":
-                fila[clave] = clasif.get(p.id, "")
-            elif clave == "origen":
-                fila[clave] = p.get_origen_display()
-            elif clave == "n_contratos":
-                fila[clave] = contr.get(p.id, {}).get("n", 0)
-            elif clave == "valor_contratado":
-                fila[clave] = contr.get(p.id, {}).get("valor", 0)
-            elif clave == "contratistas":
-                fila[clave] = ", ".join(sorted(contr.get(p.id, {}).get("nombres", [])))
-            else:
-                fila[clave] = getattr(p, "v_" + clave, None) or 0
+    for pid, v in sorted(llaves, key=lambda k: (meta.get(k[0], ("",))[0], k[1] or 0)):
+        bpin, nombre, clasif, dep_resp = meta.get(pid, ("", "", "", ""))
+        c = contr.get((pid, v), {})
+        dur = c.get("duracion")
+        fila = {"bpin": bpin, "nombre": nombre, "clasificaciones": clasif,
+                "dependencia_responsable": dep_resp, "vigencia": v,
+                "concepto": ", ".join(sorted(conceptos.get((pid, v), ()))),
+                "fecha_firma_primer_contrato": c.get("fecha_firma_primer_contrato"),
+                "fecha_inicio_contrato": c.get("fecha_inicio_contrato"),
+                "duracion_dias": dur.days if hasattr(dur, "days") else dur,
+                "contratos": len(contratos.get((pid, v), ()))}
+        for indice, campos in fuentes:
+            reg = indice.get((pid, v), {})
+            for c in campos:
+                valor = reg.get(c)
+                # money vacio -> 0; fecha vacia -> None
+                fila[c] = valor if valor is not None else (CERO if tipos[c] == "money" else None)
         filas.append(fila)
-    return claves, filas
+    return filas
 
 
-# --- Excel ----------------------------------------------------------------
-
-def a_excel(claves, filas):
+def a_excel(filas):
+    from itertools import groupby
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Proyectos"
+    ws.title = "Reporte financiero"
 
-    verde = PatternFill("solid", fgColor="006030")
+    fill_grupo = PatternFill("solid", fgColor="12501A")   # combinado (grupos)
+    fill_col = PatternFill("solid", fgColor="196B24")      # encabezados de columna
     blanco = Font(color="FFFFFF", bold=True, size=11)
-    borde = Border(bottom=Side(style="thin", color="D0D5DD"))
-    negrita = Font(bold=True)
+    lado = Side(style="thin", color="000000")
+    borde = Border(left=lado, right=lado, top=lado, bottom=lado)   # bordes negros
+    centro = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    # encabezado
-    for col, clave in enumerate(claves, start=1):
-        c = ws.cell(row=1, column=col, value=META[clave]["label"])
-        c.fill = verde
+    # Fila 1: grupos combinados. El fondo/borde va a TODAS las celdas del grupo
+    # ANTES de combinar (una celda combinada no acepta estilos en las tapadas).
+    inicio = 1
+    for grupo, cols in groupby(COLUMNAS, key=lambda c: c[3]):
+        fin = inicio + sum(1 for _ in cols) - 1
+        for col in range(inicio, fin + 1):
+            cel = ws.cell(row=1, column=col)
+            cel.fill = fill_grupo
+            cel.border = borde
+            cel.alignment = centro
+        celda = ws.cell(row=1, column=inicio, value=grupo)
+        celda.font = blanco
+        if fin > inicio:
+            ws.merge_cells(start_row=1, start_column=inicio, end_row=1, end_column=fin)
+        inicio = fin + 1
+
+    # Fila 2: encabezados de columna
+    for col, (clave, encabezado, tipo, grupo) in enumerate(COLUMNAS, start=1):
+        c = ws.cell(row=2, column=col, value=encabezado)
+        c.fill = fill_col
         c.font = blanco
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.alignment = centro
+        c.border = borde
 
-    # datos
-    for i, fila in enumerate(filas, start=2):
-        for col, clave in enumerate(claves, start=1):
-            c = ws.cell(row=i, column=col, value=fila[clave])
+    # Datos desde la fila 3. Todo centrado verticalmente (al medio); el texto
+    # largo (nombre, clasificacion, conceptos) se ajusta para que se lea bien.
+    ali_num = Alignment(horizontal="right", vertical="center")
+    ali_fecha = Alignment(horizontal="center", vertical="center")
+    ali_texto = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    for i, fila in enumerate(filas, start=3):
+        for col, (clave, encabezado, tipo, grupo) in enumerate(COLUMNAS, start=1):
+            c = ws.cell(row=i, column=col, value=fila.get(clave))
             c.border = borde
-            tipo = META[clave]["tipo"]
-            if tipo == "money":
-                c.number_format = '#,##0'
-                c.alignment = Alignment(horizontal="right")
-            elif tipo == "entero":
-                c.number_format = '#,##0'
-                c.alignment = Alignment(horizontal="right")
-
-    # fila de totales para las columnas numericas
-    if filas:
-        tot_row = len(filas) + 2
-        primera = True
-        for col, clave in enumerate(claves, start=1):
-            tipo = META[clave]["tipo"]
             if tipo in ("money", "entero"):
-                total = sum((f[clave] or 0) for f in filas)
-                c = ws.cell(row=tot_row, column=col, value=total)
-                c.number_format = '#,##0'
-                c.font = negrita
-                c.alignment = Alignment(horizontal="right")
-            elif primera:
-                ws.cell(row=tot_row, column=col, value="TOTAL").font = negrita
-                primera = False
+                c.number_format = "#,##0"
+                c.alignment = ali_num
+            elif tipo == "fecha":
+                c.number_format = "DD/MM/YYYY"
+                c.alignment = ali_fecha
+            else:
+                c.alignment = ali_texto
 
-    # anchos
-    anchos = {"texto": 32, "money": 18, "entero": 12}
-    for col, clave in enumerate(claves, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = \
-            anchos[META[clave]["tipo"]]
-    ws.freeze_panes = "A2"
+    # Formato de Tabla de Excel (filtros y estructura) sobre encabezado + datos.
+    # Estilo sin nombre para NO pisar los colores propios de la cabecera.
+    ultima_fila = len(filas) + 2
+    ref = f"A2:{get_column_letter(len(COLUMNAS))}{ultima_fila}"
+    tabla = Table(displayName="ReporteFinanciero", ref=ref)
+    tabla.tableStyleInfo = TableStyleInfo(name=None, showRowStripes=False,
+                                          showColumnStripes=False)
+    ws.add_table(tabla)
+
+    anchos = {"texto": 34, "fecha": 15, "money": 18, "entero": 12}
+    anchos_col = {"nombre": 55}   # el nombre del proyecto va mas ancho
+    for col, (clave, encabezado, tipo, grupo) in enumerate(COLUMNAS, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = anchos_col.get(clave, anchos[tipo])
+    # Sin panes congelados (a pedido)
     return wb

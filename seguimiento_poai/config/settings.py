@@ -309,7 +309,7 @@ UNFOLD = {
                     {"title": "Proyectos", "icon": "folder_special",
                      "link": reverse_lazy("admin:siifweb_proyecto_changelist")},
                     {"title": "Reportes", "icon": "table_view",
-                     "link": reverse_lazy("admin:siifweb_proyecto_reportes")},
+                     "link": reverse_lazy("admin:siifweb_proyecto_reporte_financiero")},
                 ],
             },
             {

@@ -1,0 +1,94 @@
+{# base_site (no base): base.html deja el bloque branding vacio y desaparece el encabezado #}
+{% extends "admin/base_site.html" %}
+
+{% block title %}Reporte Financiero del proyecto | SIIFWEB{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{{ volver }}" class="font-medium text-primary-600">Proyectos</a></li>
+      <li class="mx-2">/</li>
+      <li>Reporte financiero</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .rf .in { width:100%; border:1px solid var(--color-base-200); border-radius:6px; padding:.5rem .7rem;
+            font-size:.875rem; background:#fff; color:var(--color-base-800); }
+  .rf .in:focus { outline:2px solid var(--color-primary-600); outline-offset:-1px; border-color:transparent; }
+  .rf .lbl { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em;
+             color:var(--color-base-500); font-weight:600; margin-bottom:.35rem; display:block; }
+  .rf .btn-verde { background:var(--color-primary-600); color:#fff; }
+  .rf .btn-verde:hover { background:var(--color-primary-700); }
+  .rf .vig { display:inline-flex; align-items:center; gap:.4rem; font-size:.875rem;
+             color:var(--color-base-700); border:1px solid var(--color-base-200);
+             border-radius:9999px; padding:.3rem .75rem; cursor:pointer; }
+  .rf .vig input { accent-color:var(--color-primary-600); }
+</style>
+
+<form method="get" class="rf flex flex-col gap-6">
+
+  {# ---- Filtros ---- #}
+  <section class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Filtros</h2>
+      <p class="text-sm text-base-500 mt-0.5">Sin filtros, el reporte trae todos los proyectos y vigencias.</p>
+    </div>
+    <div class="p-6 flex flex-col gap-5">
+      <div>
+        <span class="lbl">Vigencia</span>
+        <div class="flex flex-wrap gap-2">
+          {% for v in vigencias_disponibles %}
+          <label class="vig">
+            <input type="checkbox" name="vigencia" value="{{ v }}" {% if v in vigencias_sel %}checked{% endif %}>
+            {{ v }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">
+        <div>
+          <span class="lbl">BPIN</span>
+          <input type="text" name="bpin" class="in" value="{{ bpin }}"
+                 placeholder="Uno o varios, separados por coma o espacio" autocomplete="off">
+        </div>
+        <div>
+          <span class="lbl">Nombre del proyecto</span>
+          <input type="text" name="nombre" class="in" value="{{ nombre }}"
+                 placeholder="Parte del nombre..." autocomplete="off">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ---- Acciones ---- #}
+  <div class="flex items-center gap-3 flex-wrap">
+    <button type="submit" name="descargar" value="xlsx"
+            class="btn-verde inline-flex items-center gap-1.5 rounded-default px-4 py-2.5 text-sm font-semibold">
+      <span class="material-symbols-outlined text-base leading-none">download</span> Descargar Excel
+    </button>
+    <a href="{% url 'admin:siifweb_proyecto_reporte_financiero' %}"
+       class="text-sm font-medium text-base-500">Limpiar filtros</a>
+  </div>
+
+  {# ---- Columnas ---- #}
+  <section class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Columnas del reporte
+        ({{ columnas|length }})</h2>
+    </div>
+    <div class="p-6 flex flex-wrap gap-2">
+      {% for c in columnas %}
+      <span class="text-xs font-medium text-base-600 dark:text-base-300 border rounded-default
+                   px-2.5 py-1 dark:border-base-700">{{ c }}</span>
+      {% endfor %}
+    </div>
+  </section>
+</form>
+{% endblock %}

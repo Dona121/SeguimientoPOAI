@@ -59,15 +59,14 @@
   <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
     <div class="border-b px-6 py-4 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Cadena de ejecucion por vigencia</h2>
-      <p class="text-sm text-base-500 mt-1">Certificado &rarr; comprometido &rarr; obligado &rarr; pagado.
-        Los saldos son lo que quedo atrapado entre etapas.</p>
+      <p class="text-sm text-base-500 mt-1">Disponibilidad definitiva &rarr; comprometido &rarr; obligado &rarr; pagado.</p>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
           <tr>
             <th class="px-6 py-3 text-left">Vigencia</th>
-            <th class="px-6 py-3 text-right">Certificado</th>
+            <th class="px-6 py-3 text-right">Disponibilidad definitiva</th>
             <th class="px-6 py-3 text-right">Comprometido</th>
             <th class="px-6 py-3 text-right">Obligado</th>
             <th class="px-6 py-3 text-right">Pagado</th>
@@ -79,7 +78,7 @@
           {% for f in filas %}
           <tr class="border-b dark:border-base-800">
             <td class="px-6 py-3 font-medium">{{ f.vigencia }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.certificado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.disponibilidad_definitiva|default:0|floatformat:0|intcomma }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ f.comprometido|default:0|floatformat:0|intcomma }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ f.obligado|default:0|floatformat:0|intcomma }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ f.pagado|default:0|floatformat:0|intcomma }}</td>
@@ -94,7 +93,7 @@
         <tfoot class="font-medium">
           <tr>
             <td class="px-6 py-3">Total</td>
-            <td class="px-6 py-3 text-right font-mono">{{ totales.certificado|floatformat:0|intcomma }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ totales.disponibilidad_definitiva|floatformat:0|intcomma }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ totales.comprometido|floatformat:0|intcomma }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ totales.obligado|floatformat:0|intcomma }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ totales.pagado|floatformat:0|intcomma }}</td>
@@ -193,7 +192,7 @@
 
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
     <div class="border-b px-6 py-4 dark:border-base-800">
-      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Fuentes de financiación ({{ rps_por_proyecto|length }})</h2>
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Fuentes de financiación ({{ fuentes_por_proyecto|length }})</h2>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">

@@ -4,7 +4,7 @@ import hashlib
 from django import forms
 from django.contrib import admin, messages
 from django.forms.models import BaseInlineFormSet
-from django.db.models import Count, DecimalField, F, OuterRef, Subquery, Sum, Min, StringAgg, Max
+from django.db.models import Count, DateField, DecimalField, F, OuterRef, Subquery, Sum, Q
 from django.http import Http404, HttpResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -54,6 +54,18 @@ def suma_de(modelo, campo, relacion="proyecto"):
         modelo.objects.filter(**{relacion: OuterRef("pk")})
         .values(relacion).annotate(t=Sum(campo)).values("t"),
         output_field=DecimalField(max_digits=20, decimal_places=2))
+
+
+def primera_fecha(modelo, campo_fecha, relacion="proyecto"):
+    """Fecha mas antigua de la relacion, por subconsulta.
+
+    Reemplaza un .filter().first() por fila (N+1 en el listado) por una sola
+    subconsulta correlacionada que se resuelve dentro del query del changelist.
+    """
+    return Subquery(
+        modelo.objects.filter(**{relacion: OuterRef("pk")})
+        .order_by(campo_fecha).values(campo_fecha)[:1],
+        output_field=DateField())
 
 
 # ---------------------------------------------------------------------------
@@ -553,14 +565,16 @@ class ClasificacionPorDefectoFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         return [(self.CON, "Con clasificacion"), (self.TODAS, "Todas")] + [
-            (str(c.pk), c.nombre) for c in Clasificacion.objects.all()]
+            (str(c.pk), c.nombre) for c in Clasificacion.objects.exclude(nombre__icontains="regalías")]
 
     def queryset(self, request, queryset):
         valor = self.value() or self.CON         # por defecto: con clasificacion
         if valor == self.TODAS:
-            return queryset
+            return queryset                       # todo, incluidas regalias
         if valor == self.CON:
-            return queryset.filter(clasificaciones__isnull=False).distinct()
+            # con clasificacion PERO sin regalias (esas se ven pidiendo 'Todas')
+            return (queryset.filter(clasificaciones__isnull=False)
+                    .exclude(clasificaciones__nombre__icontains="regalías").distinct())
         return queryset.filter(clasificaciones__pk=valor)
 
     def choices(self, changelist):
@@ -581,7 +595,7 @@ class ProyectoAdmin(ModelAdmin):
     list_fullwidth = True
     inlines = (CdpDelProyectoInline, CompromisoDelProyectoInline, ObligacionDelProyectoInline,
                ContratoDelProyectoInline, ReservaDelProyectoInline)
-    list_display = ("bpin", "nombre","responsable","ficha_link" ,"clasificacion_txt","primer_fecha_firma_contrato","fecha_inicio_primer_contrato_firmado","certificado",
+    list_display = ("bpin", "nombre","responsable","ficha_link" ,"clasificacion_txt","fecha_primer_cdp","fecha_primer_rp","disponibilidad_definitiva",
                     "obligado")
     list_filter = (ClasificacionPorDefectoFilter,
                    ("origen", ChoicesDropdownFilter),
@@ -594,6 +608,7 @@ class ProyectoAdmin(ModelAdmin):
     filter_horizontal = ("clasificaciones",)
     actions_detail = ("ficha_ejecucion",)
     list_filter_submit = True
+    ordering = ("bpin",)
     fieldsets = (
         ("Proyecto", {"fields": ("bpin", "nombre"),
                       "description": "Usa el boton 'Ficha de ejecucion' para ver la cadena completa, "
@@ -631,37 +646,23 @@ class ProyectoAdmin(ModelAdmin):
         return (super().get_queryset(request)
                 .select_related("dependencia", "dependencia_responsable")
                 .prefetch_related("clasificaciones")
-                .annotate(cert=suma_de(CdpImputacion, "valor_certificado"),
-                          oblig=suma_de(ObligacionImputacion, "valor_obligacion"))
+                .annotate(disp_def=suma_de(CdpImputacion, "valor_disponibilidad_def"),
+                          oblig=suma_de(ObligacionImputacion, "valor_obligacion"),
+                          primer_cdp=primera_fecha(CdpImputacion, "cdp__fecha_disp"),
+                          primer_rp=primera_fecha(CompromisoImputacion, "compromiso__fecha_reg"))
                 .order_by("-oblig"))
-    
-    def primer_fecha_firma_contrato(self,obj):
-        fechas_contrato_proyecto = ContratoImputacion.objects.filter(
-            proyecto__id=obj.id
-        ).select_related("contrato").order_by("contrato__fecha_firma").first()
-        if fechas_contrato_proyecto:
-            return fechas_contrato_proyecto.contrato.fecha_firma
-        return format_html('<div style="background: oklch(50.5% 0.213 27.518);padding-left: 5px;padding-right: 5px; justify-content: center;align-items: center;align-content:center; border-radius: 5px;font-weight:500 !important; color: white ">{}</div>',"Sin registro de contratos")
-    
-    primer_fecha_firma_contrato.short_description = "Primer contrato"
-    
-    def fecha_inicio_primer_contrato_firmado(self,obj):
-        fechas_contrato_proyecto = ContratoImputacion.objects.filter(
-            proyecto__id=obj.id
-        ).select_related("contrato").order_by("contrato__fecha_firma").first()
-        if fechas_contrato_proyecto:
-            contrato_fecha_inicio = Contrato.objects.filter(
-                id=fechas_contrato_proyecto.contrato.id
-            ).first()
-            return contrato_fecha_inicio.fecha_inicio
-        return format_html('<div style="background: oklch(50.5% 0.213 27.518);padding-left: 5px;padding-right: 5px; justify-content: center;align-items: center; border-radius: 5px;font-weight:500 !important; color: white ">{}</div>',"Sin registro de contratos")
-    
-    
-    fecha_inicio_primer_contrato_firmado.short_description = "Inicio primer contrato"
 
-    @display(description="Certificado", ordering="cert")
-    def certificado(self, obj):
-        return pesos(obj.cert)
+    @display(description="Primer CDP", ordering="primer_cdp")
+    def fecha_primer_cdp(self, obj):
+        return obj.primer_cdp or "-"
+
+    @display(description="Primer RP", ordering="primer_rp")
+    def fecha_primer_rp(self, obj):
+        return obj.primer_rp or "-"
+
+    @display(description="Disponibilidad def.", ordering="disp_def")
+    def disponibilidad_definitiva(self, obj):
+        return pesos(obj.disp_def)
 
     @display(description="Obligado", ordering="oblig")
     def obligado(self, obj):
@@ -687,7 +688,7 @@ class ProyectoAdmin(ModelAdmin):
                 por_vigencia.setdefault(v, {"vigencia": v})[clave] = fila["t"]
 
         acumular(CdpImputacion.objects.filter(proyecto=proyecto)
-                 .values(v=F("cdp__vigencia")).annotate(t=Sum("valor_certificado")), "certificado")
+                 .values(v=F("cdp__vigencia")).annotate(t=Sum("valor_disponibilidad_def")), "disponibilidad_definitiva")
         acumular(CdpImputacion.objects.filter(proyecto=proyecto)
                  .values(v=F("cdp__vigencia")).annotate(t=Sum("saldo_certf")), "sin_comprometer")
         acumular(CompromisoImputacion.objects.filter(proyecto=proyecto)
@@ -702,12 +703,12 @@ class ProyectoAdmin(ModelAdmin):
         filas = []
         for v in sorted(por_vigencia):
             f = por_vigencia[v]
-            cert, obl = f.get("certificado") or 0, f.get("obligado") or 0
+            cert, obl = f.get("disponibilidad_definitiva") or 0, f.get("obligado") or 0
             f["avance"] = float(obl) / float(cert) * 100 if cert else 0
             filas.append(f)
 
         totales = {c: sum(f.get(c) or 0 for f in filas)
-                   for c in ("certificado", "comprometido", "obligado", "pagado",
+                   for c in ("disponibilidad_definitiva", "comprometido", "obligado", "pagado",
                              "sin_comprometer", "sin_obligar")}
 
         # El pagado va por subconsulta: sumarlo junto al filtro por imputacion
@@ -739,7 +740,7 @@ class ProyectoAdmin(ModelAdmin):
         cdps_proyecto = (
             Cdp.objects
             .filter(cdps_imputados__proyecto=proyecto)
-            .annotate(valor_cdp=Sum("cdps_imputados__valor_certificado"))
+            .annotate(valor_cdp=Sum("cdps_imputados__valor_disponibilidad_def"))
             .order_by("fecha_disp")
         )
 
@@ -749,7 +750,7 @@ class ProyectoAdmin(ModelAdmin):
         # valor), dando un total mas bajo. Se suma directo desde las imputaciones.
         cdps_proyecto_total = (CdpImputacion.objects
                                .filter(proyecto=proyecto)
-                               .aggregate(t=Sum("valor_certificado"))["t"] or 0)
+                               .aggregate(t=Sum("valor_disponibilidad_def"))["t"] or 0)
 
         rps_por_proyecto = (
             Compromiso.objects
@@ -783,7 +784,7 @@ class ProyectoAdmin(ModelAdmin):
             "filas": filas,
             "totales": totales,
             "totales_tarjetas": [
-                ("Certificado", totales["certificado"], "cupo apartado en CDP"),
+                ("Disponibilidad definitiva", totales["disponibilidad_definitiva"], "cupo apartado en CDP"),
                 ("Comprometido", totales["comprometido"], "contratado en firme"),
                 ("Obligado", totales["obligado"], "recibido a satisfaccion"),
                 ("Pagado", totales["pagado"], "girado por tesoreria"),
@@ -803,63 +804,49 @@ class ProyectoAdmin(ModelAdmin):
         }
         return TemplateResponse(request, "siifweb/ficha_proyecto.html", contexto)
 
-    def reportes_view(self, request):
-        """Constructor del reporte: filtra la cadena, elige columnas, baja Excel."""
+    def reporte_financiero(self, request):
+        """Reporte Financiero del proyecto: una fila por (proyecto, vigencia).
+
+        GET normal -> pagina con filtros y el boton de descarga.
+        GET con descargar=xlsx (mas los filtros) -> el Excel.
+        """
         from . import reportes
         import io
 
-        preview = None
-        if request.method == "POST":
-            f = reportes.parse_filtros(request.POST)
-            seleccion = [c for c in reportes.ORDEN if c in request.POST.getlist("columnas")]
-            claves, filas = reportes.construir(f, seleccion)
-            if request.POST.get("accion") == "excel":
-                wb = reportes.a_excel(claves, filas)
-                buffer = io.BytesIO()
-                wb.save(buffer)
-                buffer.seek(0)
-                resp = HttpResponse(
-                    buffer.getvalue(),
-                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                resp["Content-Disposition"] = (
-                    f'attachment; filename="reporte_proyectos_{timezone.localdate():%Y%m%d}.xlsx"')
-                return resp
-            preview = {
-                "columnas": [(c, reportes.META[c]["label"], reportes.META[c]["tipo"]) for c in claves],
-                "filas": [[(c, fila[c], reportes.META[c]["tipo"]) for c in claves]
-                          for fila in filas[:50]],
-                "total": len(filas),
-            }
-            seleccion_actual = seleccion or list(reportes.DEF_SELECCION)
-            bpines_sel = set(f["bpines"])
-        else:
-            seleccion_actual = list(reportes.DEF_SELECCION)
-            bpines_sel = set()
+        vigencias = [int(x) for x in request.GET.getlist("vigencia") if x.isdigit()]
+        bpines = [b.strip() for b in request.GET.get("bpin", "").replace(",", " ").split() if b.strip()]
+        nombre = request.GET.get("nombre", "").strip()
 
-        grupos_columnas = [
-            (g, [(c[0], c[1], c[3]) for c in reportes.COLUMNAS if c[2] == g])
-            for g in reportes.GRUPOS]
+        if request.GET.get("descargar"):
+            wb = reportes.a_excel(reportes.construir(vigencias=vigencias, bpines=bpines, nombre=nombre))
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            resp = HttpResponse(
+                buffer.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            resp["Content-Disposition"] = (
+                f'attachment; filename="reporte_financiero_{timezone.localdate():%Y%m%d}.xlsx"')
+            return resp
 
+        disponibles = sorted(Cdp.objects.values_list("vigencia", flat=True).distinct())
         contexto = {
             **self.admin_site.each_context(request),
-            "title": "Reportes",
-            "grupos_columnas": grupos_columnas,
-            "meta": reportes.META,
-            "seleccion": set(seleccion_actual),
-            "proyectos": list(Proyecto.objects.exclude(bpin__isnull=True)
-                              .order_by("bpin").values("bpin", "nombre")),
-            "bpines_sel": bpines_sel,
-            "valores": request.POST if request.method == "POST" else {},
-            "preview": preview,
+            "title": "Reporte Financiero del proyecto",
+            "columnas": [c[1] for c in reportes.COLUMNAS],
+            "vigencias_disponibles": disponibles,
+            "vigencias_sel": set(vigencias),
+            "bpin": request.GET.get("bpin", ""),
+            "nombre": nombre,
             "volver": reverse("admin:siifweb_proyecto_changelist"),
         }
-        return TemplateResponse(request, "siifweb/reportes.html", contexto)
+        return TemplateResponse(request, "siifweb/reporte_financiero.html", contexto)
 
     def get_urls(self):
         # Las URLs propias van ANTES de las del admin: '<path:object_id>/' las capturaria
         propia = [
-            path("reportes/", self.admin_site.admin_view(self.reportes_view),
-                 name="siifweb_proyecto_reportes"),
+            path("reporte-financiero/", self.admin_site.admin_view(self.reporte_financiero),
+                 name="siifweb_proyecto_reporte_financiero"),
             path("<path:object_id>/ficha-ejecucion/",
                  self.admin_site.admin_view(self.ficha_ejecucion),
                  name="siifweb_proyecto_ficha_ejecucion"),
