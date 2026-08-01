@@ -255,6 +255,7 @@ class Compromiso(Fechas):
     nro_rp = models.CharField(max_length=20, verbose_name="Numero")
     fecha_reg = models.DateField(verbose_name="Fecha expedicion RP")
     acto_admon = models.TextField(verbose_name="Acto administrativo", blank=True)
+    objeto_reg = models.TextField(verbose_name="Objeto del registro", blank=True)
 
     class Meta:
         verbose_name = "Compromiso"

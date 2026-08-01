@@ -160,6 +160,7 @@
             <th class="px-6 py-3 text-right">Número RP</th>
             <th class="px-6 py-3 text-right">Fecha registro</th>
             <th class="px-6 py-3 text-right">Acto administrativo</th>
+            <th class="px-6 py-3 text-right">Objeto registro</th>
             <th class="px-6 py-3 text-right">Valor comprometido</th>
           </tr>
         </thead>
@@ -170,6 +171,7 @@
             <td class="px-6 py-3 text-right font-mono">{{ f.nro_rp }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ f.fecha_reg }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ f.acto_admon }}</td>
+            <td class="px-6 py-3 text-right font-mono">{{ f.objeto_reg }}</td>
             <td class="px-6 py-3 text-right font-mono">{{ f.valor_rp|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}

@@ -305,11 +305,12 @@ def cargar_compromisos(carga):
                 vigencia=vigencia, nro_rp=nro,
                 fecha_reg=fecha(f["FECHA_REG"]),
                 acto_admon=texto(f.get("ACTO_ADMON")),
+                objeto_reg=texto(f.get("OBJETO_REG")),
                 centro_costo=cat.centro(f.get("CCOSTO"), f.get("SOLICITANTE")),
             )
     previas = reemplazar(CompromisoImputacion, {"compromiso__vigencia": vigencia})
     upsert(Compromiso, documentos.values(), ["vigencia", "nro_rp"],
-           ["fecha_reg", "acto_admon", "centro_costo"])
+           ["fecha_reg", "acto_admon", "objeto_reg", "centro_costo"])
     mapa = {c.nro_rp: c for c in Compromiso.objects.filter(vigencia=vigencia)}
 
     imputaciones, sin_cdp = [], 0
