@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import os
+import sys
+import tempfile
 from dotenv import load_dotenv
 load_dotenv()
 from django.urls import reverse_lazy
@@ -170,6 +172,20 @@ else:
             'NAME' : BASE_DIR / 'db.sqlite3'
         }
     }
+
+# Las pruebas NUNCA tocan produccion. El .env trae DATABASE_URL apuntando a Supabase
+# y el almacenamiento por defecto es el bucket S3, asi que sin esta guarda un
+# `manage.py test` crearia una base de prueba alla y subiria los archivos al bucket.
+# Con ella, las pruebas corren siempre en sqlite en memoria y en disco temporal.
+if sys.argv[1:2] == ["test"]:
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        # El manifiesto de WhiteNoise exige un collectstatic previo: en pruebas estorba
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+    MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="siifweb-pruebas-"))
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 
 # Password validation
@@ -364,6 +380,19 @@ UNFOLD = {
                      "link": reverse_lazy("admin:siifweb_contrato_changelist")},
                     {"title": "Actas de pago", "icon": "payments",
                      "link": reverse_lazy("admin:siifweb_contratoacta_changelist")},
+                ],
+            },
+            {
+                "title": "Contratación pública (SECOP II)",
+                "collapsible": True,
+                "separator": True,
+                "items": [
+                    {"title": "Contratos de SECOP II", "icon": "gavel",
+                     "link": reverse_lazy("admin:siifweb_contratosecop_changelist")},
+                    {"title": "Procesos de SECOP II", "icon": "how_to_vote",
+                     "link": reverse_lazy("admin:siifweb_procesosecop_changelist")},
+                    {"title": "BPIN por proceso", "icon": "account_tree",
+                     "link": reverse_lazy("admin:siifweb_bpinproceso_changelist")},
                 ],
             },
         ],

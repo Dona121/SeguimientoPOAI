@@ -27,6 +27,7 @@ class CargaReporte(Fechas):
         RESERVAS = "reservas", _("Consolidado de reservas")
         HISTORIAL = "historial", _("Historial de orden de gasto 2 (rango completo)")
         POAI = "poai", _("Cruce proyectos POAI (opcional: nombre, dependencia y clasificacion)")
+        SECOP = "secop", _("Consolidado BPIN por proceso de SECOP II (rango completo)")
 
     class Estado(models.TextChoices):
         PENDIENTE = "P", _("Pendiente")
@@ -38,8 +39,9 @@ class CargaReporte(Fechas):
     fecha_descarga = models.DateField(verbose_name="Fecha de descarga", default=timezone.localdate,
                                       help_text="Los saldos del reporte son la foto de este dia")
     vigencia = models.IntegerField(verbose_name="Vigencia", null=True, blank=True, choices=listado_vigencias,
-                                   help_text="Dejar vacia en el historial de ordenes de gasto 2: "
-                                             "se descarga por rango completo, no por vigencia")
+                                   help_text="Dejar vacia en el historial de ordenes de gasto 2 y en "
+                                             "el consolidado de SECOP II: se descargan por rango "
+                                             "completo, no por vigencia")
     filas = models.IntegerField(verbose_name="Numero de filas", default=0)
     hash = models.CharField(max_length=64, unique=True, blank=True, verbose_name="Hash del archivo",
                             help_text="Detecta recargas del mismo archivo")
@@ -309,6 +311,11 @@ class Obligacion(Fechas):
     vigencia = models.IntegerField(choices=listado_vigencias)
     nro_obligacion = models.CharField(max_length=20, verbose_name="Numero")
     fecha_obli = models.DateField(verbose_name="Fecha obligacion")
+    objeto_oblig = models.TextField(verbose_name="Objeto de la obligacion", blank=True,
+                                    help_text="Columna OBJETO_OBLIG del consolidado")
+    beneficiario = models.ForeignKey(Tercero, related_name="obligaciones", on_delete=models.PROTECT,
+                                     null=True, blank=True, verbose_name="Beneficiario",
+                                     help_text="Columnas NIT y BENEFICIARIO del consolidado")
     nro_orden_gasto = models.CharField(max_length=20, verbose_name="Numero de contrato asociado",
                                        null=True, blank=True)
     prefijo_orden = models.CharField(max_length=20, verbose_name="Vigencia del contrato", null=True, blank=True)
@@ -478,5 +485,117 @@ class ContratoImputacion(Fechas):
         rp = self.compromiso.nro_rp if self.compromiso else "sin RP"
         proyecto = self.proyecto.nombre if self.proyecto else "sin proyecto"
         return f"{self.vigencia} - {self.contrato.nro_contrato} - RP {rp} - {self.rubro.codigo} - {proyecto}"
+
+
+# 5. Contratacion publica (SECOP II)
+#
+# Vienen del consolidado "BPIN por proceso", que junta tres bases de datos abiertos
+# del DNP: BPIN por Proceso (la que trae el BPIN y las tres llaves), Procesos de
+# Contratacion (las fechas de publicacion y el estado del procedimiento) y Contratos
+# Electronicos (el contrato adjudicado). Una tabla por base de origen.
+#
+# El contrato de SECOP NO se enlaza con el Contrato de SIIFWEB: las dos numeraciones
+# son independientes (la referencia CPS-872-2024 es el contrato 2666 en SIIFWEB) y el
+# dato abierto no trae ninguna columna puente. El vinculo con el seguimiento es el
+# BPIN, es decir, el proyecto.
+
+class ProcesoSecop(Fechas):
+    """El proceso de contratacion. Un portafolio puede agrupar varios procesos."""
+    reporte = models.ForeignKey(CargaReporte, related_name="procesos_secop", null=True, blank=True,
+                                on_delete=models.PROTECT)
+    id_proceso = models.CharField(max_length=60, unique=True, verbose_name="ID del proceso")
+    id_portafolio = models.CharField(max_length=60, blank=True, db_index=True,
+                                     verbose_name="ID del portafolio",
+                                     help_text="Agrupa procesos: 114 portafolios traen dos o tres")
+    estado_procedimiento = models.CharField(max_length=60, blank=True,
+                                            verbose_name="Estado del procedimiento")
+    fecha_publicacion = models.DateField(verbose_name="Fecha de publicacion", null=True, blank=True)
+    fecha_ultima_publicacion = models.DateField(verbose_name="Fecha de ultima publicacion",
+                                                null=True, blank=True)
+    fecha_recepcion_respuestas = models.DateField(verbose_name="Fecha de recepcion de respuestas",
+                                                  null=True, blank=True)
+    fecha_apertura_respuestas = models.DateField(verbose_name="Fecha de apertura de respuestas",
+                                                 null=True, blank=True)
+    fecha_apertura_efectiva = models.DateField(verbose_name="Fecha de apertura efectiva",
+                                               null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Proceso de SECOP II"
+        verbose_name_plural = "Procesos de SECOP II"
+
+    def __str__(self):
+        return f"{self.id_proceso} ({self.estado_procedimiento or 'sin estado'})"
+
+
+class ContratoSecop(Fechas):
+    """El contrato electronico adjudicado. Cada contrato pertenece a un solo proceso."""
+    reporte = models.ForeignKey(CargaReporte, related_name="contratos_secop", null=True, blank=True,
+                                on_delete=models.PROTECT)
+    id_contrato = models.CharField(max_length=60, unique=True, verbose_name="ID del contrato")
+    proceso = models.ForeignKey(ProcesoSecop, on_delete=models.PROTECT,
+                                related_name="contratos_del_proceso", verbose_name="Proceso")
+    referencia = models.CharField(max_length=120, blank=True, verbose_name="Referencia del contrato",
+                                  help_text="Numeracion de SECOP (CPS-872-2024); no es el numero "
+                                            "de contrato de SIIFWEB")
+    estado = models.CharField(max_length=60, blank=True, verbose_name="Estado del contrato")
+    objeto = models.TextField(blank=True, verbose_name="Objeto del contrato")
+    descripcion_proceso = models.TextField(blank=True, verbose_name="Descripcion del proceso")
+    proveedor = models.ForeignKey(Tercero, related_name="contratos_secop", on_delete=models.PROTECT,
+                                  null=True, blank=True, verbose_name="Proveedor")
+    valor = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="Valor del contrato",
+                                null=True, blank=True)
+    fecha_firma = models.DateField(verbose_name="Fecha de firma", null=True, blank=True)
+    fecha_inicio = models.DateField(verbose_name="Fecha de inicio", null=True, blank=True)
+    fecha_fin = models.DateField(verbose_name="Fecha de fin", null=True, blank=True)
+    url_proceso = models.TextField(blank=True, verbose_name="URL del proceso")
+
+    class Meta:
+        verbose_name = "Contrato de SECOP II"
+        verbose_name_plural = "Contratos de SECOP II"
+
+    def __str__(self):
+        return f"{self.referencia or self.id_contrato} - {self.estado or 'sin estado'}"
+
+
+class BpinProceso(Fechas):
+    """La fila del consolidado: que BPIN financia que proceso y que contrato.
+
+    Es una tabla propia y no un campo del contrato porque el grano lo exige: 17
+    contratos financian mas de un BPIN, y 250 procesos todavia no tienen contrato
+    adjudicado (en evaluacion, cancelados, en borrador), que es el pipeline
+    contractual del proyecto.
+
+    El bpin se guarda siempre en texto aunque el proyecto quede nulo: un BPIN de
+    SECOP que no esta en el catalogo tiene que quedar visible para que el equipo
+    decida si crea el proyecto. La carga no crea proyectos desde esta fuente.
+    """
+    reporte = models.ForeignKey(CargaReporte, related_name="bpines_por_proceso", null=True, blank=True,
+                                on_delete=models.PROTECT)
+    bpin = models.CharField(max_length=25, db_index=True, verbose_name="BPIN")
+    proyecto = models.ForeignKey(Proyecto, related_name="procesos_secop", on_delete=models.PROTECT,
+                                 null=True, blank=True, verbose_name="Proyecto",
+                                 help_text="Nulo si el BPIN no esta en el catalogo")
+    proceso = models.ForeignKey(ProcesoSecop, related_name="bpines", on_delete=models.PROTECT,
+                                verbose_name="Proceso")
+    contrato_secop = models.ForeignKey(ContratoSecop, related_name="bpines", on_delete=models.PROTECT,
+                                       null=True, blank=True, verbose_name="Contrato",
+                                       help_text="Nulo si el proceso no tiene contrato adjudicado")
+    anio = models.IntegerField(verbose_name="Anio del BPIN", null=True, blank=True)
+    validacion_bpin = models.CharField(max_length=20, blank=True, verbose_name="Validacion del BPIN")
+
+    class Meta:
+        verbose_name = "BPIN por proceso"
+        verbose_name_plural = "BPIN por proceso"
+        constraints = [
+            # Ojo: contrato_secop admite nulos y en SQL dos nulos no colisionan, asi que
+            # esta restriccion no cubre las filas sin contrato. La carga deduplica antes
+            # de insertar (el archivo trae 12 filas repetidas).
+            models.UniqueConstraint(fields=["bpin", "proceso", "contrato_secop"],
+                                    name="bpin_proceso_unico")
+        ]
+
+    def __str__(self):
+        contrato = self.contrato_secop.referencia if self.contrato_secop else "sin contrato"
+        return f"{self.bpin} - {self.proceso.id_proceso} - {contrato}"
 
 

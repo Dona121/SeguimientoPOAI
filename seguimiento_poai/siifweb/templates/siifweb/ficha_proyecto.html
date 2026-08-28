@@ -19,9 +19,9 @@
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-4">
 
-  <div class="bg-white border rounded-default shadow-xs p-6 dark:bg-base-900 dark:border-base-800">
+  <div class="bg-white border rounded-default shadow-xs p-4 dark:bg-base-900 dark:border-base-800">
     <div class="flex items-start justify-between gap-4 flex-wrap">
       <div>
         <div class="font-mono text-xs text-base-500 uppercase tracking-wider">BPIN {{ proyecto.bpin }}</div>
@@ -46,9 +46,170 @@
     </div>
   </div>
 
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  {% comment %}
+  Dos fuentes, dos paneles: la ejecucion presupuestal de SIIFWEB y la contratacion
+  publica de SECOP II. Cada uno tiene su URL, asi que es enlazable y compartible.
+  Ojo: {# #} solo comenta UNA linea; para varias va {% comment %}.
+  {% endcomment %}
+  <div class="flex gap-6 border-b dark:border-base-800">
+    {% for clave, titulo in paneles %}
+    <a href="?panel={{ clave }}"
+       class="pb-3 -mb-px text-sm font-medium border-b-2 {% if panel == clave %}border-primary-600 text-primary-600{% else %}border-transparent text-base-500 hover:text-base-700 dark:hover:text-base-300{% endif %}">
+      {{ titulo }}</a>
+    {% endfor %}
+  </div>
+
+  {% if panel == "secop" %}
+
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    {% for etiqueta, valor, nota, es_dinero in secop_tarjetas %}
+    <div class="bg-white border rounded-default shadow-xs p-3 dark:bg-base-900 dark:border-base-800">
+      <div class="text-xs text-base-500 uppercase tracking-wider">{{ etiqueta }}</div>
+      <div class="font-semibold text-lg mt-1 text-base-900 dark:text-base-100">
+        {% if es_dinero %}${{ valor|floatformat:0|intcomma }}{% else %}{{ valor|intcomma }}{% endif %}</div>
+      <div class="text-xs text-base-400 mt-1">{{ nota }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
+        Procesos en tramite ({{ secop_en_tramite|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es un proceso" texto="El proceso es la convocatoria con la que se busca al contratista: se publica la necesidad, se reciben las ofertas y se adjudica. Aquí están los que todavía no tienen contrato: unos siguen en evaluación y otros se cancelaron." %}</h2>
+      <p class="text-sm text-base-500 mt-1">Publicados con cargo a este BPIN y todavia sin contrato
+        adjudicado. Es lo que viene: SIIFWEB todavia no los ve como compromiso; el CDP puede existir
+        desde antes, el RP solo aparece al firmar.</p>
+    </div>
+    <div class="overflow-auto" style="max-height:26rem">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr>
+            <th class="px-4 py-2 text-left">Proceso</th>
+            <th class="px-4 py-2 text-left">Estado</th>
+            <th class="px-4 py-2 text-left">Publicacion</th>
+            <th class="px-4 py-2 text-left">Ultima publicacion</th>
+            <th class="px-4 py-2 text-left">Apertura efectiva</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in secop_en_tramite %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-4 py-2">
+              <button type="button" class="text-primary-600 font-mono text-left"
+                      data-detalle
+                      data-titulo="{{ p.id_proceso }}"
+                      data-proceso-id="{{ p.id_proceso }}"
+                      data-proceso-portafolio="{{ p.id_portafolio|default:'—' }}"
+                      data-proceso-estado="{{ p.estado_procedimiento|default:'—' }}"
+                      data-proceso-publicacion="{{ p.fecha_publicacion|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-ultima="{{ p.fecha_ultima_publicacion|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-recepcion="{{ p.fecha_recepcion_respuestas|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-apertura="{{ p.fecha_apertura_respuestas|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-efectiva="{{ p.fecha_apertura_efectiva|date:'Y-m-d'|default:'—' }}"
+                      data-url-proceso-admin="{% url 'admin:siifweb_procesosecop_change' p.pk %}">
+                {{ p.id_proceso }}</button>
+            </td>
+            <td class="px-4 py-2">{{ p.estado_procedimiento|default:"—" }}</td>
+            <td class="px-4 py-2 whitespace-nowrap">{{ p.fecha_publicacion|date:"Y-m-d"|default:"—" }}</td>
+            <td class="px-4 py-2 whitespace-nowrap">{{ p.fecha_ultima_publicacion|date:"Y-m-d"|default:"—" }}</td>
+            <td class="px-4 py-2 whitespace-nowrap">{{ p.fecha_apertura_efectiva|date:"Y-m-d"|default:"—" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="px-4 py-5 text-center text-base-500">
+            No hay procesos pendientes de adjudicar.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
+        Contratos en SECOP II ({{ secop_contratos|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es un contrato de SECOP" texto="El contrato es lo que se firma con quien ganó el proceso. Un proceso puede terminar en varios contratos, y un contrato puede financiarse con varios BPIN. Al firmarse, en SIIFWEB nace el RP." %}</h2>
+      <p class="text-sm text-base-500 mt-1">Contratos electronicos cuyo proceso declara este BPIN.
+        SECOP no cuenta con una columna que especifique el número de contrato de SIIFWEB,
+        por eso solo se hace el cruce a nivel de BPIN.</p>
+    </div>
+    <div class="overflow-auto" style="max-height:26rem">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr>
+            <th class="px-4 py-2 text-left">Referencia</th>
+            <th class="px-4 py-2 text-left">Proveedor</th>
+            <th class="px-4 py-2 text-left">Estado</th>
+            <th class="px-4 py-2 text-left">Firma</th>
+            <th class="px-4 py-2 text-left">Vigencia del contrato</th>
+            <th class="px-4 py-2 text-right">Valor</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in secop_contratos %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-4 py-2 align-top">
+              <button type="button" class="text-primary-600 font-medium text-left"
+                      data-detalle
+                      data-titulo="{{ c.referencia|default:c.id_contrato }}"
+                      data-contrato-referencia="{{ c.referencia|default:'—' }}"
+                      data-contrato-id="{{ c.id_contrato }}"
+                      data-contrato-estado="{{ c.estado|default:'—' }}"
+                      data-contrato-proveedor="{% if c.proveedor %}{{ c.proveedor.nombre|default:c.proveedor.codigo }} ({{ c.proveedor.codigo }}){% else %}—{% endif %}"
+                      data-contrato-valor="${{ c.valor|default:0|floatformat:0|intcomma }}"
+                      data-contrato-firma="{{ c.fecha_firma|date:'Y-m-d'|default:'—' }}"
+                      data-contrato-inicio="{{ c.fecha_inicio|date:'Y-m-d'|default:'—' }}"
+                      data-contrato-fin="{{ c.fecha_fin|date:'Y-m-d'|default:'—' }}"
+                      data-contrato-objeto="{{ c.objeto|default:'—' }}"
+                      data-contrato-descripcion="{{ c.descripcion_proceso|default:'—' }}"
+                      data-proceso-id="{{ c.proceso.id_proceso }}"
+                      data-proceso-portafolio="{{ c.proceso.id_portafolio|default:'—' }}"
+                      data-proceso-estado="{{ c.proceso.estado_procedimiento|default:'—' }}"
+                      data-proceso-publicacion="{{ c.proceso.fecha_publicacion|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-ultima="{{ c.proceso.fecha_ultima_publicacion|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-recepcion="{{ c.proceso.fecha_recepcion_respuestas|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-apertura="{{ c.proceso.fecha_apertura_respuestas|date:'Y-m-d'|default:'—' }}"
+                      data-proceso-efectiva="{{ c.proceso.fecha_apertura_efectiva|date:'Y-m-d'|default:'—' }}"
+                      data-url-secop="{{ c.url_proceso }}"
+                      data-url-admin="{% url 'admin:siifweb_contratosecop_change' c.pk %}"
+                      data-url-proceso-admin="{% url 'admin:siifweb_procesosecop_change' c.proceso.pk %}">
+                {{ c.referencia|default:c.id_contrato }}</button>
+              <div class="text-xs text-base-500 mt-1">{{ c.objeto|truncatechars:80 }}</div>
+            </td>
+            <td class="px-4 py-2 align-top">
+              {% if c.proveedor %}{{ c.proveedor.nombre|default:c.proveedor.codigo|truncatechars:34 }}
+              {% else %}&mdash;{% endif %}
+            </td>
+            <td class="px-4 py-2 align-top">{{ c.estado|default:"—" }}</td>
+            <td class="px-4 py-2 whitespace-nowrap align-top">{{ c.fecha_firma|date:"Y-m-d"|default:"—" }}</td>
+            <td class="px-4 py-2 whitespace-nowrap align-top text-base-500">
+              {{ c.fecha_inicio|date:"Y-m-d"|default:"—" }} &rarr; {{ c.fecha_fin|date:"Y-m-d"|default:"—" }}
+            </td>
+            <td class="px-4 py-2 text-right font-mono align-top">{{ c.valor|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 align-top">
+              {% if c.url_proceso %}
+              <a href="{{ c.url_proceso }}" target="_blank" rel="noopener" class="text-primary-600"
+                 title="Ver el proceso en SECOP II"><i class="material-symbols-outlined">open_in_new</i></a>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="px-4 py-5 text-center text-base-500">
+            Este proyecto no tiene contratos en SECOP II. Puede ser nomina, transferencias o
+            convenios que no pasan por la plataforma.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  {% else %}
+
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
     {% for etiqueta, valor, nota in totales_tarjetas %}
-    <div class="bg-white border rounded-default shadow-xs p-4 dark:bg-base-900 dark:border-base-800">
+    <div class="bg-white border rounded-default shadow-xs p-3 dark:bg-base-900 dark:border-base-800">
       <div class="text-xs text-base-500 uppercase tracking-wider">{{ etiqueta }}</div>
       <div class="font-semibold text-lg mt-1 text-base-900 dark:text-base-100">${{ valor|floatformat:0|intcomma }}</div>
       <div class="text-xs text-base-400 mt-1">{{ nota }}</div>
@@ -57,48 +218,48 @@
   </div>
 
   <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-6 py-4 dark:border-base-800">
-      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Cadena de ejecucion por vigencia</h2>
-      <p class="text-sm text-base-500 mt-1">Disponibilidad definitiva &rarr; comprometido &rarr; obligado &rarr; pagado.</p>
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Cadena de ejecucion por vigencia
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es la cadena de ejecucion" texto="El recorrido de la plata en cada vigencia: primero se aparta el cupo con un CDP, después se compromete con un RP al firmar, luego se obliga cuando se recibe lo contratado y al final se paga. Los pasos son secuenciales." %}</h2>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
           <tr>
-            <th class="px-6 py-3 text-left">Vigencia</th>
-            <th class="px-6 py-3 text-right">Disponibilidad definitiva</th>
-            <th class="px-6 py-3 text-right">Comprometido</th>
-            <th class="px-6 py-3 text-right">Obligado</th>
-            <th class="px-6 py-3 text-right">Pagado</th>
-            <th class="px-6 py-3 text-right">Sin comprometer</th>
-            <th class="px-6 py-3 text-right">Sin obligar</th>
+            <th class="px-4 py-2 text-left">Vigencia</th>
+            <th class="px-4 py-2 text-right">Disponibilidad definitiva</th>
+            <th class="px-4 py-2 text-right">Comprometido</th>
+            <th class="px-4 py-2 text-right">Obligado</th>
+            <th class="px-4 py-2 text-right">Pagado</th>
+            <th class="px-4 py-2 text-right">Sin comprometer</th>
+            <th class="px-4 py-2 text-right">Sin obligar</th>
           </tr>
         </thead>
         <tbody>
           {% for f in filas %}
           <tr class="border-b dark:border-base-800">
-            <td class="px-6 py-3 font-medium">{{ f.vigencia }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.disponibilidad_definitiva|default:0|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.comprometido|default:0|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.obligado|default:0|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.pagado|default:0|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono text-base-400">{{ f.sin_comprometer|default:0|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono {% if f.sin_obligar %}text-yellow-600{% else %}text-base-400{% endif %}">
+            <td class="px-4 py-2 font-medium">{{ f.vigencia }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.disponibilidad_definitiva|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.comprometido|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.obligado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.pagado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono text-base-400">{{ f.sin_comprometer|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono {% if f.sin_obligar %}text-yellow-600{% else %}text-base-400{% endif %}">
               {{ f.sin_obligar|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin ejecucion registrada</td></tr>
+          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">Sin ejecucion registrada</td></tr>
           {% endfor %}
         </tbody>
         <tfoot class="font-medium">
           <tr>
-            <td class="px-6 py-3">Total</td>
-            <td class="px-6 py-3 text-right font-mono">{{ totales.disponibilidad_definitiva|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ totales.comprometido|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ totales.obligado|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ totales.pagado|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ totales.sin_comprometer|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ totales.sin_obligar|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.disponibilidad_definitiva|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.comprometido|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.obligado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.pagado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.sin_comprometer|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.sin_obligar|floatformat:0|intcomma }}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -107,40 +268,41 @@
     </div>
 
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-6 py-4 dark:border-base-800">
-      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">CDPs ({{ cdps_proyecto|length }})</h2>
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">CDPs ({{ cdps_proyecto|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es un CDP" texto="El certificado de disponibilidad presupuestal aparta el cupo antes de contratar: certifica que hay plata para ese gasto. Todavía no hay contratista ni compromiso, y lo que no se use se libera al cierre." %}</h2>
     </div>
-    <div class="overflow-x-auto">
+    <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
-        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
-            <th class="px-6 py-3 text-left">Vigencia</th>
-            <th class="px-6 py-3 text-right">Número CDP</th>
-            <th class="px-6 py-3 text-right">Fecha disponibilidad</th>
-            <th class="px-6 py-3 text-right">Objeto</th>
-            <th class="px-6 py-3 text-right">Valor</th>
+            <th class="px-4 py-2 text-left">Vigencia</th>
+            <th class="px-4 py-2 text-right">Número CDP</th>
+            <th class="px-4 py-2 text-right">Fecha disponibilidad</th>
+            <th class="px-4 py-2 text-right">Objeto</th>
+            <th class="px-4 py-2 text-right">Valor disponibilidad definitiva</th>
           </tr>
         </thead>
         <tbody>
           {% for f in cdps_proyecto %}
           <tr class="border-b dark:border-base-800">
-            <td class="px-6 py-3 font-medium">{{ f.vigencia }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.nro_cdp }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.fecha_disp }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.objeto_cert }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.valor_cdp|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 font-medium">{{ f.vigencia }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.nro_cdp }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.fecha_disp }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.objeto_cert }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.valor_cdp|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin CDPs registrados</td></tr>
+          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">Sin CDPs registrados</td></tr>
           {% endfor %}
         </tbody>
         <tfoot class="font-medium">
           <tr>
-            <td class="px-6 py-3">Total</td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono">{{ cdps_proyecto_total|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono">{{ cdps_proyecto_total|floatformat:0|intcomma }}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -149,43 +311,44 @@
     </div>
 
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-6 py-4 dark:border-base-800">
-      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">RPs ({{ rps_por_proyecto|length }})</h2>
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">RPs ({{ rps_por_proyecto|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es un RP" texto="El registro presupuestal compromete el cupo del CDP con un contratista concreto, al momento de firmar. De ahí en adelante esa plata ya tiene dueño y solo se puede usar para ese contrato." %}</h2>
     </div>
-    <div class="overflow-x-auto">
+    <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
-        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
-            <th class="px-6 py-3 text-left">Vigencia</th>
-            <th class="px-6 py-3 text-right">Número RP</th>
-            <th class="px-6 py-3 text-right">Fecha registro</th>
-            <th class="px-6 py-3 text-right">Acto administrativo</th>
-            <th class="px-6 py-3 text-right">Objeto registro</th>
-            <th class="px-6 py-3 text-right">Valor comprometido</th>
+            <th class="px-4 py-2 text-left">Vigencia</th>
+            <th class="px-4 py-2 text-right">Número RP</th>
+            <th class="px-4 py-2 text-right">Fecha registro</th>
+            <th class="px-4 py-2 text-right">Acto administrativo</th>
+            <th class="px-4 py-2 text-right">Objeto registro</th>
+            <th class="px-4 py-2 text-right">Valor comprometido definitivo</th>
           </tr>
         </thead>
         <tbody>
           {% for f in rps_por_proyecto %}
           <tr class="border-b dark:border-base-800">
-            <td class="px-6 py-3 font-medium">{{ f.vigencia }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.nro_rp }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.fecha_reg }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.acto_admon }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.objeto_reg }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.valor_rp|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 font-medium">{{ f.vigencia }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.nro_rp }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.fecha_reg }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.acto_admon }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.objeto_reg }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.valor_rp|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin RPs registrados</td></tr>
+          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">Sin RPs registrados</td></tr>
           {% endfor %}
         </tbody>
         <tfoot class="font-medium">
           <tr>
-            <td class="px-6 py-3">Total</td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono">{{ rps_por_proyecto_total|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono">{{ rps_por_proyecto_total|floatformat:0|intcomma }}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -194,34 +357,88 @@
     </div>
 
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-6 py-4 dark:border-base-800">
-      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Fuentes de financiación ({{ fuentes_por_proyecto|length }})</h2>
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Obligaciones ({{ obligaciones_por_proyecto|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es una obligacion" texto="La obligación reconoce que lo contratado ya se recibió a satisfacción: es la cuenta por pagar del contratista, el paso previo al giro. Se causa contra un RP, y el valor definitivo es el que quedó tras las modificaciones." %}</h2>
+    </div>
+    <div class="overflow-auto" style="max-height:26rem">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr>
+            <th class="px-4 py-2 text-left">Vigencia</th>
+            <th class="px-4 py-2 text-right">Número obligación</th>
+            <th class="px-4 py-2 text-right">Fecha obligación</th>
+            <th class="px-4 py-2 text-left">Beneficiario</th>
+            <th class="px-4 py-2 text-right">NIT</th>
+            <th class="px-4 py-2 text-left">Objeto</th>
+            <th class="px-4 py-2 text-left">Tipo de orden de gasto</th>
+            <th class="px-4 py-2 text-right">Valor obligación definitiva</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in obligaciones_por_proyecto %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-4 py-2 font-medium">{{ o.vigencia }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ o.nro_obligacion }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ o.fecha_obli|date:"Y-m-d" }}</td>
+            <td class="px-4 py-2">{{ o.beneficiario.nombre|default:"—"|truncatechars:38 }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ o.beneficiario.codigo|default:"—" }}</td>
+            {# El objeto propio manda; el del RP es el respaldo de las cargas viejas #}
+            <td class="px-4 py-2">{{ o.objeto_oblig|default:o.objeto_rp|default:"—"|truncatechars:90 }}</td>
+            <td class="px-4 py-2">{{ o.tipo_orden_gasto.nombre|default:"—" }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ o.valor_obli|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">
+            Sin obligaciones causadas</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="font-medium">
+          <tr>
+            <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2 text-right font-mono">{{ obligaciones_por_proyecto_total|floatformat:0|intcomma }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    </div>
+
+    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Fuentes de financiación ({{ fuentes_por_proyecto|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que son las fuentes de financiacion" texto="De dónde sale la plata comprometida: recursos propios, del balance, SGP, crédito, regalías. Un mismo proyecto puede ejecutarse con varias fuentes." %}</h2>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
           <tr>
-            <th class="px-6 py-3 text-left">Código</th>
-            <th class="px-6 py-3 text-right">Fuente</th>
-            <th class="px-6 py-3 text-right">Valor comprometido</th>
+            <th class="px-4 py-2 text-left">Código</th>
+            <th class="px-4 py-2 text-right">Fuente</th>
+            <th class="px-4 py-2 text-right">Valor comprometido</th>
           </tr>
         </thead>
         <tbody>
           {% for f in fuentes_por_proyecto %}
           <tr class="border-b dark:border-base-800">
-            <td class="px-6 py-3 font-medium">{{ f.codigo }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.nombre }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ f.valor_comprometido|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 font-medium">{{ f.codigo }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.nombre }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.valor_comprometido|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="px-6 py-6 text-center text-base-500">Sin fuentes de financiación registradas</td></tr>
+          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">Sin fuentes de financiación registradas</td></tr>
           {% endfor %}
         </tbody>
         <tfoot class="font-medium">
           <tr>
-            <td class="px-6 py-3">Total</td>
-            <td class="px-6 py-3 text-right font-mono"></td>
-            <td class="px-6 py-3 text-right font-mono">{{ fuentes_por_proyecto_total|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2 text-right font-mono">{{ fuentes_por_proyecto_total|floatformat:0|intcomma }}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -230,39 +447,56 @@
     </div>
 
   <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-6 py-4 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
-        Contratos ({{ contratos|length }})</h2>
+        Contratos ({{ contratos|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que contratos son estos" texto="Los contratos del proyecto según SIIFWEB, con su contratista, sus actas y lo que se ha pagado. Aquí se ve lo que el contrato movió en el presupuesto; el proceso que lo originó está en la pestaña SECOP II." %}</h2>
       <p class="text-sm text-base-500 mt-1">Del historial de orden de gasto, incluidos los convenios
         que la orden de gasto no trae.</p>
     </div>
-    <div class="overflow-x-auto">
+    <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
-        <thead class="border-b text-xs uppercase tracking-wider text-base-500 dark:border-base-800">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
-            <th class="px-6 py-3 text-left">Contrato</th>
-            <th class="px-6 py-3 text-left">Contratista</th>
-            <th class="px-6 py-3 text-left">Firma</th>
-            <th class="px-6 py-3 text-right">Valor</th>
-            <th class="px-6 py-3 text-right">Actas</th>
-            <th class="px-6 py-3 text-right">Pagado</th>
+            <th class="px-4 py-2 text-left">Contrato</th>
+            <th class="px-4 py-2 text-left">Contratista</th>
+            <th class="px-4 py-2 text-left">Firma</th>
+            <th class="px-4 py-2 text-right">Valor</th>
+            <th class="px-4 py-2 text-right">Actas</th>
+            <th class="px-4 py-2 text-right">Pagado</th>
           </tr>
         </thead>
         <tbody>
           {% for c in contratos %}
           <tr class="border-b dark:border-base-800">
-            <td class="px-6 py-3">
-              <a href="{% url 'admin:siifweb_contrato_change' c.pk %}" class="text-primary-600 font-medium">
-                {{ c.tipo_contrato }} {{ c.nro_contrato }}</a>
+            <td class="px-4 py-2">
+              <button type="button" class="text-primary-600 font-medium text-left"
+                      data-detalle
+                      data-tipo="siifweb"
+                      data-titulo="{{ c.tipo_contrato }} {{ c.nro_contrato }}"
+                      data-siifweb-tipo="{{ c.tipo_contrato }}"
+                      data-siifweb-numero="{{ c.nro_contrato }}"
+                      data-siifweb-contratista="{% if c.tercero %}{{ c.tercero.nombre|default:c.tercero.codigo }} ({{ c.tercero.codigo }}){% endif %}"
+                      data-siifweb-valor="${{ c.valor_contrato|default:0|floatformat:0|intcomma }}"
+                      data-siifweb-pagado="${{ c.pagado|default:0|floatformat:0|intcomma }}"
+                      data-siifweb-actas="{{ c.n_actas }}"
+                      data-siifweb-firma="{{ c.fecha_firma|date:'Y-m-d'|default:'—' }}"
+                      data-siifweb-inicio="{{ c.fecha_inicio|date:'Y-m-d'|default:'—' }}"
+                      data-siifweb-fin="{{ c.fecha_final|date:'Y-m-d'|default:'—' }}"
+                      data-siifweb-interventor="{{ c.interventor|default:'—' }}"
+                      data-siifweb-dependencia="{{ c.dependencia.nombre|default:'—' }}"
+                      data-siifweb-descripcion="{{ c.descripcion|default:'—' }}"
+                      data-url-admin="{% url 'admin:siifweb_contrato_change' c.pk %}">
+                {{ c.tipo_contrato }} {{ c.nro_contrato }}</button>
             </td>
-            <td class="px-6 py-3">{{ c.tercero.nombre|truncatechars:42 }}</td>
-            <td class="px-6 py-3 whitespace-nowrap">{{ c.fecha_firma|date:"Y-m-d" }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ c.valor_contrato|default:0|floatformat:0|intcomma }}</td>
-            <td class="px-6 py-3 text-right">{{ c.n_actas }}</td>
-            <td class="px-6 py-3 text-right font-mono">{{ c.pagado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2">{{ c.tercero.nombre|truncatechars:42 }}</td>
+            <td class="px-4 py-2 whitespace-nowrap">{{ c.fecha_firma|date:"Y-m-d" }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ c.valor_contrato|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right">{{ c.n_actas }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ c.pagado|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="6" class="px-6 py-6 text-center text-base-500">
+          <tr><td colspan="6" class="px-4 py-5 text-center text-base-500">
             Sin contratos: puede ser nomina, transferencias o resoluciones.</td></tr>
           {% endfor %}
         </tbody>
@@ -270,10 +504,11 @@
     </div>
   </div>
 
-  <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-      <div class="border-b px-6 py-4 dark:border-base-800">
-        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Calendario de pagos</h2>
+      <div class="border-b px-4 py-3 dark:border-base-800">
+        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Calendario de pagos
+          {% include "siifweb/_ayuda.html" with etiqueta="Que es el calendario de pagos" texto="Cada acta de pago de los contratos del proyecto, en orden de fecha y con el largo de la barra según el valor." %}</h2>
         <p class="text-sm text-base-500 mt-1">Cada acta de pago del contrato, con su fecha.
           Total ${{ total_pagado_bitacora|floatformat:0|intcomma }}</p>
       </div>
@@ -282,18 +517,18 @@
           <tbody>
             {% for p in calendario %}
             <tr class="border-b dark:border-base-800">
-              <td class="px-6 py-2 whitespace-nowrap align-top">
+              <td class="px-4 py-2 whitespace-nowrap align-top">
                 {{ p.fecha_pago|date:"Y-m-d" }}
                 <div class="text-xs text-base-500">acta {{ p.nrodoc_acta|default:"-" }} · {{ p.tipo_orden }}</div>
               </td>
-              <td class="px-6 py-2 w-full align-top">
+              <td class="px-4 py-2 w-full align-top">
                 <div style="height:8px;border-radius:3px;background:#3987e5;width:{{ p.ancho|floatformat:0 }}%;min-width:2px"></div>
                 <div class="text-xs text-base-500 mt-1">{{ p.tercero|truncatechars:34 }}</div>
               </td>
-              <td class="px-6 py-2 text-right font-mono whitespace-nowrap align-top">{{ p.t|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2 text-right font-mono whitespace-nowrap align-top">{{ p.t|floatformat:0|intcomma }}</td>
             </tr>
             {% empty %}
-            <tr><td class="px-6 py-6 text-center text-base-500">Sin actas de pago registradas</td></tr>
+            <tr><td class="px-4 py-5 text-center text-base-500">Sin actas de pago registradas</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -301,13 +536,14 @@
     </div>
 
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-      <div class="border-b px-6 py-4 dark:border-base-800">
+      <div class="border-b px-4 py-3 dark:border-base-800">
         <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
-          Reservas ({{ reservas|length }})</h2>
+          Reservas ({{ reservas|length }})
+          {% include "siifweb/_ayuda.html" with etiqueta="Que es una reserva" texto="Lo que quedó comprometido con un RP pero sin obligar al cerrar la vigencia pasa como reserva a la vigencia siguiente, con cargo al CDP del año anterior. Lo que no se reserva ni se anula queda en riesgo de pasivo exigible." %}</h2>
         <p class="text-sm text-base-500 mt-1">Lo que quedo comprometido al cierre y sigue
           ejecutando en la vigencia siguiente.</p>
       </div>
-      <div class="p-6 flex flex-col gap-2">
+      <div class="p-4 flex flex-col gap-2">
         {% for r in reservas %}
         <div class="border-b pb-2 dark:border-base-800">
           <div class="flex justify-between text-sm">
@@ -327,6 +563,297 @@
       </div>
     </div>
   </div>
+
+  {% endif %}
+
+  {% comment %}
+  El detalle se abre en un modal para no sacar al usuario de la ficha. Los datos ya
+  vienen en la fila (atributos data-*), asi que no hay una segunda consulta: solo se
+  muestra lo que la pagina ya trajo.
+  {% endcomment %}
+  <style>
+    /* Cada dato en su celda: borde negro ligero, esquinas curvadas y aire adentro.
+       El color del borde va en rgba y no en una clase de Tailwind para que funcione
+       igual en claro y en oscuro sin depender de la hoja compilada de unfold. */
+    #modal-detalle .celda {
+      border: 1px solid rgba(0, 0, 0, .16);
+      border-radius: .5rem;
+      padding: .75rem 1rem;
+    }
+    .dark #modal-detalle .celda { border-color: rgba(255, 255, 255, .14); }
+    #modal-detalle .celda.destacada { background: rgba(0, 0, 0, .03); }
+    .dark #modal-detalle .celda.destacada { background: rgba(255, 255, 255, .04); }
+    #modal-detalle .celda .etiqueta {
+      font-size: .6875rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      opacity: .75;
+    }
+    #modal-detalle .celda .dato { margin-top: .25rem; }
+
+    /* Ayuda al lado del titulo: se abre al pasar el mouse o al llegar con el tabulador.
+       Solo lleva posicion y tamano; el fondo y el borde son las clases de la tarjeta,
+       para que siga el tema claro/oscuro sin repetir colores. */
+    .ayuda { position: relative; display: inline-flex; vertical-align: middle; cursor: help; }
+    .ayuda .globo {
+      position: absolute;
+      left: 0;
+      top: 1.75rem;
+      z-index: 40;
+      width: 24rem;
+      max-width: 78vw;
+      padding: .75rem 1rem;
+      font-size: .8125rem;
+      font-weight: 400;
+      line-height: 1.5;
+      text-transform: none;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity .12s ease;
+    }
+    .ayuda:hover .globo, .ayuda:focus-within .globo { visibility: visible; opacity: 1; }
+  </style>
+  <div id="modal-detalle" class="fixed inset-0 z-50 hidden items-center justify-center p-4"
+       role="dialog" aria-modal="true" aria-labelledby="modal-detalle-titulo">
+    <div class="absolute inset-0" style="background:rgba(0,0,0,.5)" data-cerrar-detalle></div>
+    <div class="relative w-full bg-white border rounded-default shadow-lg overflow-y-auto
+                dark:bg-base-900 dark:border-base-800" style="max-width:52rem;max-height:85vh">
+      <div class="flex items-start justify-between gap-4 border-b px-6 py-5 dark:border-base-800">
+        <div style="min-width:0">
+          <div id="modal-detalle-fuente" class="text-xs text-base-500 uppercase tracking-wider"></div>
+          <h2 id="modal-detalle-titulo"
+              class="font-semibold text-lg mt-1 text-base-900 dark:text-base-100 break-words"></h2>
+          <div id="modal-detalle-subtitulo" class="text-sm text-base-500 mt-1"></div>
+        </div>
+        <div class="flex items-center gap-3" style="flex-shrink:0">
+          <span id="modal-detalle-estado"></span>
+          <button type="button" data-cerrar-detalle aria-label="Cerrar"
+                  class="text-base-500 hover:text-base-700 dark:hover:text-base-300">
+            <i class="material-symbols-outlined">close</i></button>
+        </div>
+      </div>
+      <div id="modal-detalle-cuerpo" class="p-6 flex flex-col gap-6"></div>
+      <div id="modal-detalle-acciones" class="border-t px-6 py-4 flex flex-wrap gap-3 dark:border-base-800"></div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var modal = document.getElementById("modal-detalle");
+    if (!modal) { return; }
+    var fuente = document.getElementById("modal-detalle-fuente");
+    var titulo = document.getElementById("modal-detalle-titulo");
+    var subtitulo = document.getElementById("modal-detalle-subtitulo");
+    var chip = document.getElementById("modal-detalle-estado");
+    var cuerpo = document.getElementById("modal-detalle-cuerpo");
+    var acciones = document.getElementById("modal-detalle-acciones");
+
+    var VACIO = "—";
+
+    function hay(valor) { return valor && valor !== VACIO; }
+
+    function nodo(etiqueta, clases, texto) {
+      var e = document.createElement(etiqueta);
+      e.className = clases;
+      if (texto !== undefined) { e.textContent = texto; }
+      return e;
+    }
+
+    // El color dice el estado de un vistazo, sin tener que leerlo
+    function color(estado) {
+      var e = (estado || "").toLowerCase();
+      if (e.indexOf("ejecu") >= 0 || e.indexOf("aprob") >= 0 || e.indexOf("seleccion") >= 0) { return "#16a34a"; }
+      if (e.indexOf("cancel") >= 0 || e.indexOf("suspend") >= 0 || e.indexOf("cedid") >= 0) { return "#d97706"; }
+      if (e.indexOf("termin") >= 0 || e.indexOf("cerrad") >= 0) { return "#2563eb"; }
+      return "#6b7280";
+    }
+
+    function insignia(estado) {
+      if (!hay(estado)) { return null; }
+      var tono = color(estado);
+      var span = nodo("span", "inline-block text-xs px-2 py-1 rounded-default border whitespace-nowrap", estado);
+      span.style.color = tono;
+      span.style.borderColor = tono;
+      return span;
+    }
+
+    // Seccion con titulo tenue y una linea de separacion arriba
+    function seccion(nombre) {
+      var caja = nodo("div", "");
+      if (nombre) {
+        caja.appendChild(nodo("div", "text-xs text-base-500 uppercase tracking-wider mb-3", nombre));
+      }
+      return caja;
+    }
+
+    // La unidad de todo el modal: un dato por celda, con su etiqueta encima
+    function celda(etiqueta, valor, clases) {
+      var caja = nodo("div", "celda " + (clases || ""));
+      caja.appendChild(nodo("div", "etiqueta text-base-500", etiqueta));
+      caja.appendChild(nodo("div", "dato text-sm text-base-900 dark:text-base-100 break-words", valor));
+      return caja;
+    }
+
+    // Fechas en fila, en el orden en que ocurren
+    function tiempos(items) {
+      var presentes = items.filter(function (i) { return hay(i[1]); });
+      if (!presentes.length) { return null; }
+      var fila = nodo("div", "flex flex-wrap items-center gap-2");
+      presentes.forEach(function (item) {
+        var caja = celda(item[0], item[1]);
+        caja.lastChild.className += " font-mono whitespace-nowrap";
+        fila.appendChild(caja);
+      });
+      return fila;
+    }
+
+    // Pares etiqueta/valor en dos columnas; los identificadores van en monoespaciada
+    function campos(items) {
+      var presentes = items.filter(function (i) { return hay(i[1]); });
+      if (!presentes.length) { return null; }
+      var grid = nodo("div", "grid grid-cols-1 gap-2 sm:grid-cols-2");
+      presentes.forEach(function (item) {
+        var caja = celda(item[0], item[1]);
+        if (item[2]) { caja.lastChild.className += " font-mono"; }
+        grid.appendChild(caja);
+      });
+      return grid;
+    }
+
+    function parrafo(nombre, texto) {
+      if (!hay(texto)) { return null; }
+      var caja = celda(nombre, texto);
+      caja.lastChild.style.lineHeight = "1.6";
+      return caja;
+    }
+
+    function separador() {
+      return nodo("div", "border-t dark:border-base-800");
+    }
+
+    function enlace(texto, url, principal) {
+      var a = document.createElement("a");
+      a.href = url;
+      a.className = "font-medium px-3 py-2 rounded-default text-sm border " +
+                    (principal ? "text-primary-600 border-primary-600"
+                               : "text-base-700 dark:text-base-300 dark:border-base-700");
+      a.textContent = texto;
+      if (principal) { a.target = "_blank"; a.rel = "noopener"; }
+      return a;
+    }
+
+    // Una franja de cifras: la primera destacada, y las fechas a continuacion
+    function cabecera(destacado, otros, fechas) {
+      var fila = nodo("div", "flex flex-wrap items-stretch gap-2");
+      var monto = celda(destacado[0], destacado[1] || VACIO, "destacada");
+      monto.lastChild.className += " font-mono font-semibold text-xl whitespace-nowrap";
+      fila.appendChild(monto);
+      otros.filter(function (o) { return hay(o[1]); }).forEach(function (o) {
+        var caja = celda(o[0], o[1]);
+        caja.lastChild.className += " font-mono whitespace-nowrap";
+        fila.appendChild(caja);
+      });
+      var plazo = tiempos(fechas);
+      if (plazo) { fila.appendChild(plazo); }
+      return fila;
+    }
+
+    // El contrato de SECOP II, con su proceso de contratacion
+    function detalleSecop(d) {
+      var partes = [];
+      var esContrato = hay(d.contratoId);
+      if (esContrato) {
+        partes.push(cabecera(["Valor del contrato", d.contratoValor], [],
+                             [["Firma", d.contratoFirma], ["Inicio", d.contratoInicio],
+                              ["Fin", d.contratoFin]]));
+        partes.push(parrafo("Objeto del contrato", d.contratoObjeto));
+        // La descripcion del proceso suele ser el mismo texto del objeto: solo se
+        // muestra cuando aporta algo distinto
+        if (d.contratoDescripcion !== d.contratoObjeto) {
+          partes.push(parrafo("Descripcion del proceso", d.contratoDescripcion));
+        }
+        partes.push(separador());
+      }
+      var proceso = seccion("Proceso de contratacion");
+      var datos = campos([["ID del proceso", d.procesoId, true],
+                          ["ID del portafolio", d.procesoPortafolio, true],
+                          ["Estado del procedimiento", d.procesoEstado],
+                          ["ID del contrato", esContrato ? d.contratoId : "", true]]);
+      if (datos) { proceso.appendChild(datos); }
+      var publicacion = tiempos([["Publicacion", d.procesoPublicacion],
+                                 ["Ultima publicacion", d.procesoUltima],
+                                 ["Recepcion de respuestas", d.procesoRecepcion],
+                                 ["Apertura de respuestas", d.procesoApertura],
+                                 ["Apertura efectiva", d.procesoEfectiva]]);
+      if (publicacion) {
+        publicacion.classList.add("mt-2");
+        proceso.appendChild(publicacion);
+      }
+      partes.push(proceso);
+      return partes;
+    }
+
+    // El contrato del historial de orden de gasto (SIIFWEB)
+    function detalleSiifweb(d) {
+      return [
+        cabecera(["Valor del contrato", d.siifwebValor],
+                 [["Pagado", d.siifwebPagado], ["Actas de pago", d.siifwebActas]],
+                 [["Firma", d.siifwebFirma], ["Inicio", d.siifwebInicio], ["Fin", d.siifwebFin]]),
+        parrafo("Descripcion", d.siifwebDescripcion),
+        separador(),
+        (function () {
+          var caja = seccion("Datos del contrato");
+          var datos = campos([["Tipo de contrato", d.siifwebTipo],
+                              ["Numero", d.siifwebNumero, true],
+                              ["Contratista", d.siifwebContratista],
+                              ["Interventor", d.siifwebInterventor],
+                              ["Dependencia", d.siifwebDependencia]]);
+          if (datos) { caja.appendChild(datos); }
+          return caja;
+        })(),
+      ];
+    }
+
+    function abrir(boton) {
+      var d = boton.dataset;
+      var esSiifweb = d.tipo === "siifweb";
+
+      fuente.textContent = esSiifweb ? "Contrato de SIIFWEB" : "Contratacion SECOP II";
+      titulo.textContent = d.titulo || "";
+      subtitulo.textContent = (esSiifweb ? d.siifwebContratista : d.contratoProveedor) || "";
+      chip.innerHTML = "";
+      var marca = insignia(esSiifweb ? "" : (hay(d.contratoId) ? d.contratoEstado : d.procesoEstado));
+      if (marca) { chip.appendChild(marca); }
+
+      cuerpo.innerHTML = "";
+      acciones.innerHTML = "";
+      (esSiifweb ? detalleSiifweb(d) : detalleSecop(d)).forEach(function (parte) {
+        if (parte) { cuerpo.appendChild(parte); }
+      });
+
+      if (hay(d.urlSecop)) { acciones.appendChild(enlace("Ver el proceso en SECOP II", d.urlSecop, true)); }
+      if (hay(d.urlAdmin)) { acciones.appendChild(enlace("Abrir el contrato", d.urlAdmin)); }
+      if (hay(d.urlProcesoAdmin)) { acciones.appendChild(enlace("Abrir el proceso", d.urlProcesoAdmin)); }
+
+      modal.classList.remove("hidden");
+      modal.classList.add("flex");
+    }
+
+    function cerrar() {
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    }
+
+    document.addEventListener("click", function (evento) {
+      var boton = evento.target.closest("[data-detalle]");
+      if (boton) { evento.preventDefault(); abrir(boton); return; }
+      if (evento.target.closest("[data-cerrar-detalle]")) { cerrar(); }
+    });
+    document.addEventListener("keydown", function (evento) {
+      if (evento.key === "Escape") { cerrar(); }
+    });
+  })();
+  </script>
 
 </div>
 {% endblock %}

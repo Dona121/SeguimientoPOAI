@@ -18,10 +18,10 @@ from io import BytesIO
 from django.db import transaction
 from openpyxl import load_workbook
 
-from .models import (Cdp, CdpImputacion, CentroCosto, Clasificacion, Compromiso,
-                     CompromisoImputacion, Contrato, DependenciaResponsable,
+from .models import (BpinProceso, Cdp, CdpImputacion, CentroCosto, Clasificacion, Compromiso,
+                     CompromisoImputacion, Contrato, ContratoSecop, DependenciaResponsable,
                      ContratoActa, ContratoImputacion, Fuente, Obligacion, ObligacionImputacion,
-                     OrdenGasto, Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
+                     OrdenGasto, ProcesoSecop, Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
 
 CERO = Decimal("0")
 
@@ -77,18 +77,44 @@ def stream(archivo):
         return BytesIO(fh.read())
 
 
-def leer_filas(ruta, hoja=None):
+def leer_filas(ruta, hoja=None, tabla=None, columnas=None):
     """Devuelve la lista de filas del xlsx como diccionarios.
 
     hoja: nombre preferido; si no existe se usa la primera del libro.
+    tabla: nombre de una TABLA de Excel. Se busca en todas las hojas del libro y se
+        leen solo sus celdas, asi que el archivo puede llamarse como sea y la tabla
+        estar donde sea: lo que manda es el nombre de la tabla. Es lo que hace falta
+        para un libro de trabajo con decenas de hojas, donde caer en la primera
+        cargaria cualquier cosa en silencio.
+    columnas: encabezados que el reporte debe traer; si falta alguno se aborta.
     """
-    libro = load_workbook(ruta, read_only=True, data_only=True)
-    hoja = libro[hoja] if hoja and hoja in libro.sheetnames else libro.worksheets[0]
-    iterador = hoja.iter_rows(values_only=True)
-    encabezado = [str(c).strip() if c is not None else "" for c in next(iterador)]
-    filas = [dict(zip(encabezado, fila)) for fila in iterador
-             if any(c is not None for c in fila)]
+    if tabla:
+        # ws.tables no existe en modo read_only: hay que abrir el libro completo
+        libro = load_workbook(ruta, data_only=True)
+        rango = next(((h, h.tables[tabla]) for h in libro.worksheets if tabla in h.tables), None)
+        if rango is None:
+            libro.close()
+            raise ValueError(f"El archivo no contiene la tabla '{tabla}'. "
+                             f"Hojas del libro: {', '.join(libro.sheetnames)}")
+        # ws.tables[nombre] devuelve el objeto Table (con .ref) o el rango en texto,
+        # segun la version de openpyxl
+        celdas = rango[0][getattr(rango[1], "ref", rango[1])]
+        encabezado = [str(c.value).strip() if c.value is not None else "" for c in celdas[0]]
+        filas = [dict(zip(encabezado, [c.value for c in fila])) for fila in celdas[1:]
+                 if any(c.value is not None for c in fila)]
+    else:
+        libro = load_workbook(ruta, read_only=True, data_only=True)
+        hoja = libro[hoja] if hoja and hoja in libro.sheetnames else libro.worksheets[0]
+        iterador = hoja.iter_rows(values_only=True)
+        encabezado = [str(c).strip() if c is not None else "" for c in next(iterador)]
+        filas = [dict(zip(encabezado, fila)) for fila in iterador
+                 if any(c is not None for c in fila)]
     libro.close()
+
+    if columnas:
+        faltan = [c for c in columnas if c not in encabezado]
+        if faltan:
+            raise ValueError(f"Al reporte le faltan columnas: {', '.join(faltan)}")
     return filas
 
 
@@ -349,6 +375,10 @@ def cargar_obligaciones(carga):
             documentos[nro] = Obligacion(
                 vigencia=vigencia, nro_obligacion=nro,
                 fecha_obli=fecha(f["FECHA_OBLI"]),
+                objeto_oblig=texto(f.get("OBJETO_OBLIG")),
+                # El consolidado trae NIT y razon social: de paso enriquece el catalogo
+                beneficiario=(cat.tercero(f.get("NIT"), f.get("BENEFICIARIO"))
+                              if texto(f.get("NIT")) else None),
                 tipo_orden_gasto=cat.orden_gasto(f.get("TIPO_ORDEN_GASTO")),
                 nro_orden_gasto=texto(f.get("NRO_ORDEN_GASTO")) or None,
                 prefijo_orden=texto(f.get("PREFIJO_ORDEN")) or None,
@@ -357,8 +387,8 @@ def cargar_obligaciones(carga):
             )
     previas = reemplazar(ObligacionImputacion, {"obligacion__vigencia": vigencia})
     upsert(Obligacion, documentos.values(), ["vigencia", "nro_obligacion"],
-           ["fecha_obli", "tipo_orden_gasto", "nro_orden_gasto", "prefijo_orden",
-            "orden_pago", "centro_costo"])
+           ["fecha_obli", "objeto_oblig", "beneficiario", "tipo_orden_gasto",
+            "nro_orden_gasto", "prefijo_orden", "orden_pago", "centro_costo"])
     mapa = {c.nro_obligacion: c for c in Obligacion.objects.filter(vigencia=vigencia)}
 
     imputaciones, de_reserva, huerfanas = [], 0, 0
@@ -613,6 +643,153 @@ def cargar_poai(carga):
     return len(filas), detalle
 
 
+# ---------- SECOP II ----------
+
+# Las 23 columnas de la tabla consolidada. Si el libro no las trae todas, la carga
+# se aborta antes de escribir nada.
+COLUMNAS_SECOP = (
+    "BPIN", "Año", "ID Proceso", "ID Contrato", "ID Portafolio", "Validacion BPIN",
+    "Proceso de Compra", "Referencia del Contrato", "Estado Contrato",
+    "Descripcion del Proceso", "Fecha de Firma", "Fecha de Inicio del Contrato",
+    "Fecha de Fin del Contrato", "Documento Proveedor", "Valor del Contrato",
+    "URLProceso", "Objeto del Contrato", "Fecha de Publicacion del Proceso",
+    "Fecha de Ultima Publicación", "Fecha de Recepcion de Respuestas",
+    "Fecha de Apertura de Respuesta", "Fecha de Apertura Efectiva",
+    "Estado del Procedimiento",
+)
+
+SIN_CONTRATO = "No Definido"   # marcador del proceso que aun no adjudica
+
+
+@transaction.atomic
+def cargar_secop(carga):
+    """Consolidado 'BPIN por proceso' de SECOP II: tres bases del DNP en una tabla.
+
+    La tabla se busca por NOMBRE (`BPIN_por_proceso`), no por hoja ni por archivo:
+    sirve cualquier libro que la contenga con sus 23 columnas.
+
+    Cada fila es un BPIN con su proceso y, si ya adjudico, su contrato. De ahi salen
+    las tres tablas: el proceso (fechas de publicacion y estado del procedimiento),
+    el contrato electronico (referencia, proveedor, valor, fechas) y la fila que los
+    ata al proyecto por BPIN.
+
+    Se descarga por rango completo, como el historial de contratos: cada carga
+    reemplaza a la anterior.
+    """
+    filas = leer_filas(stream(carga.archivo), tabla="BPIN_por_proceso", columnas=COLUMNAS_SECOP)
+    cat = Catalogos()
+
+    previas = BpinProceso.objects.all().delete()[0]
+    ContratoSecop.objects.all().delete()
+    ProcesoSecop.objects.all().delete()
+
+    # 1. Procesos. 'Proceso de Compra' es la misma columna que 'ID Portafolio' en el
+    #    lado de los contratos: se verifica y no se guarda dos veces.
+    procesos, discrepancias = {}, 0
+    for f in filas:
+        pid = texto(f.get("ID Proceso"))
+        compra = texto(f.get("Proceso de Compra"))
+        portafolio = texto(f.get("ID Portafolio"))
+        if compra and compra != portafolio:
+            discrepancias += 1
+        if not pid or pid in procesos:
+            continue
+        procesos[pid] = ProcesoSecop(
+            reporte=carga,
+            id_proceso=pid[:60],
+            id_portafolio=portafolio[:60],
+            estado_procedimiento=texto(f.get("Estado del Procedimiento"))[:60],
+            fecha_publicacion=fecha(f.get("Fecha de Publicacion del Proceso")),
+            fecha_ultima_publicacion=fecha(f.get("Fecha de Ultima Publicación")),
+            fecha_recepcion_respuestas=fecha(f.get("Fecha de Recepcion de Respuestas")),
+            fecha_apertura_respuestas=fecha(f.get("Fecha de Apertura de Respuesta")),
+            fecha_apertura_efectiva=fecha(f.get("Fecha de Apertura Efectiva")),
+        )
+    ProcesoSecop.objects.bulk_create(list(procesos.values()), batch_size=1000)
+    mapa_procesos = {p.id_proceso: p for p in ProcesoSecop.objects.all()}
+
+    # 2. Contratos electronicos. El mismo contrato se repite en tantas filas como
+    #    BPIN financie, con los mismos datos -verificado: 0 inconsistencias-, asi
+    #    que se toma la primera aparicion.
+    contratos = {}
+    for f in filas:
+        cid = texto(f.get("ID Contrato"))
+        proceso = mapa_procesos.get(texto(f.get("ID Proceso")))
+        if not cid or cid == SIN_CONTRATO or cid in contratos or proceso is None:
+            continue
+        nit = texto(f.get("Documento Proveedor"))
+        contratos[cid] = ContratoSecop(
+            reporte=carga,
+            id_contrato=cid[:60],
+            proceso=proceso,
+            referencia=texto(f.get("Referencia del Contrato"))[:120],
+            estado=texto(f.get("Estado Contrato"))[:60],
+            objeto=texto(f.get("Objeto del Contrato")),
+            descripcion_proceso=texto(f.get("Descripcion del Proceso")),
+            # El consolidado trae el NIT pero no la razon social: el nombre lo
+            # completa cualquier otro reporte que traiga ese tercero.
+            proveedor=cat.tercero(nit) if nit else None,
+            valor=decimal(f.get("Valor del Contrato")),
+            fecha_firma=fecha(f.get("Fecha de Firma")),
+            fecha_inicio=fecha(f.get("Fecha de Inicio del Contrato")),
+            fecha_fin=fecha(f.get("Fecha de Fin del Contrato")),
+            url_proceso=texto(f.get("URLProceso")),
+        )
+    ContratoSecop.objects.bulk_create(list(contratos.values()), batch_size=1000)
+    mapa_contratos = {c.id_contrato: c for c in ContratoSecop.objects.all()}
+
+    # 3. La fila del consolidado. No se crean proyectos desde SECOP: si el BPIN no
+    #    esta en el catalogo, la fila entra con proyecto nulo y el BPIN queda a la
+    #    vista para que el equipo decida.
+    catalogo = {p.bpin: p for p in Proyecto.objects.exclude(bpin__isnull=True)}
+    vistas, huerfanos = set(), set()
+    sin_contrato = repetidas = sin_proyecto = 0
+    lineas = []
+    for f in filas:
+        bpin = texto(f.get("BPIN"))
+        proceso = mapa_procesos.get(texto(f.get("ID Proceso")))
+        if not bpin or proceso is None:
+            continue
+        contrato = mapa_contratos.get(texto(f.get("ID Contrato")))
+        llave = (bpin, proceso.id_proceso, contrato.id_contrato if contrato else None)
+        if llave in vistas:       # el archivo trae filas repetidas exactas
+            repetidas += 1
+            continue
+        vistas.add(llave)
+        proyecto = catalogo.get(bpin)
+        if proyecto is None:
+            huerfanos.add(bpin)
+            sin_proyecto += 1
+        if contrato is None:
+            sin_contrato += 1
+        anio = texto(f.get("Año"))
+        lineas.append(BpinProceso(
+            reporte=carga,
+            bpin=bpin[:25],
+            proyecto=proyecto,
+            proceso=proceso,
+            contrato_secop=contrato,
+            anio=int(anio) if anio.isdigit() else None,
+            validacion_bpin=texto(f.get("Validacion BPIN"))[:20],
+        ))
+    BpinProceso.objects.bulk_create(lineas, batch_size=1000)
+
+    bpines = {b for b, _, _ in vistas}
+    detalle = armar_detalle(
+        f"{len(procesos)} procesos, {len(contratos)} contratos, "
+        f"{len(lineas)} filas BPIN de {len(bpines)} BPIN distintos",
+        previas, cat,
+        f"{sin_contrato} filas sin contrato adjudicado")
+    if huerfanos:
+        detalle += (f" | {sin_proyecto} filas con BPIN que no esta en el catalogo: "
+                    f"{', '.join(sorted(huerfanos))}")
+    if repetidas:
+        detalle += f" | {repetidas} filas repetidas descartadas"
+    if discrepancias:
+        detalle += f" | OJO: {discrepancias} filas donde 'Proceso de Compra' difiere de 'ID Portafolio'"
+    return len(filas), detalle
+
+
 PROCESADORES = {
     "cdp": cargar_cdp,
     "compromisos": cargar_compromisos,
@@ -620,6 +797,7 @@ PROCESADORES = {
     "reservas": cargar_reservas,
     "historial": cargar_historial,
     "poai": cargar_poai,
+    "secop": cargar_secop,
 }
 
 

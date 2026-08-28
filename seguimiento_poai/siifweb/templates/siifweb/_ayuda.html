@@ -1,0 +1,13 @@
+{% comment %}
+Icono de ayuda con su globo, para poner despues de un titulo:
+
+    {% include "siifweb/_ayuda.html" with texto="..." etiqueta="..." %}
+
+El globo solo lleva posicion y tamano propios (regla .ayuda en la ficha); el fondo, el
+borde y el redondeo son las clases de la tarjeta, para que siga el tema claro u oscuro.
+{% endcomment %}
+<span class="ayuda text-base-400" tabindex="0" aria-label="{{ etiqueta|default:'Ayuda' }}">
+  <i class="material-symbols-outlined" style="font-size:18px">help</i>
+  <span class="globo bg-white border rounded-default shadow-lg text-base-700
+               dark:bg-base-900 dark:border-base-800 dark:text-base-300">{{ texto }}</span>
+</span>

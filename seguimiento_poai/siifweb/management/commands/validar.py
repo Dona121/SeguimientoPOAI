@@ -9,12 +9,17 @@ no fila por fila: sobre 15.000 imputaciones eso serian 30.000 consultas.
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
-from django.db.models import Count, Sum
+from django.db.models import Count, F, Q, Sum
 
-from siifweb.models import (Cdp, CdpImputacion, Compromiso, CompromisoImputacion, Obligacion,
-                            ObligacionImputacion, Proyecto, Reserva, ReservaImputacion, Tercero)
+from siifweb.models import (BpinProceso, Cdp, CdpImputacion, Compromiso, CompromisoImputacion,
+                            ContratoSecop, Obligacion, ObligacionImputacion, ProcesoSecop,
+                            Proyecto, Reserva, ReservaImputacion, Tercero)
 
 TOL = Decimal("1")
+
+# Un contrato de la Gobernacion por encima de esto es un error de digitacion en la
+# fuente, no un contrato: el mayor real del periodo no llega a esa cifra.
+ATIPICO = Decimal("100000000000")   # 100.000 millones
 
 
 class Command(BaseCommand):
@@ -131,4 +136,91 @@ class Command(BaseCommand):
         self.stdout.write(f"  con dependencia              {con_dep:>6}")
         self.stdout.write(f"  terceros con nombre          "
                           f"{Tercero.objects.exclude(nombre__isnull=True).exclude(nombre='').count():>6}")
+
+        self.validar_secop(ok, mal)
         self.stdout.write("")
+
+    def validar_secop(self, ok, mal):
+        """SECOP II. No depende de --vigencia: el consolidado se descarga por rango
+        completo, asi que se revisa todo lo cargado."""
+        self.stdout.write(self.style.MIGRATE_HEADING("\n8. CONTRATACION PUBLICA (SECOP II)"))
+        if not (BpinProceso.objects.exists() or ProcesoSecop.objects.exists()):
+            self.stdout.write("  sin datos de SECOP II cargados")
+            return
+
+        filas = BpinProceso.objects.count()
+        con_contrato = BpinProceso.objects.filter(contrato_secop__isnull=False).count()
+        self.stdout.write(f"  procesos                     {ProcesoSecop.objects.count():>6}")
+        self.stdout.write(f"  contratos                    {ContratoSecop.objects.count():>6}")
+        self.stdout.write(f"  filas BPIN x proceso         {filas:>6}"
+                          f"   ({con_contrato} con contrato, {filas - con_contrato} en tramite)")
+        self.stdout.write(f"  BPIN distintos               "
+                          f"{BpinProceso.objects.values('bpin').distinct().count():>6}")
+        contratado = ContratoSecop.objects.aggregate(t=Sum("valor"))["t"] or 0
+        self.stdout.write(f"  valor contratado             {contratado:>22,.2f}")
+        limpio = ContratoSecop.objects.filter(valor__lte=ATIPICO).aggregate(t=Sum("valor"))["t"] or 0
+        if limpio != contratado:
+            # Un par de valores imposibles se comen el total: el util es el otro
+            self.stdout.write(f"  valor sin los atipicos       {limpio:>22,.2f}")
+
+        # --- coherencia de lo cargado ---
+        cruzadas = (BpinProceso.objects.filter(contrato_secop__isnull=False)
+                    .exclude(contrato_secop__proceso=F("proceso")).count())
+        self.stdout.write(f"  [{ok if cruzadas == 0 else mal}] cada fila apunta al proceso de su "
+                          f"contrato  ({cruzadas} cruzadas)")
+
+        # Todo contrato entra por una fila del consolidado: si alguno se quedo sin
+        # ninguna, la carga dejo basura
+        sueltos = ContratoSecop.objects.filter(bpines__isnull=True).count()
+        self.stdout.write(f"  [{ok if sueltos == 0 else mal}] todo contrato tiene su fila BPIN "
+                          f"({sueltos} sueltos)")
+
+        # --- lo que el equipo tiene que resolver ---
+        huerfanos = sorted(BpinProceso.objects.filter(proyecto__isnull=True)
+                           .values_list("bpin", flat=True).distinct())
+        self.stdout.write(f"  [{ok if not huerfanos else mal}] BPIN de SECOP que estan en el catalogo "
+                          f"({len(huerfanos)} sin proyecto)")
+        for bpin in huerfanos[:10]:
+            cuantas = BpinProceso.objects.filter(bpin=bpin).count()
+            self.stdout.write(f"        {bpin}  ({cuantas} filas) - crear el proyecto o revisar el BPIN")
+        if len(huerfanos) > 10:
+            self.stdout.write(f"        ... y {len(huerfanos) - 10} mas")
+
+        no_validados = BpinProceso.objects.exclude(validacion_bpin="Validado").count()
+        self.stdout.write(f"  [{ok if no_validados == 0 else mal}] BPIN validados por el DNP "
+                          f"({no_validados} sin validar)")
+
+        # --- calidad del dato de origen (se reporta, no se corrige) ---
+        atipicos = ContratoSecop.objects.filter(valor__gt=ATIPICO).order_by("-valor")
+        self.stdout.write(f"  [{ok if not atipicos else mal}] valores dentro de lo posible "
+                          f"({atipicos.count()} por encima de {ATIPICO:,.0f})")
+        for contrato in atipicos[:5]:
+            self.stdout.write(f"        {contrato.referencia or contrato.id_contrato:24} "
+                              f"{contrato.valor:>22,.2f}  estado={contrato.estado or '-'}")
+
+        sin_proveedor = ContratoSecop.objects.filter(proveedor__isnull=True).count()
+        sin_firma = ContratoSecop.objects.filter(fecha_firma__isnull=True).count()
+        sin_razon = (ContratoSecop.objects.filter(Q(proveedor__nombre__isnull=True)
+                                                 | Q(proveedor__nombre=""))
+                     .values("proveedor").distinct().count())
+        self.stdout.write(f"  contratos sin proveedor      {sin_proveedor:>6}")
+        self.stdout.write(f"  contratos sin fecha de firma {sin_firma:>6}")
+        self.stdout.write(f"  proveedores sin razon social {sin_razon:>6}"
+                          f"   (los completa cualquier reporte de SIIFWEB que los traiga)")
+
+        # --- el pipeline y el cruce con SIIFWEB ---
+        estados = (ProcesoSecop.objects.filter(bpines__contrato_secop__isnull=True)
+                   .values("estado_procedimiento").annotate(n=Count("id", distinct=True))
+                   .order_by("-n"))
+        if estados:
+            self.stdout.write("  procesos sin adjudicar, por estado:")
+            for estado in estados:
+                self.stdout.write(f"        {estado['estado_procedimiento'] or '(sin estado)':24} "
+                                  f"{estado['n']:>5}")
+
+        con_secop = Proyecto.objects.filter(procesos_secop__isnull=False).distinct()
+        con_ambos = con_secop.filter(compromisos_imputados__isnull=False).distinct().count()
+        self.stdout.write(f"  proyectos con contratacion   {con_secop.count():>6}"
+                          f"   ({con_ambos} tambien con compromisos en SIIFWEB)")
+        self.stdout.write("  el contraste de valores contra SIIFWEB es informativo: el contrato es el")
+        self.stdout.write("  total pactado y el compromiso es el RP de cada vigencia, no tienen que cuadrar")

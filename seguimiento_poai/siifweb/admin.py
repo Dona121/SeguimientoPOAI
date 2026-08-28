@@ -16,10 +16,10 @@ from unfold.contrib.filters.admin import (ChoicesDropdownFilter, RangeDateFilter
 from unfold.decorators import action, display
 
 from . import cargas
-from .models import (CargaReporte, Cdp, CdpImputacion, CentroCosto, Clasificacion, Compromiso,
-                     CompromisoImputacion, Contrato, ContratoActa, ContratoImputacion,
-                     DependenciaResponsable, Fuente, Obligacion, ObligacionImputacion, OrdenGasto,
-                     Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
+from .models import (BpinProceso, CargaReporte, Cdp, CdpImputacion, CentroCosto, Clasificacion,
+                     Compromiso, CompromisoImputacion, Contrato, ContratoActa, ContratoImputacion,
+                     ContratoSecop, DependenciaResponsable, Fuente, Obligacion, ObligacionImputacion,
+                     OrdenGasto, ProcesoSecop, Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import User, Group
@@ -549,6 +549,14 @@ class ReservaDelProyectoInline(InlineDeProyecto):
     readonly_fields = fields
 
 
+class SecopDelProyectoInline(InlineDeProyecto):
+    """La contratacion publica del proyecto: procesos y contratos de SECOP II."""
+    model = BpinProceso
+    verbose_name_plural = "Contratacion (SECOP II)"
+    fields = ("contrato_secop", "proceso", "anio", "validacion_bpin")
+    readonly_fields = fields
+
+
 class ClasificacionPorDefectoFilter(admin.SimpleListFilter):
     """Filtro del listado con valor por defecto.
 
@@ -594,7 +602,7 @@ class ProyectoAdmin(ModelAdmin):
     compressed_fields = False
     list_fullwidth = True
     inlines = (CdpDelProyectoInline, CompromisoDelProyectoInline, ObligacionDelProyectoInline,
-               ContratoDelProyectoInline, ReservaDelProyectoInline)
+               ContratoDelProyectoInline, ReservaDelProyectoInline, SecopDelProyectoInline)
     list_display = ("bpin", "nombre","responsable","ficha_link" ,"clasificacion_txt","fecha_primer_cdp","fecha_primer_rp","disponibilidad_definitiva",
                     "obligado")
     list_filter = (ClasificacionPorDefectoFilter,
@@ -673,12 +681,72 @@ class ProyectoAdmin(ModelAdmin):
         url = reverse("admin:siifweb_proyecto_ficha_ejecucion", args=(obj.pk,))
         return format_html('<a href="{}" class="text-primary-600" title="Expediente"><i class="material-symbols-outlined">folder_open</a>', url)
 
+    def _ficha_secop(self, proyecto):
+        """El panel de SECOP II: la contratacion publica del proyecto.
+
+        Los contratos se resuelven por una subconsulta de ids y no por el join con
+        BpinProceso: filtrar y sumar a la vez sobre la relacion multiplicaria las
+        filas. Es la misma cautela del grano que en el resto de la ficha.
+        """
+        ids_contratos = (BpinProceso.objects
+                         .filter(proyecto=proyecto, contrato_secop__isnull=False)
+                         .values("contrato_secop_id"))
+        contratos = (ContratoSecop.objects
+                     .filter(id__in=ids_contratos)
+                     .select_related("proveedor", "proceso")
+                     .order_by(F("fecha_firma").desc(nulls_last=True), "-valor"))
+        contratado = contratos.aggregate(t=Sum("valor"))["t"] or 0
+
+        # Procesos del proyecto que aun no adjudican: el pipeline contractual. SIIFWEB
+        # todavia no los ve como compromiso -el CDP puede existir desde antes, el RP
+        # solo se expide al firmar el contrato-.
+        ids_procesos = (BpinProceso.objects
+                        .filter(proyecto=proyecto, contrato_secop__isnull=True)
+                        .values("proceso_id"))
+        en_tramite = (ProcesoSecop.objects
+                      .filter(id__in=ids_procesos)
+                      .order_by(F("fecha_publicacion").desc(nulls_last=True)))
+
+        # Contraste, no conciliacion: el valor del contrato es el total pactado y el
+        # comprometido es el RP de cada vigencia. No tienen por que coincidir.
+        comprometido = (CompromisoImputacion.objects.filter(proyecto=proyecto)
+                        .aggregate(t=Sum("valor_compromiso_def"))["t"] or 0)
+
+        return {
+            "secop_contratos": contratos,
+            "secop_en_tramite": en_tramite,
+            # En el orden del tramite: primero la convocatoria, despues lo ya firmado
+            "secop_tarjetas": [
+                ("Procesos en tramite", en_tramite.count(), "publicados, sin contrato adjudicado", False),
+                ("Contratos en SECOP", contratos.count(), "contratos electronicos adjudicados", False),
+                ("Valor contratado", contratado, "suma del valor de esos contratos", True),
+                ("Comprometido en SIIFWEB", comprometido, "contraste: RP de todas las vigencias", True),
+            ],
+        }
+
     @action(description="Ficha de ejecucion", url_path="ficha-ejecucion", icon="analytics")
     def ficha_ejecucion(self, request, object_id):
-        """Vista propia: los inlines muestran filas, esto muestra la ejecucion agregada."""
+        """Vista propia: los inlines muestran filas, esto muestra la ejecucion agregada.
+
+        Dos paneles en la misma URL (?panel=siifweb|secop) para que la ficha no crezca
+        sin fin: cada uno queda enlazable y solo se consulta el que se esta viendo.
+        """
         proyecto = self.get_object(request, object_id)
         if proyecto is None:
             raise Http404("No hay proyecto con ese id.")
+
+        panel = "secop" if request.GET.get("panel") == "secop" else "siifweb"
+        comun = {
+            **self.admin_site.each_context(request),
+            "title": f"Ficha de ejecucion - {proyecto.bpin}",
+            "proyecto": proyecto,
+            "panel": panel,
+            "paneles": (("siifweb", "SIIFWEB"), ("secop", "SECOP II")),
+            "volver": reverse("admin:siifweb_proyecto_change", args=(object_id,)),
+        }
+        if panel == "secop":
+            return TemplateResponse(request, "siifweb/ficha_proyecto.html",
+                                    {**comun, **self._ficha_secop(proyecto)})
 
         por_vigencia = {}
 
@@ -715,7 +783,7 @@ class ProyectoAdmin(ModelAdmin):
         # multiplicaria las actas por el numero de imputaciones del contrato
         contratos = (Contrato.objects
                      .filter(imputaciones_del_contrato__proyecto=proyecto).distinct()
-                     .select_related("tercero")
+                     .select_related("tercero", "dependencia")
                      .annotate(n_actas=Count("actas_del_contrato", distinct=True),
                                pagado=suma_de(ContratoActa, "valor_pago", "contrato"))
                     .order_by("-valor_contrato"))
@@ -765,6 +833,26 @@ class ProyectoAdmin(ModelAdmin):
             .aggregate(t=Sum("compromisos_imputados__valor_compromiso_def"))["t"] or 0
         )
 
+        # Obligaciones del proyecto. El objeto propio viene en el consolidado
+        # (columna OBJETO_OBLIG); el del RP queda de respaldo para lo que se cargo
+        # antes de que ese campo existiera. Va por subconsulta y no por un segundo
+        # Sum: agregar dos relaciones a la vez multiplicaria las filas.
+        obligaciones_por_proyecto = (
+            Obligacion.objects
+            .filter(obligaciones_imputadas__proyecto=proyecto)
+            .annotate(valor_obli=Sum("obligaciones_imputadas__valor_obligacion"),
+                      objeto_rp=Subquery(ObligacionImputacion.objects
+                                         .filter(obligacion=OuterRef("pk"), proyecto=proyecto)
+                                         .values("compromiso__objeto_reg")[:1]))
+            .select_related("tipo_orden_gasto", "beneficiario")
+            .order_by("vigencia", "fecha_obli", "nro_obligacion")
+        )
+
+        obligaciones_por_proyecto_total = (
+            ObligacionImputacion.objects.filter(proyecto=proyecto)
+            .aggregate(t=Sum("valor_obligacion"))["t"] or 0
+        )
+
         fuentes_por_proyecto = (
             Fuente.objects
             .filter(compromisos_imputados__proyecto=proyecto)
@@ -778,9 +866,7 @@ class ProyectoAdmin(ModelAdmin):
         )
         
         contexto = {
-            **self.admin_site.each_context(request),
-            "title": f"Ficha de ejecucion - {proyecto.bpin}",
-            "proyecto": proyecto,
+            **comun,
             "filas": filas,
             "totales": totales,
             "totales_tarjetas": [
@@ -793,6 +879,8 @@ class ProyectoAdmin(ModelAdmin):
             "cdps_proyecto_total" : cdps_proyecto_total,
             "rps_por_proyecto" :rps_por_proyecto,
             "rps_por_proyecto_total" : rps_por_proyecto_total,
+            "obligaciones_por_proyecto": obligaciones_por_proyecto,
+            "obligaciones_por_proyecto_total": obligaciones_por_proyecto_total,
             "fuentes_por_proyecto":fuentes_por_proyecto,
             "fuentes_por_proyecto_total":fuentes_por_proyecto_total,
             "contratos": contratos,
@@ -800,7 +888,6 @@ class ProyectoAdmin(ModelAdmin):
             "total_pagado_bitacora": sum(p["t"] for p in pagos),
             "reservas": ReservaImputacion.objects.filter(proyecto=proyecto)
                         .select_related("reserva", "cdp_origen", "rubro"),
-            "volver": reverse("admin:siifweb_proyecto_change", args=(object_id,)),
         }
         return TemplateResponse(request, "siifweb/ficha_proyecto.html", contexto)
 
@@ -916,6 +1003,87 @@ class ClasificacionAdmin(ModelAdmin):
     @display(description="Proyectos", ordering="n")
     def n_proyectos(self, obj):
         return obj.n
+
+
+# ---------------------------------------------------------------------------
+# SECOP II
+# ---------------------------------------------------------------------------
+
+class BpinDelContratoInline(ImputacionInline):
+    """Los BPIN que financian este contrato: 18 contratos tienen mas de uno."""
+    model = BpinProceso
+    fk_name = "contrato_secop"
+    verbose_name_plural = "BPIN que financian el contrato"
+    fields = ("bpin", "proyecto", "anio", "validacion_bpin")
+    readonly_fields = fields
+
+
+class ContratoDelProcesoInline(ImputacionInline):
+    model = ContratoSecop
+    fk_name = "proceso"
+    verbose_name_plural = "Contratos adjudicados"
+    fields = ("referencia", "estado", "proveedor", "valor", "fecha_firma", "fecha_fin")
+    readonly_fields = fields
+
+
+@admin.register(ProcesoSecop)
+class ProcesoSecopAdmin(SoloLectura):
+    inlines = (ContratoDelProcesoInline,)
+    list_display = ("id_proceso", "id_portafolio", "estado_procedimiento",
+                    "fecha_publicacion", "n_contratos")
+    list_filter = (("estado_procedimiento", ChoicesDropdownFilter),
+                   ("fecha_publicacion", RangeDateFilter))
+    search_fields = ("id_proceso", "id_portafolio")
+    ordering = ("-fecha_publicacion",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(n=Count("contratos_del_proceso", distinct=True))
+
+    @display(description="Contratos", ordering="n")
+    def n_contratos(self, obj):
+        return obj.n
+
+
+@admin.register(ContratoSecop)
+class ContratoSecopAdmin(SoloLectura):
+    inlines = (BpinDelContratoInline,)
+    list_display = ("referencia", "estado", "proveedor", "valor_fmt", "fecha_firma",
+                    "fecha_fin", "objeto_corto", "ver_en_secop")
+    list_filter = (("estado", ChoicesDropdownFilter), ("fecha_firma", RangeDateFilter))
+    search_fields = ("referencia", "id_contrato", "objeto", "proveedor__codigo", "proveedor__nombre")
+    ordering = ("-fecha_firma",)
+    list_filter_submit = True
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("proveedor", "proceso")
+
+    @display(description="Valor", ordering="valor")
+    def valor_fmt(self, obj):
+        return pesos(obj.valor)
+
+    @display(description="Objeto")
+    def objeto_corto(self, obj):
+        return (obj.objeto or "")[:70]
+
+    @display(description="")
+    def ver_en_secop(self, obj):
+        if not obj.url_proceso:
+            return "-"
+        return format_html('<a href="{}" target="_blank" class="text-primary-600" '
+                           'title="Ver el proceso en SECOP II">'
+                           '<i class="material-symbols-outlined">open_in_new</i></a>', obj.url_proceso)
+
+
+@admin.register(BpinProceso)
+class BpinProcesoAdmin(SoloLectura):
+    list_display = ("bpin", "proyecto", "anio", "proceso", "contrato_secop", "validacion_bpin")
+    list_filter = (("anio", ChoicesDropdownFilter), ("validacion_bpin", ChoicesDropdownFilter),
+                   ("proyecto", RelatedDropdownFilter))
+    search_fields = ("bpin", "proceso__id_proceso", "contrato_secop__referencia")
+    ordering = ("bpin",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("proyecto", "proceso", "contrato_secop")
 
 
 @admin.register(OrdenGasto)

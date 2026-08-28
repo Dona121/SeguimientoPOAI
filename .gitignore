@@ -13,6 +13,7 @@ __pycache__/
 db.sqlite3
 db.sqlite3-journal
 db.sqlite3-wal
+db.sqlite3-shm
 *.log
 
 # Reportes subidos desde el admin (grandes; se recargan, no se versionan)
@@ -23,8 +24,17 @@ staticfiles/
 
 # Secretos / configuracion local
 .env
+*.env
+env_*.txt
 *.local
+
+# Respaldo personal en MEGA: memorias del asistente y copia de los secretos
+respaldo_claude/
+
+# Scripts temporales de una sesion
+_*.py
 
 # Sistema operativo
 Thumbs.db
 .DS_Store
+desktop.ini

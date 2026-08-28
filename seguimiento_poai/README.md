@@ -235,20 +235,34 @@ identidades internas y la conciliacion padre-hijo, que siguen dando cero descuad
 `Proyectos` es la entrada del admin. El listado muestra certificado, obligado y una barra
 de avance por proyecto; cada fila tiene enlace a su ficha.
 
-**Detalle del proyecto**: cinco inlines con lo que le cuelga — disponibilidades,
-compromisos, obligaciones, contratos y reservas. Se limitan a 20 filas por inline: un
-proyecto de nomina tiene cientos de imputaciones y los inlines no paginan.
+**Detalle del proyecto**: seis inlines con lo que le cuelga — disponibilidades,
+compromisos, obligaciones, contratos, reservas y contratacion de SECOP II. Se limitan a
+20 filas por inline: un proyecto de nomina tiene cientos de imputaciones y los inlines no
+paginan.
 
 **Ficha de ejecucion** (boton en el detalle, o el enlace del listado): una vista propia,
 hecha con una changeform action de unfold, porque los inlines muestran filas sueltas y
-aqui hace falta agregacion. Trae:
+aqui hace falta agregacion. Se divide en **dos pestanas sobre la misma URL**
+(`?panel=siifweb|secop`), cada una enlazable y calculada solo cuando se abre.
+
+Panel **SIIFWEB**:
 
 - Cuatro tarjetas con el total de cada etapa de la cadena.
 - Tabla de ejecucion **por vigencia**: certificado, comprometido, obligado, pagado, y los
   dos saldos (sin comprometer, sin obligar) con barra de avance.
+- CDPs y RPs del proyecto, con su objeto y su valor.
+- **Obligaciones**: vigencia, numero, fecha, objeto, tipo de orden de gasto y valor
+  definitivo. El objeto sale de `OBJETO_OBLIG` (el consolidado paso de 25 a 27 columnas y
+  ahora trae objeto, NIT y beneficiario); si una obligacion se cargo antes de que ese
+  campo existiera, se muestra el objeto del RP contra el que se causo, resuelto por
+  subconsulta para no multiplicar filas.
+- Fuentes de financiacion, con lo comprometido por cada una.
 - Contratos del proyecto con contratista, valor, numero de actas y pagado real.
 - **Calendario de pagos**: cada acta del contrato con su fecha, tipo, numero y contratista.
 - Reservas, con el CDP de origen de la vigencia anterior, su obligado y su saldo.
+
+Panel **SECOP II**: procesos en tramite y contratos electronicos del BPIN (ver la seccion
+de SECOP II). Cada fila abre un modal con el detalle, para no sacar al usuario de la ficha.
 
 Implementacion: `@action(url_path="ficha-ejecucion")` + `actions_detail`, devolviendo un
 `TemplateResponse` con `admin_site.each_context()` sobre una plantilla que extiende
@@ -293,8 +307,69 @@ los inlines traen datos.
 - `siifweb/admin.py` — formulario con validacion de duplicados y la accion de procesar
 - `siifweb/management/commands/cargar_reporte.py` — carga por consola
 - `siifweb/management/commands/validar.py` — conciliaciones sobre lo migrado
+- `siifweb/tests/` — la bateria automatica (`manage.py test siifweb`)
 - `prueba_admin.py` — ejerce el flujo del admin (subir + procesar) sin navegador
 - `prueba_admin_unfold.py` — verifica que las 18 paginas cargan y que los inlines traen datos
+- `prueba_secop.py` — carga el consolidado de SECOP II real en la sqlite local
+
+## Validaciones
+
+```bash
+uv run --directory seguimiento_poai python manage.py validar --vigencia 2025
+```
+
+Siete secciones sobre lo migrado de SIIFWEB (totales, identidades del reporte,
+conciliacion padre-hijo, salto temporal de reservas, ejecucion de reservas, cobertura
+por proyecto y catalogo) y una octava sobre **SECOP II**, que no depende de la vigencia
+porque el consolidado se descarga por rango completo. La octava revisa:
+
+| Que | Que significa si falla |
+|---|---|
+| Cada fila apunta al proceso de su contrato | Incoherencia de la carga, no del dato |
+| Todo contrato tiene su fila BPIN | Igual: quedo un contrato huerfano |
+| Los BPIN de SECOP estan en el catalogo | **Accionable**: el equipo crea el proyecto o corrige el BPIN. Los lista uno por uno |
+| Los BPIN estan validados por el DNP | Aviso: la fuente marca el BPIN como no validado |
+| Los valores estan dentro de lo posible | Error de digitacion en SECOP (hay dos contratos con valores imposibles). Se cargan igual y se reportan; el total tambien se muestra sin ellos |
+
+Y a titulo informativo: contratos sin proveedor o sin fecha de firma, proveedores sin
+razon social, los procesos sin adjudicar agrupados por estado, y cuantos proyectos con
+contratacion tienen tambien compromisos en SIIFWEB.
+
+El contraste de valores entre SECOP y SIIFWEB es informativo y no una conciliacion: el
+contrato es el total pactado y el compromiso es el RP de cada vigencia.
+
+## Pruebas
+
+```bash
+uv run --directory seguimiento_poai python manage.py test siifweb
+```
+
+**Nunca tocan produccion.** El `.env` apunta a Supabase y el almacenamiento por defecto
+es el bucket S3, asi que `settings.py` detecta el comando `test` y fuerza sqlite en
+memoria, disco temporal para los archivos y un hasher rapido. No hay que acordarse de
+exportar nada.
+
+123 pruebas en siete modulos:
+
+| Modulo | Que vigila |
+|---|---|
+| `test_leer_filas.py` | El lector de xlsx: encontrar la TABLA por su nombre en la hoja que sea, fallar claro si no esta o si le faltan columnas, y seguir leyendo como antes los reportes sin tabla |
+| `test_cargar_secop.py` | El cargador: grano, deduplicacion, procesos sin contrato, BPIN fuera del catalogo, normalizacion, idempotencia, atomicidad y el mensaje de resultado. Al final, las cifras del archivo real |
+| `test_modelos_secop.py` | Llaves unicas, la restriccion de la fila BPIN, los `PROTECT` y el tipo de reporte nuevo |
+| `test_ficha_proyecto.py` | Los dos paneles: que cada uno consulte solo lo suyo, el orden del tramite, el modal, las ayudas, las tablas con alto limitado y que ninguna suma se multiplique |
+| `test_regresion_cargadores.py` | Que los cargadores de siempre sigan funcionando, ya que comparten `leer_filas` con el de SECOP |
+| `test_validar.py` | La seccion 8 del comando `validar` y que las siete anteriores sigan saliendo |
+| `test_admin_y_sistema.py` | Las paginas nuevas y **todas** las que ya existian, el menu lateral, `check` y que no queden migraciones sin crear |
+
+Las cifras del archivo real (`data/secop/ReporteSIIFWEB_20260814.xlsx`) se comprueban solo
+si el archivo esta a mano; en otra maquina esas pruebas se saltan solas.
+
+Las pruebas se verificaron por mutacion: se rompio el codigo a proposito en veinte puntos
+(la subconsulta que evita multiplicar filas, la deduplicacion, la validacion de columnas,
+el `select_related`, el orden de las tarjetas, el comentario de la plantilla, la lectura
+de `OBJETO_OBLIG`, su actualizacion en el upsert…) y en todos los casos fallo la prueba
+que corresponde. Tres pruebas resultaron pasar con el codigo roto y se corrigieron: no
+basta con que la suite este en verde.
 
 ## Los 18 modelos
 
