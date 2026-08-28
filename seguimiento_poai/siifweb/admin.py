@@ -257,7 +257,12 @@ class CargaReporteAdmin(ModelAdmin):
 
     @action(description="Procesar los reportes seleccionados", icon="play_arrow")
     def procesar_cargas(self, request, queryset):
-        for carga in queryset.order_by("vigencia", "id"):
+        # Los FK exigen orden: primero los consolidados por vigencia ascendente y
+        # despues los de rango completo (historial, POAI, SECOP), que enganchan con
+        # lo que ya quedo cargado. Esos van sin vigencia, y donde caen los nulos
+        # depende del motor -SQLite los pone primero, PostgreSQL al final-, asi que
+        # se ordena explicitamente para que no dependa de la base.
+        for carga in queryset.order_by(F("vigencia").asc(nulls_last=True), "id"):
             if cargas.procesar(carga):
                 self.message_user(request, f"{carga}: {carga.mensaje}", messages.SUCCESS)
             else:

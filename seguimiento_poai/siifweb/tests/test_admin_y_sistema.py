@@ -115,6 +115,52 @@ class PaginasQueYaExistian(AdminBase):
         self.assertEqual(self.client.get(url).status_code, 200)
 
 
+class OrdenDeProceso(TestCase):
+    """La accion del admin procesa en el orden que exigen los FK, no en el de seleccion."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.usuario = get_user_model().objects.create_superuser("admin2", "b@b.co", "clave")
+
+    def crear(self, tipo, vigencia):
+        from siifweb.models import CargaReporte
+        return CargaReporte.objects.create(tipo_reporte=tipo, vigencia=vigencia,
+                                           hash=f"{tipo}-{vigencia}".ljust(64, "0"))
+
+    def test_los_de_rango_completo_van_despues_de_los_consolidados(self):
+        from unittest.mock import patch
+
+        from django.test import RequestFactory
+
+        from siifweb import cargas
+        from siifweb.models import CargaReporte
+
+        # Se crean a proposito en el orden equivocado
+        self.crear("historial", None)
+        self.crear("secop", None)
+        self.crear("obligaciones", 2025)
+        self.crear("cdp", 2024)
+        self.crear("poai", None)
+
+        procesadas = []
+        registro = admin.site._registry[CargaReporte]
+        peticion = RequestFactory().post("/")
+        peticion.user = self.usuario
+
+        def anotar(carga):
+            procesadas.append((carga.tipo_reporte, carga.vigencia))
+            return True
+
+        with patch.object(cargas, "procesar", side_effect=anotar), \
+                patch.object(type(registro), "message_user"):
+            registro.procesar_cargas(peticion, CargaReporte.objects.all())
+
+        vigencias = [v for _, v in procesadas]
+        self.assertEqual(vigencias[:2], [2024, 2025])          # consolidados, ascendente
+        self.assertTrue(all(v is None for v in vigencias[2:]))  # rango completo al final
+        self.assertEqual([t for t, _ in procesadas[2:]], ["historial", "secop", "poai"])
+
+
 class Sistema(TestCase):
     def test_el_check_de_django_no_reporta_errores(self):
         salida = StringIO()

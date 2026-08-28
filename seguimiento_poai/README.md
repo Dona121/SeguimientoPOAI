@@ -46,16 +46,17 @@ Subir y procesar son dos pasos separados. Al grabar, la carga queda **pendiente*
 migra hasta correr la accion. Se pueden crear los cinco registros y luego seleccionarlos
 todos y procesarlos de una sola pasada.
 
-Cuidado con el orden: la accion no procesa en el orden en que se seleccionan, sino con
-`queryset.order_by("vigencia", "id")`. Entre los consolidados de una misma vigencia manda
-el `id` (orden de creacion), asi que crearlos en el orden de carga los procesa bien. Pero
-**el historial no tiene vigencia (`NULL`), y en SQLite el `NULL` ordena primero**: en un
-lote de "seleccionar todo", el historial correria ANTES que los consolidados de la vigencia
-y los contratos de ese anio no encontrarian su RP (todavia no cargado), quedando sin
-enganchar. Los de anios anteriores si enganchan, porque ya estan en la base.
+La accion no procesa en el orden en que se seleccionan, sino con
+`order_by(F("vigencia").asc(nulls_last=True), "id")`: **primero los consolidados, por
+vigencia ascendente, y al final los de rango completo** (historial, POAI y SECOP II), que
+son los que enganchan con lo ya cargado. Entre los consolidados de una misma vigencia manda
+el `id`, es decir el orden en que se crearon, asi que crearlos en el orden de carga los
+procesa bien.
 
-Forma segura sin tocar codigo: procesar primero los **cuatro consolidados** juntos y en una
-segunda pasada el **historial** solo.
+> Antes se ordenaba solo por `vigencia`, y ahi donde caen los nulos depende del motor:
+> SQLite los pone primero y PostgreSQL al final. En un lote de "seleccionar todo" sobre
+> SQLite, el historial corria ANTES que los consolidados y los contratos de ese anio no
+> encontraban su RP. Por eso ahora el orden es explicito y no depende de la base.
 
 Saltarse uno no obliga a ir de a uno: el proceso es idempotente (recargar reemplaza), asi
 que se puede agregar el que falto y volver a correr la accion sobre todos, o solo sobre ese.
@@ -122,15 +123,32 @@ teclea o se pega desde Excel: siempre cruza. Verificado con `prueba_flujo_equipo
 
 ## Orden de carga (importante)
 
-Los FK exigen que el padre exista antes que el hijo:
+Los FK exigen que el padre exista antes que el hijo. Primero, **por cada vigencia y en
+orden ascendente** (2024 antes que 2025):
 
 1. `cdp` de la vigencia
 2. `compromisos` de la vigencia (apuntan a los CDP)
-3. `obligaciones` de la vigencia (apuntan a los RP)
+3. `obligaciones` de la vigencia (apuntan a los RP; si el RP no esta en su vigencia se
+   busca en v-1, que es ejecucion de reserva)
 4. `reservas` de la vigencia v (apuntan a los **CDP de v-1**)
-5. `historial` al final: engancha con los RP de **todas** las vigencias cargadas
 
-Y las vigencias en orden ascendente: 2024 antes que 2025.
+Y despues, una sola vez, los tres que se descargan por **rango completo** y no llevan
+vigencia:
+
+5. `historial` — engancha con los RP de **todas** las vigencias cargadas
+6. `poai` — opcional; completa nombre, dependencia responsable y clasificacion
+7. `secop` — va de ultimo: engancha por BPIN y **no crea proyectos**, asi que cuantos mas
+   proyectos haya en el catalogo, menos BPIN quedan sin enganchar
+
+| Reporte | Vigencia | Depende de |
+|---|---|---|
+| `cdp` | por vigencia | — |
+| `compromisos` | por vigencia | los CDP de esa vigencia |
+| `obligaciones` | por vigencia | los RP de esa vigencia (y de v-1) |
+| `reservas` | por vigencia | los CDP de v-1 |
+| `historial` | rango completo | los RP de todas las vigencias |
+| `poai` | rango completo | nada; solo escribe en el catalogo |
+| `secop` | rango completo | el catalogo de proyectos (por BPIN) |
 
 ## El historial de orden de gasto
 
