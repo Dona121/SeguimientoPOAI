@@ -13,7 +13,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from siifweb.models import BpinProceso, ContratoSecop, ProcesoSecop
+from siifweb.models import BpinProceso, ContratoSecop, ProcesoSecop, Proyecto
 
 from .fabricas import carga_secop, contrato_siifweb, fila, proyecto, sin_contrato
 
@@ -91,12 +91,21 @@ class PaginasQueYaExistian(AdminBase):
                 url = reverse(f"admin:siifweb_{modelo._meta.model_name}_changelist")
                 self.assertEqual(self.client.get(url).status_code, 200)
 
-    def test_el_detalle_del_proyecto_trae_el_inline_de_secop(self):
+    def test_el_detalle_del_proyecto_es_solo_el_proyecto(self):
+        """Una sola pestana: la ejecucion se revisa en la ficha, no en inlines.
+
+        El detalle tenia seis inlines (CDP, RP, obligaciones, contratos, reservas y
+        SECOP II) que repetian -recortados a 20 filas- lo que la ficha muestra
+        completo y agregado.
+        """
         contrato_siifweb(self.proy)
         url = reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,))
         respuesta = self.client.get(url)
         self.assertEqual(respuesta.status_code, 200)
-        self.assertContains(respuesta, "Contratacion (SECOP II)")
+        self.assertEqual(list(admin.site._registry[Proyecto].inlines), [])
+        self.assertNotContains(respuesta, "Contratacion (SECOP II)")
+        self.assertContains(respuesta,
+                            reverse("admin:siifweb_proyecto_ficha_ejecucion", args=(self.proy.pk,)))
 
     def test_la_pagina_de_cargas_muestra_el_tipo_secop(self):
         url = reverse("admin:siifweb_cargareporte_changelist")

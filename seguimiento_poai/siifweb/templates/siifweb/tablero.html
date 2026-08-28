@@ -1,0 +1,322 @@
+{# base_site (no base): base.html deja el bloque branding vacio y desaparece el encabezado #}
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block title %}Dashboard de seguimiento | SIIFWEB{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{{ volver }}" class="font-medium text-primary-600">Proyectos</a></li>
+      <li class="mx-2">/</li>
+      <li>Dashboard</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .tb .in { width:100%; border:1px solid var(--color-base-200); border-radius:6px; padding:.5rem .7rem;
+            font-size:.875rem; background:#fff; color:var(--color-base-800); }
+  .tb .in:focus { outline:2px solid var(--color-primary-600); outline-offset:-1px; border-color:transparent; }
+  .tb .lbl { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em;
+             color:var(--color-base-500); font-weight:600; margin-bottom:.35rem; display:block; }
+  .tb .btn-verde { background:var(--color-primary-600); color:#fff; }
+  .tb .btn-verde:hover { background:var(--color-primary-700); }
+  .tb .chip { display:inline-flex; align-items:center; gap:.4rem; font-size:.875rem;
+              color:var(--color-base-700); border:1px solid var(--color-base-200);
+              border-radius:9999px; padding:.3rem .75rem; cursor:pointer; }
+  .tb .chip input { accent-color:var(--color-primary-600); }
+  .tb .chip:has(input:checked) { border-color:var(--color-primary-600); color:var(--color-primary-700);
+                                 background:var(--color-primary-50); }
+  /* Ayuda al lado del titulo: solo posicion y tamano; el fondo y el borde
+     son las clases de la tarjeta, para que siga el tema claro u oscuro. */
+  .ayuda { position:relative; display:inline-flex; vertical-align:middle; cursor:help; }
+  .ayuda .globo { position:absolute; left:0; top:1.75rem; z-index:40; width:24rem; max-width:78vw;
+                  padding:.75rem 1rem; font-size:.8125rem; font-weight:400; line-height:1.5;
+                  text-transform:none; visibility:hidden; opacity:0; transition:opacity .12s ease; }
+  .ayuda:hover .globo, .ayuda:focus-within .globo { visibility:visible; opacity:1; }
+</style>
+
+<div class="tb flex flex-col gap-6">
+
+  {# ---- Slicers ---- #}
+  <form method="get">
+  <section class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-6 py-4 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Periodo y filtros
+        {% include "siifweb/_ayuda.html" with etiqueta="Como cortan las fechas" texto="Cada etapa se filtra por su propia fecha: el CDP por la de expedicion, el RP por la de registro, la obligacion por la de causacion y el pago por la fecha del acta. Asi, un rango responde que se movio en ese periodo." %}</h2>
+    </div>
+    <div class="p-6 flex flex-col gap-5">
+
+      <div>
+        <span class="lbl">Periodo</span>
+        <div class="flex flex-wrap gap-2">
+          {% for clave, titulo in presets %}
+          <label class="chip">
+            <input type="radio" name="preset" value="{{ clave }}" {% if preset == clave %}checked{% endif %}>
+            {{ titulo }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-4">
+        <div>
+          <span class="lbl">Desde</span>
+          <input type="date" name="desde" class="in" value="{{ desde }}">
+        </div>
+        <div>
+          <span class="lbl">Hasta</span>
+          <input type="date" name="hasta" class="in" value="{{ hasta }}">
+        </div>
+        <div>
+          <span class="lbl">Dependencia responsable</span>
+          <select name="dependencia" class="in">
+            <option value="">Todas</option>
+            {% for d in dependencias %}
+            <option value="{{ d.pk }}" {% if dependencia_sel == d.pk %}selected{% endif %}>{{ d.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <span class="lbl">Clasificacion</span>
+          <select name="clasificacion" class="in">
+            <option value="">Todas</option>
+            {% for c in clasificaciones %}
+            <option value="{{ c.pk }}" {% if clasificacion_sel == c.pk %}selected{% endif %}>{{ c.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <span class="lbl">Vigencia</span>
+        <div class="flex flex-wrap gap-2">
+          {% for v in vigencias_disponibles %}
+          <label class="chip">
+            <input type="checkbox" name="vigencia" value="{{ v }}" {% if v in vigencias_sel %}checked{% endif %}>
+            {{ v }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 flex-wrap">
+        <button type="submit" class="btn-verde inline-flex items-center gap-1.5 rounded-default
+                px-4 py-2.5 text-sm font-semibold">
+          <span class="material-symbols-outlined text-base leading-none">filter_alt</span> Aplicar
+        </button>
+        <a href="{{ limpiar }}" class="text-sm font-medium text-base-500">Limpiar filtros</a>
+        <span class="text-sm text-base-400">{{ leyenda_periodo }}{% if ultimo_dato %}
+          · datos cargados hasta el {{ ultimo_dato }}{% endif %}</span>
+      </div>
+    </div>
+  </section>
+  </form>
+
+  {% if sin_movimiento %}
+  <div class="border rounded-default px-4 py-3 text-sm border-yellow-600 text-yellow-700
+              dark:text-yellow-500">
+    <strong>El periodo elegido no registra movimientos.</strong>
+    {% if ultimo_dato %}Los reportes cargados llegan hasta el {{ ultimo_dato }};
+    un periodo posterior sale en cero porque el dato todavia no existe, no porque las
+    dependencias no hayan gestionado.{% endif %}
+  </div>
+  {% endif %}
+
+  {# ---- Totales del periodo ---- #}
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    {% for etiqueta, valor, nota, es_dinero in tarjetas %}
+    <div class="bg-white border rounded-default shadow-xs p-3 dark:bg-base-900 dark:border-base-800">
+      <div class="text-xs text-base-500 uppercase tracking-wider">{{ etiqueta }}</div>
+      <div class="font-semibold text-lg mt-1 text-base-900 dark:text-base-100">
+        {% if es_dinero %}${{ valor|floatformat:0|intcomma }}{% else %}{{ valor|intcomma }}{% endif %}
+      </div>
+      <div class="text-xs text-base-400 mt-1">{{ nota }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ---- Gestion por dependencia ---- #}
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Gestion por dependencia responsable
+        {% include "siifweb/_ayuda.html" with etiqueta="Que muestra la tabla" texto="Una fila por dependencia, ordenada por lo comprometido. Proyectos son los que tiene asignados; las columnas 'con CDP', 'con RP', 'con obligacion' y 'con pago' cuentan en cuantos de esos proyectos se movio esa etapa dentro del periodo. Actas de pago son los giros con fecha propia; Pagado es el valor pagado de las obligaciones. Los procesos y contratos cancelados no se cuentan: el tramite se cayo y no hay nada que ejecutar. Un contrato que financia proyectos de dos dependencias cuenta en las dos, asi que el total de la tabla puede superar el numero de contratos distintos. Haz clic en una dependencia para ver sus proyectos." %}</h2>
+    </div>
+    <div class="overflow-auto" style="max-height:26rem">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white
+                      dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr>
+            <th class="px-4 pt-3 text-left"></th>
+            <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="5">Proyectos</th>
+            <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="4">Documentos</th>
+            <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="4">Montos</th>
+            <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="3">SECOP II</th>
+          </tr>
+          <tr>
+            <th class="px-4 py-2 text-left">Dependencia</th>
+            <th class="px-4 py-2 text-right border-l dark:border-base-800">Asignados</th>
+            <th class="px-4 py-2 text-right">Con CDP</th>
+            <th class="px-4 py-2 text-right">Con RP</th>
+            <th class="px-4 py-2 text-right">Con oblig.</th>
+            <th class="px-4 py-2 text-right">Con pago</th>
+            <th class="px-4 py-2 text-right border-l dark:border-base-800">CDPs</th>
+            <th class="px-4 py-2 text-right">RPs</th>
+            <th class="px-4 py-2 text-right">Obligaciones</th>
+            <th class="px-4 py-2 text-right">Actas</th>
+            <th class="px-4 py-2 text-right border-l dark:border-base-800">Disponible</th>
+            <th class="px-4 py-2 text-right">Comprometido</th>
+            <th class="px-4 py-2 text-right">Obligado</th>
+            <th class="px-4 py-2 text-right">Pagado</th>
+            <th class="px-4 py-2 text-right border-l dark:border-base-800">Procesos</th>
+            <th class="px-4 py-2 text-right">Contratos</th>
+            <th class="px-4 py-2 text-right">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filas %}
+          <tr class="border-b dark:border-base-800 {% if dependencia_sel == f.llave %}bg-primary-50 dark:bg-white/[.06]{% endif %}">
+            <td class="px-4 py-2 font-medium">
+              <a href="{{ f.url }}" class="text-primary-600">{{ f.nombre }}</a>
+            </td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.proyectos }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.proyectos_con_cdp }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.proyectos_con_rp }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.proyectos_con_obligacion }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.proyectos_con_pago }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.cdps|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.rps|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.obligaciones|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.actas|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.disponible|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.comprometido|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.obligado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.pagado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.procesos_secop|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.contratos_secop|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">
+              {% if f.secop_dudosos %}<span class="text-yellow-600" title="Incluye {{ f.secop_dudosos }} contrato(s) con valor imposible en SECOP (error de la fuente). El comando validar los reporta.">&#9888;</span> {% endif %}
+              {{ f.valor_secop|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="17" class="px-4 py-5 text-center text-base-500">
+            No hay dependencias con proyectos asignados para este filtro</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="font-medium border-t dark:border-base-800">
+          <tr>
+            <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ totales.proyectos }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.proyectos_con_cdp }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.proyectos_con_rp }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.proyectos_con_obligacion }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.proyectos_con_pago }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ totales.cdps|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.rps|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.obligaciones|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.actas|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ totales.disponible|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.comprometido|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.obligado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.pagado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ totales.procesos_secop|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.contratos_secop|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ totales.valor_secop|floatformat:0|intcomma }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {# ---- El detalle de la dependencia elegida ---- #}
+  {% if dependencia_elegida %}
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 flex items-start justify-between gap-4 flex-wrap dark:border-base-800">
+      <div>
+        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
+          Proyectos de {{ dependencia_elegida.nombre }}</h2>
+        <p class="text-sm text-base-500 mt-0.5">
+          Mismas columnas, una fila por proyecto. El nombre abre su ficha de ejecucion.</p>
+      </div>
+      <a href="{{ limpiar }}" class="border font-medium px-3 py-2 rounded-default text-sm
+         text-base-700 dark:text-base-300 dark:border-base-700">Ver todas las dependencias</a>
+    </div>
+    <div class="overflow-auto" style="max-height:26rem">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white
+                      dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr>
+            <th class="px-4 py-2 text-left">Proyecto</th>
+            <th class="px-4 py-2 text-right border-l dark:border-base-800">CDPs</th>
+            <th class="px-4 py-2 text-right">RPs</th>
+            <th class="px-4 py-2 text-right">Obligaciones</th>
+            <th class="px-4 py-2 text-right">Actas</th>
+            <th class="px-4 py-2 text-right border-l dark:border-base-800">Disponible</th>
+            <th class="px-4 py-2 text-right">Comprometido</th>
+            <th class="px-4 py-2 text-right">Obligado</th>
+            <th class="px-4 py-2 text-right">Pagado</th>
+            <th class="px-4 py-2 text-right border-l dark:border-base-800">Procesos</th>
+            <th class="px-4 py-2 text-right">Contratos</th>
+            <th class="px-4 py-2 text-right">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filas_proyecto %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-4 py-2"><a href="{{ f.url }}" class="text-primary-600">{{ f.nombre }}</a></td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.cdps|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.rps|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.obligaciones|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.actas|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.disponible|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.comprometido|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.obligado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.pagado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.procesos_secop|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.contratos_secop|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">
+              {% if f.secop_dudosos %}<span class="text-yellow-600" title="Incluye {{ f.secop_dudosos }} contrato(s) con valor imposible en SECOP (error de la fuente).">&#9888;</span> {% endif %}
+              {{ f.valor_secop|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="12" class="px-4 py-5 text-center text-base-500">
+            Esta dependencia no tiene proyectos con este filtro</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{% comment %}
+El preset y el rango libre son la misma pregunta hecha de dos formas: si conviven en el
+formulario, la pagina muestra unas fechas y calcula otras. Elegir un atajo limpia el
+rango, y escribir una fecha suelta el atajo.
+{% endcomment %}
+<script>
+  (function () {
+    const form = document.querySelector('.tb form');
+    if (!form) { return; }
+    const presets = form.querySelectorAll('input[name="preset"]');
+    const fechas = form.querySelectorAll('input[type="date"]');
+    presets.forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        if (radio.value) { fechas.forEach(function (f) { f.value = ''; }); }
+      });
+    });
+    fechas.forEach(function (campo) {
+      campo.addEventListener('change', function () {
+        presets.forEach(function (radio) { radio.checked = radio.value === ''; });
+      });
+    });
+  })();
+</script>
+{% endblock %}

@@ -14,7 +14,7 @@ django.setup()
 from django.contrib.auth import get_user_model  # noqa: E402
 from django.test import Client  # noqa: E402
 
-from siifweb.models import Cdp, Compromiso, Contrato, Obligacion, Proyecto, Reserva  # noqa: E402
+from siifweb.models import Cdp, Compromiso, Contrato, Obligacion, Reserva  # noqa: E402
 
 admin_user = get_user_model().objects.filter(is_superuser=True).first()
 assert admin_user, "no hay ningun superusuario en la base"
@@ -45,9 +45,6 @@ casos = [
     ("obligacion", Obligacion.objects.filter(vigencia=2025).first().pk,
      ["obligaciones_imputadas"]),
     ("reserva", Reserva.objects.filter(vigencia=2025).first().pk, ["reservas_imputadas"]),
-    ("proyecto", Proyecto.objects.filter(bpin="2024002700139").first().pk,
-     ["cdps_imputados", "compromisos_imputados", "obligaciones_imputadas",
-      "imputaciones_del_contrato", "reservas_imputadas"]),
     ("contrato", Contrato.objects.filter(actas_del_contrato__isnull=False).first().pk,
      ["actas_del_contrato", "imputaciones_del_contrato"]),
 ]

@@ -255,6 +255,28 @@ def _static_versionado(ruta):
     version = int(archivo.stat().st_mtime) if archivo.exists() else 0
     return lambda request: f"{static(ruta)}?v={version}"
 
+def _con_permiso(*permisos):
+    """Oculta un enlace del menu lateral a quien no puede abrirlo.
+
+    Sin esto, un rol acotado -Seguimiento o Consulta- veria en la barra lateral
+    paginas que le contestan 403. Unfold llama al callback con el request; el
+    superusuario pasa siempre, porque has_perm le devuelve True a todo. Si todos
+    los enlaces de una seccion se ocultan, la seccion entera desaparece.
+    """
+    return lambda request: any(request.user.has_perm(p) for p in permisos)
+
+
+def _administra_los_datos(request):
+    """Deja ver las secciones del menu que listan lo que producen las cargas.
+
+    Los roles Seguimiento y Consulta tienen habilitado un solo modulo, el de
+    Seguimiento: revisan la ejecucion en la ficha del proyecto y no en las tablas
+    documento por documento. La llave es el permiso sobre las cargas del reporte
+    -quien sube los archivos es quien mantiene esas tablas-, asi que sigue siendo un
+    permiso y no un chequeo de superusuario.
+    """
+    return request.user.has_perm("siifweb.view_cargareporte")
+
 
 UNFOLD = {
     "SITE_TITLE": "POAI",
@@ -314,8 +336,10 @@ UNFOLD = {
                 "title" : "Usuarios",
                 "separator" : False,
                 "items": [
-                    {"title":"Roles","icon":"groups","link":reverse_lazy("admin:auth_group_changelist")},
-                    {"title":"Usuarios","icon":"user_attributes","link":reverse_lazy("admin:auth_user_changelist")}
+                    {"title":"Roles","icon":"groups","link":reverse_lazy("admin:auth_group_changelist"),
+                     "permission": _con_permiso("auth.view_group")},
+                    {"title":"Usuarios","icon":"user_attributes","link":reverse_lazy("admin:auth_user_changelist"),
+                     "permission": _con_permiso("auth.view_user")}
                 ]
             },
             {
@@ -323,9 +347,14 @@ UNFOLD = {
                 "separator": True,
                 "items": [
                     {"title": "Proyectos", "icon": "folder_special",
-                     "link": reverse_lazy("admin:siifweb_proyecto_changelist")},
+                     "link": reverse_lazy("admin:siifweb_proyecto_changelist"),
+                     "permission": _con_permiso("siifweb.view_proyecto")},
+                    {"title": "Dashboard", "icon": "monitoring",
+                     "link": reverse_lazy("admin:siifweb_proyecto_tablero"),
+                     "permission": _con_permiso("siifweb.view_proyecto")},
                     {"title": "Reportes", "icon": "table_view",
-                     "link": reverse_lazy("admin:siifweb_proyecto_reporte_financiero")},
+                     "link": reverse_lazy("admin:siifweb_proyecto_reporte_financiero"),
+                     "permission": _con_permiso("siifweb.view_proyecto")},
                 ],
             },
             {
@@ -334,19 +363,26 @@ UNFOLD = {
                 "collapsible": True,
                 "items": [
                     {"title": "Terceros", "icon": "groups",
-                     "link": reverse_lazy("admin:siifweb_tercero_changelist")},
+                     "link": reverse_lazy("admin:siifweb_tercero_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Rubros", "icon": "list_alt",
-                     "link": reverse_lazy("admin:siifweb_rubro_changelist")},
+                     "link": reverse_lazy("admin:siifweb_rubro_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Fuentes", "icon": "account_tree",
-                     "link": reverse_lazy("admin:siifweb_fuente_changelist")},
+                     "link": reverse_lazy("admin:siifweb_fuente_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Dependencias", "icon": "corporate_fare",
-                     "link": reverse_lazy("admin:siifweb_centrocosto_changelist")},
+                     "link": reverse_lazy("admin:siifweb_centrocosto_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Dependencias responsables", "icon": "badge",
-                     "link": reverse_lazy("admin:siifweb_dependenciaresponsable_changelist")},
+                     "link": reverse_lazy("admin:siifweb_dependenciaresponsable_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Clasificaciones", "icon": "sell",
-                     "link": reverse_lazy("admin:siifweb_clasificacion_changelist")},
+                     "link": reverse_lazy("admin:siifweb_clasificacion_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Cargas del reporte", "icon": "upload_file",
-                     "link": reverse_lazy("admin:siifweb_cargareporte_changelist")},
+                     "link": reverse_lazy("admin:siifweb_cargareporte_changelist"),
+                     "permission": _administra_los_datos},
                 ],
             },
             {
@@ -355,11 +391,14 @@ UNFOLD = {
                 "separator": True,
                 "items": [
                     {"title": "Disponibilidades (CDP)", "icon": "request_quote",
-                     "link": reverse_lazy("admin:siifweb_cdp_changelist")},
+                     "link": reverse_lazy("admin:siifweb_cdp_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Compromisos (RP)", "icon": "handshake",
-                     "link": reverse_lazy("admin:siifweb_compromiso_changelist")},
+                     "link": reverse_lazy("admin:siifweb_compromiso_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Obligaciones", "icon": "receipt_long",
-                     "link": reverse_lazy("admin:siifweb_obligacion_changelist")},
+                     "link": reverse_lazy("admin:siifweb_obligacion_changelist"),
+                     "permission": _administra_los_datos},
                 ],
             },
             {
@@ -368,7 +407,8 @@ UNFOLD = {
                 "separator": True,
                 "items": [
                     {"title": "Reservas", "icon": "event_repeat",
-                     "link": reverse_lazy("admin:siifweb_reserva_changelist")},
+                     "link": reverse_lazy("admin:siifweb_reserva_changelist"),
+                     "permission": _administra_los_datos},
                 ],
             },
             {
@@ -377,9 +417,11 @@ UNFOLD = {
                 "separator": True,
                 "items": [
                     {"title": "Contratos", "icon": "contract",
-                     "link": reverse_lazy("admin:siifweb_contrato_changelist")},
+                     "link": reverse_lazy("admin:siifweb_contrato_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Actas de pago", "icon": "payments",
-                     "link": reverse_lazy("admin:siifweb_contratoacta_changelist")},
+                     "link": reverse_lazy("admin:siifweb_contratoacta_changelist"),
+                     "permission": _administra_los_datos},
                 ],
             },
             {
@@ -388,11 +430,14 @@ UNFOLD = {
                 "separator": True,
                 "items": [
                     {"title": "Contratos de SECOP II", "icon": "gavel",
-                     "link": reverse_lazy("admin:siifweb_contratosecop_changelist")},
+                     "link": reverse_lazy("admin:siifweb_contratosecop_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "Procesos de SECOP II", "icon": "how_to_vote",
-                     "link": reverse_lazy("admin:siifweb_procesosecop_changelist")},
+                     "link": reverse_lazy("admin:siifweb_procesosecop_changelist"),
+                     "permission": _administra_los_datos},
                     {"title": "BPIN por proceso", "icon": "account_tree",
-                     "link": reverse_lazy("admin:siifweb_bpinproceso_changelist")},
+                     "link": reverse_lazy("admin:siifweb_bpinproceso_changelist"),
+                     "permission": _administra_los_datos},
                 ],
             },
         ],

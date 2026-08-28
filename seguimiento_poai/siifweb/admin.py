@@ -3,20 +3,21 @@ import hashlib
 
 from django import forms
 from django.contrib import admin, messages
-from django.forms.models import BaseInlineFormSet
+from django.core.exceptions import PermissionDenied
 from django.db.models import (Case, Count, DateField, DecimalField, F, IntegerField, OuterRef,
                               Q, Subquery, Sum, Value, When)
 from django.http import Http404, HttpResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import (ChoicesDropdownFilter, RangeDateFilter,
                                           RelatedDropdownFilter,TextFilter,FieldTextFilter,AutocompleteSelectMultipleFilter)
 from unfold.decorators import action, display
 
-from . import cargas
+from . import cargas, tablero
 from .models import (BpinProceso, CargaReporte, Cdp, CdpImputacion, CentroCosto, Clasificacion,
                      Compromiso, CompromisoImputacion, Contrato, ContratoActa, ContratoImputacion,
                      ContratoSecop, DependenciaResponsable, Fuente, Obligacion, ObligacionImputacion,
@@ -505,72 +506,6 @@ class ReservaImputacionAdmin(SoloLectura):
 # Catalogos
 # ---------------------------------------------------------------------------
 
-class FormSetLimitado(BaseInlineFormSet):
-    """Limita las filas de un inline de solo lectura.
-
-    No sirve get_queryset del inline (ahi todavia no se filtro por el padre) ni max_num
-    (el admin lo pone en 0 cuando has_add_permission es False). El corte tiene que ir en
-    el formset, que es quien ya tiene el filtro por la instancia padre.
-    """
-    limite = 20
-
-    def get_queryset(self):
-        if not hasattr(self, "_limitado"):
-            self._limitado = super().get_queryset()[:self.limite]
-        return self._limitado
-
-
-class InlineDeProyecto(ImputacionInline):
-    """Inline colgado del proyecto. Se muestran las primeras 20 filas: un proyecto de
-    nomina tiene cientos de imputaciones y el inline no pagina. El detalle completo
-    y agregado esta en la ficha de ejecucion."""
-    fk_name = "proyecto"
-    formset = FormSetLimitado
-
-
-class CdpDelProyectoInline(InlineDeProyecto):
-    model = CdpImputacion
-    verbose_name_plural = "Disponibilidades (CDP)"
-    fields = ("cdp", "rubro", "fuente", "valor_certificado", "valor_disponibilidad_def", "saldo_certf")
-    readonly_fields = fields
-
-
-class CompromisoDelProyectoInline(InlineDeProyecto):
-    model = CompromisoImputacion
-    verbose_name_plural = "Compromisos (RP)"
-    fields = ("compromiso", "cdp", "rubro", "fuente", "valor_compromiso_def", "saldo_rp")
-    readonly_fields = fields
-
-
-class ObligacionDelProyectoInline(InlineDeProyecto):
-    model = ObligacionImputacion
-    verbose_name_plural = "Obligaciones"
-    fields = ("obligacion", "compromiso", "rubro", "valor_obligacion", "saldo_obli", "pagos")
-    readonly_fields = fields
-
-
-class ContratoDelProyectoInline(InlineDeProyecto):
-    model = ContratoImputacion
-    verbose_name_plural = "Contratos"
-    fields = ("contrato", "vigencia", "compromiso", "rubro", "fuente")
-    readonly_fields = fields
-
-
-class ReservaDelProyectoInline(InlineDeProyecto):
-    model = ReservaImputacion
-    verbose_name_plural = "Reservas"
-    fields = ("reserva", "cdp_origen", "rubro", "valor_reserva", "obligaciones_reserva", "saldo_reserva")
-    readonly_fields = fields
-
-
-class SecopDelProyectoInline(InlineDeProyecto):
-    """La contratacion publica del proyecto: procesos y contratos de SECOP II."""
-    model = BpinProceso
-    verbose_name_plural = "Contratacion (SECOP II)"
-    fields = ("contrato_secop", "proceso", "anio", "validacion_bpin")
-    readonly_fields = fields
-
-
 class ClasificacionPorDefectoFilter(admin.SimpleListFilter):
     """Filtro del listado con valor por defecto.
 
@@ -615,8 +550,6 @@ class ClasificacionPorDefectoFilter(admin.SimpleListFilter):
 class ProyectoAdmin(ModelAdmin):
     compressed_fields = False
     list_fullwidth = True
-    inlines = (CdpDelProyectoInline, CompromisoDelProyectoInline, ObligacionDelProyectoInline,
-               ContratoDelProyectoInline, ReservaDelProyectoInline, SecopDelProyectoInline)
     list_display = ("bpin", "nombre","responsable","ficha_link" ,"clasificacion_txt","fecha_primer_cdp","fecha_primer_rp","disponibilidad_definitiva",
                     "obligado")
     list_filter = (ClasificacionPorDefectoFilter,
@@ -633,8 +566,9 @@ class ProyectoAdmin(ModelAdmin):
     ordering = ("bpin",)
     fieldsets = (
         ("Proyecto", {"fields": ("bpin", "nombre"),
-                      "description": "Usa el boton 'Ficha de ejecucion' para ver la cadena completa, "
-                                     "los contratos y el calendario de pagos."}),
+                      "description": "Aqui solo se editan los datos del proyecto. La cadena de "
+                                     "gasto, los contratos y el calendario de pagos se revisan "
+                                     "en la ficha de ejecucion, con el boton de arriba."}),
         ("Responsables y clasificacion", {
             "fields": ("dependencia", "dependencia_responsable", "clasificaciones"),
             "description": "La dependencia de SIIFWEB es la que ejecuta el gasto; la responsable "
@@ -744,7 +678,13 @@ class ProyectoAdmin(ModelAdmin):
 
         Dos paneles en la misma URL (?panel=siifweb|secop) para que la ficha no crezca
         sin fin: cada uno queda enlazable y solo se consulta el que se esta viendo.
+
+        admin_view() solo exige estar autenticado como staff, asi que el permiso de
+        vista se revisa aqui: si no, un rol sin acceso al proyecto entraria por la URL.
         """
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+
         proyecto = self.get_object(request, object_id)
         if proyecto is None:
             raise Http404("No hay proyecto con ese id.")
@@ -910,7 +850,12 @@ class ProyectoAdmin(ModelAdmin):
 
         GET normal -> pagina con filtros y el boton de descarga.
         GET con descargar=xlsx (mas los filtros) -> el Excel.
+
+        Misma cautela que en la ficha: admin_view() no mira permisos de modelo.
         """
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+
         from . import reportes
         import io
 
@@ -943,11 +888,102 @@ class ProyectoAdmin(ModelAdmin):
         }
         return TemplateResponse(request, "siifweb/reporte_financiero.html", contexto)
 
+    def tablero(self, request):
+        """Tablero de gestion por dependencia responsable (POAI).
+
+        Una fila por dependencia y, al elegir una, la misma tabla por proyecto. Cada
+        etapa se corta por su propia fecha (el CDP por la de expedicion, el pago por la
+        del acta), que es lo que hace comparable un corte semanal o mensual.
+
+        Como el reporte financiero: `admin_view()` no mira permisos de modelo.
+        """
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+
+        def entero(nombre):
+            valor = request.GET.get(nombre, "")
+            return int(valor) if valor.isdigit() else None
+
+        preset = request.GET.get("preset", "")
+        desde, hasta = tablero.rango_del_preset(preset)
+        if not preset:
+            desde = parse_date(request.GET.get("desde", "") or "")
+            hasta = parse_date(request.GET.get("hasta", "") or "")
+
+        filtros = tablero.Filtros(
+            desde=desde, hasta=hasta,
+            vigencias=tuple(int(v) for v in request.GET.getlist("vigencia") if v.isdigit()),
+            dependencia=entero("dependencia"), clasificacion=entero("clasificacion"))
+
+        filas, totales = tablero.por_dependencia(filtros)
+        movimientos = sum(totales[m] for m in ("cdps", "rps", "obligaciones", "actas"))
+
+        # El enlace de cada fila conserva el corte de fechas y cambia solo la dependencia
+        def con_dependencia(pk):
+            parametros = request.GET.copy()
+            parametros["dependencia"] = pk
+            return f"?{parametros.urlencode()}"
+
+        for fila in filas:
+            fila["url"] = con_dependencia(fila["llave"])
+
+        filas_proyecto, totales_proyecto = tablero.por_proyecto(filtros)
+        for fila in filas_proyecto:
+            fila["url"] = reverse("admin:siifweb_proyecto_ficha_ejecucion", args=(fila["llave"],))
+
+        elegida = None
+        if filtros.dependencia:
+            elegida = next((f for f in filas if f["llave"] == filtros.dependencia), None)
+
+        contexto = {
+            **self.admin_site.each_context(request),
+            "title": "Dashboard de seguimiento",
+            **tablero.catalogos(),
+            "filas": filas,
+            "totales": totales,
+            "filas_proyecto": filas_proyecto,
+            "totales_proyecto": totales_proyecto,
+            "dependencia_elegida": elegida,
+            "tarjetas": [
+                ("Proyectos", totales["proyectos"], "con dependencia responsable", False),
+                ("CDPs", totales["cdps"], "disponibilidades expedidas", False),
+                ("RPs", totales["rps"], "compromisos registrados", False),
+                ("Obligaciones", totales["obligaciones"], "causadas en el periodo", False),
+                ("Actas de pago", totales["actas"], "giros con fecha de pago", False),
+                ("Comprometido", totales["comprometido"], "valor de los RP", True),
+                ("Obligado", totales["obligado"], "recibido a satisfaccion", True),
+                ("Pagado", totales["pagado"], "girado sobre las obligaciones", True),
+            ],
+            "preset": preset,
+            "presets": (("", "Rango libre"), ("semana", "Esta semana"), ("mes", "Este mes"),
+                        ("trimestre", "Este trimestre"), ("anio", "Este año")),
+            # Los reportes se cargan por tandas: el corte de hoy casi nunca es el corte
+            # de los datos. Sin este aviso, un periodo reciente se lee como una
+            # dependencia que no hizo nada, cuando lo que pasa es que aun no se ha cargado.
+            "ultimo_dato": tablero.ultimo_movimiento(),
+            "sin_movimiento": movimientos == 0,
+            "leyenda_periodo": (f"Del {desde} al {hasta}" if desde and hasta
+                                else f"Desde {desde}" if desde
+                                else f"Hasta {hasta}" if hasta
+                                else "Toda la historia cargada"),
+            "desde": desde.isoformat() if desde else "",
+            "hasta": hasta.isoformat() if hasta else "",
+            "vigencias_disponibles": sorted(Cdp.objects.values_list("vigencia", flat=True).distinct()),
+            "vigencias_sel": set(filtros.vigencias),
+            "dependencia_sel": filtros.dependencia,
+            "clasificacion_sel": filtros.clasificacion,
+            "limpiar": reverse("admin:siifweb_proyecto_tablero"),
+            "volver": reverse("admin:siifweb_proyecto_changelist"),
+        }
+        return TemplateResponse(request, "siifweb/tablero.html", contexto)
+
     def get_urls(self):
         # Las URLs propias van ANTES de las del admin: '<path:object_id>/' las capturaria
         propia = [
             path("reporte-financiero/", self.admin_site.admin_view(self.reporte_financiero),
                  name="siifweb_proyecto_reporte_financiero"),
+            path("tablero/", self.admin_site.admin_view(self.tablero),
+                 name="siifweb_proyecto_tablero"),
             path("<path:object_id>/ficha-ejecucion/",
                  self.admin_site.admin_view(self.ficha_ejecucion),
                  name="siifweb_proyecto_ficha_ejecucion"),

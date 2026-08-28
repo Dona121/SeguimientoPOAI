@@ -138,25 +138,20 @@ class Proyecto(Fechas):
         SIIFWEB = "siifweb", _("Detectado en un reporte de SIIFWEB")
         POAI = "poai", _("Cruce POAI")
 
-    bpin = models.CharField(max_length=25, verbose_name="BPIN", blank=True, null=True, unique=True,
-                            help_text="BPIN. Se normaliza al guardar: sin espacios ni sufijo .0")
+    bpin = models.CharField(max_length=25, verbose_name="BPIN", blank=True, null=True, unique=True)
     nombre = models.TextField(verbose_name="Nombre", blank=True, null=True)
+    # El centro de costo que ejecuta el gasto, segun SIIFWEB
     dependencia = models.ForeignKey(CentroCosto, null=True, blank=True, on_delete=models.PROTECT,
-                                    verbose_name="Dependencia (SIIFWEB)", related_name="proyectos",
-                                    help_text="Centro de costo que ejecuta, segun SIIFWEB")
+                                    verbose_name="Dependencia (SIIFWEB)", related_name="proyectos")
     # Del cruce POAI: no existen en SIIFWEB y la dependencia difiere de la ejecutora
     dependencia_responsable = models.ForeignKey(DependenciaResponsable, null=True, blank=True,
                                                 on_delete=models.PROTECT, related_name="proyectos",
-                                                verbose_name="Dependencia responsable (POAI)",
-                                                help_text="Quien responde por el proyecto; "
-                                                          "puede diferir de la que ejecuta en SIIFWEB")
+                                                verbose_name="Dependencia responsable (POAI)")
+    # Un proyecto puede tener varias: POAI 2026 y Recursos del Balance, por ejemplo
     clasificaciones = models.ManyToManyField(Clasificacion, blank=True, related_name="proyectos",
-                                             verbose_name="Clasificaciones (POAI)",
-                                             help_text="Un proyecto puede tener varias: "
-                                                       "POAI 2026 y Recursos del Balance, por ejemplo")
+                                             verbose_name="Clasificaciones (POAI)")
     origen = models.CharField(max_length=10, choices=Origen.choices, default=Origen.MANUAL,
-                              verbose_name="Origen del registro",
-                              help_text="Como entro el proyecto al sistema")
+                              verbose_name="Origen del registro")
 
     class Meta:
         verbose_name = "Proyecto"

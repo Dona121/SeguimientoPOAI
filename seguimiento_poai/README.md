@@ -255,10 +255,10 @@ identidades internas y la conciliacion padre-hijo, que siguen dando cero descuad
 `Proyectos` es la entrada del admin. El listado muestra certificado, obligado y una barra
 de avance por proyecto; cada fila tiene enlace a su ficha.
 
-**Detalle del proyecto**: seis inlines con lo que le cuelga — disponibilidades,
-compromisos, obligaciones, contratos, reservas y contratacion de SECOP II. Se limitan a
-20 filas por inline: un proyecto de nomina tiene cientos de imputaciones y los inlines no
-paginan.
+**Detalle del proyecto**: solo los datos del proyecto — BPIN, nombre, dependencias,
+clasificaciones y origen. Nada mas. Tuvo seis inlines (disponibilidades, compromisos,
+obligaciones, contratos, reservas y SECOP II) recortados a 20 filas cada uno, y se
+quitaron: repetian a medias lo que la ficha muestra completo y agregado.
 
 **Ficha de ejecucion** (boton en el detalle, o el enlace del listado): una vista propia,
 hecha con una changeform action de unfold, porque los inlines muestran filas sueltas y
@@ -295,6 +295,80 @@ salian al doble porque el contrato tenia 2 imputaciones para ese proyecto y el j
 cruzaba con sus actas. Se resuelve con `Subquery` (helper `suma_de`) o filtrando por una
 subconsulta de ids. Es el mismo problema del grano que cuidamos al cruzar los reportes.
 
+## Dashboard de seguimiento
+
+`Proyectos -> Dashboard` (o el enlace del menu). Responde una sola pregunta: **como va la
+gestion de cada dependencia respecto a sus proyectos.**
+
+Una fila por dependencia responsable (POAI), ordenada por lo comprometido, con cuatro
+bloques: cuantos proyectos tiene asignados y en cuantos se movio cada etapa, cuantos
+documentos se expidieron, los montos, y la contratacion en SECOP II. Al hacer clic en una
+dependencia, debajo aparece la misma tabla por proyecto, y el nombre del proyecto abre su
+ficha.
+
+**Solo entran los proyectos con dependencia responsable asignada.** Hoy son 194 de 688: el
+resto no tiene a quien atribuirle la gestion. El recorte va en el SQL de cada etapa, no
+despues en Python, porque los otros 494 arrastran casi toda la ejecucion.
+
+**Los tramites cancelados quedan fuera**: un proceso o un contrato cancelado no es gestion,
+no hay nada que ejecutar. Ademas es donde vive la basura de la fuente: los 25 contratos
+cancelados de estos proyectos suman $1.563 **billones** contra $87 mil millones de los
+1.306 vigentes, y los dos contratos con valor imposible del DNP estan justamente
+cancelados.
+
+### Por que una fila puede salir en cero
+
+Casi siempre porque el periodo elegido es posterior a lo cargado: los reportes entran por
+tandas y a fin de agosto la ultima carga puede llegar a julio. La pagina lo dice sola —la
+leyenda muestra "datos cargados hasta el ...", y un periodo sin movimientos sale con un
+aviso en lugar de una tabla de ceros mudos—. Lo mismo pasa hacia atras: los proyectos con
+dependencia responsable no registran nada en 2022 ni 2023, casi nada en 2024-2025 y
+concentran su ejecucion en 2026.
+
+### Los slicers
+
+Atajos de periodo (esta semana, este mes, este trimestre, este ano), rango libre
+desde/hasta, chips de vigencia, y filtros por dependencia y por clasificacion.
+
+Lo que hace util el corte es que **cada etapa se filtra por su propia fecha**:
+
+| Metrica | Fecha que la corta |
+|---|---|
+| CDPs y disponibilidad | `Cdp.fecha_disp` |
+| RPs y comprometido | `Compromiso.fecha_reg` |
+| Obligaciones, obligado y pagado | `Obligacion.fecha_obli` |
+| Actas de pago | `ContratoActa.fecha_pago` |
+| Procesos de SECOP | `ProcesoSecop.fecha_publicacion` |
+| Contratos de SECOP | `ContratoSecop.fecha_firma` |
+
+Asi, "del 1 al 7 de marzo" responde que se movio esa semana, y no que documentos
+pertenecen a un lote. Los **proyectos asignados** son la excepcion a proposito: no
+dependen del periodo, porque la comparacion que importa es "tiene 12 proyectos y esta
+semana no se movio ninguno".
+
+### Dos decisiones que conviene recordar
+
+- **Pagos son dos cosas distintas y se muestran las dos.** *Actas de pago* son los giros,
+  lo unico con fecha de pago propia; *Pagado* es el valor pagado de las obligaciones. El
+  valor del acta no se puede sumar por dependencia: el camino hasta el proyecto pasa por
+  las imputaciones del contrato y un contrato con dos imputaciones repetiria cada acta.
+  Por eso las actas solo se cuentan (`distinct`) y el dinero sale de las obligaciones.
+- **El valor de SECOP tampoco se puede sumar en la consulta**: un contrato que financia
+  dos BPIN sale en dos filas de `BpinProceso`. Se piden las parejas (grupo, contrato,
+  valor) distintas y se suman en Python. Ademas, la fila marca con un triangulo cuando
+  arrastra alguno de los contratos con **valor imposible** que trae la fuente: hoy no
+  aparece ninguno, porque los dos que hay estan cancelados, pero la marca queda para el
+  proximo. Y un contrato que financia proyectos de dos dependencias cuenta en las dos: el
+  total de la tabla es la suma de las filas, asi que puede superar el numero de contratos
+  distintos (en la base real pasa con uno, de $877 millones).
+
+El calculo vive en `siifweb/tablero.py`: una consulta agregada por etapa, cruzadas en
+Python por la llave. Nunca dos `Sum` sobre joins distintos.
+
+Para comprobarlo contra la base cargada, `uv run --directory seguimiento_poai python
+prueba_tablero.py` recalcula cada metrica con consultas escritas aparte, rango por rango,
+y muestra hasta que fecha llegan los datos.
+
 ## El admin (django-unfold)
 
 Interfaz con [django-unfold](https://unfoldadmin.com/): barra lateral agrupada por
@@ -309,8 +383,10 @@ trae las tablas relacionadas como pestanas:
 | Compromiso (RP) | sus imputaciones, las obligaciones causadas, y el contrato que lo respalda |
 | Obligacion | sus imputaciones |
 | Reserva | sus imputaciones, con el CDP de origen de v-1 |
-| **Proyecto** | disponibilidades, compromisos, obligaciones, contratos y reservas |
 | Contrato | sus actas de pago y sus imputaciones presupuestales |
+
+El **proyecto** es la excepcion: su detalle no lleva inlines, porque toda su ejecucion se
+revisa en la ficha.
 
 Ejemplo verificado (CDP 425 de 2024, energia solar rural): en una sola pagina se ve el
 certificado por $1.256.674.257, el RP 2420 que lo comprometio, el saldo sin obligar de
@@ -318,6 +394,41 @@ $1.092.325.482 y la reserva 1 de 2025 constituida exactamente por ese saldo.
 
 `prueba_admin_unfold.py` verifica que las 22 paginas de listado cargan con unfold y que
 los inlines traen datos.
+
+## Roles y permisos
+
+Dos grupos que crea la migracion `0009`, para no repartir permisos a mano:
+
+| Rol | Que puede hacer |
+|---|---|
+| **Consulta** | Solo mirar: el proyecto, su informacion presupuestal (CDP, RP, obligaciones, reservas y sus imputaciones), los contratos de SIIFWEB y la contratacion de SECOP II, mas los catalogos. Entra al Dashboard, a la ficha de ejecucion y al Reporte Financiero |
+| **Seguimiento** | Lo mismo que Consulta y ademas **crear y editar proyectos**, que es el unico dato que el equipo alimenta a mano |
+
+Ninguno de los dos ve las **cargas del reporte** (subir un archivo dispara el proceso y
+reescribe datos) ni los **usuarios y roles** de Django, y ninguno puede **borrar**: un
+proyecto con ejecucion colgando no se elimina, se corrige.
+
+**En el menu lateral ven un solo modulo, el de Seguimiento** (Proyectos, Dashboard y Reportes). Las
+demas secciones —catalogos, cadena de gasto, cierre, contratacion y SECOP II— listan
+documento por documento lo que producen las cargas, y esa misma informacion la revisan
+agregada en la ficha del proyecto. Las paginas siguen abiertas por URL a proposito: los
+modales de la ficha enlazan "Abrir el contrato" y "Abrir el proceso".
+
+Para dar de alta a alguien: `Usuarios` -> nuevo usuario, marcar **"Es del equipo"**
+(`is_staff`, sin eso no entra al admin) y asignarle el grupo. Nada de permisos sueltos.
+
+Dos detalles de implementacion:
+
+- Los enlaces del menu lateral llevan una llave `permission` (helpers `_con_permiso` y
+  `_administra_los_datos` en `settings.py`), asi que cada rol solo ve lo suyo. Si una
+  seccion se queda sin enlaces visibles, desaparece entera. La llave del resto del menu
+  es `view_cargareporte`: quien sube los archivos es quien mantiene esas tablas.
+- La ficha de ejecucion y el Reporte Financiero son vistas propias, y `admin_view()` solo
+  exige ser staff: el permiso de vista se revisa dentro de cada una. Sin eso, cualquiera
+  del equipo entraria por la URL.
+
+Los roles se prueban en `siifweb/tests/test_roles.py`, que verifica tanto lo que abre
+como lo que responde 403.
 
 ## Estructura
 
@@ -327,10 +438,13 @@ los inlines traen datos.
 - `siifweb/admin.py` — formulario con validacion de duplicados y la accion de procesar
 - `siifweb/management/commands/cargar_reporte.py` — carga por consola
 - `siifweb/management/commands/validar.py` — conciliaciones sobre lo migrado
+- `siifweb/tablero.py` — el dashboard: agregacion por dependencia y por proyecto
+- `siifweb/migrations/0009_roles_seguimiento_y_consulta.py` — los dos roles del equipo
 - `siifweb/tests/` — la bateria automatica (`manage.py test siifweb`)
 - `prueba_admin.py` — ejerce el flujo del admin (subir + procesar) sin navegador
 - `prueba_admin_unfold.py` — verifica que las 18 paginas cargan y que los inlines traen datos
 - `prueba_secop.py` — carga el consolidado de SECOP II real en la sqlite local
+- `prueba_tablero.py` — contrasta el dashboard contra la base real, rango por rango
 
 ## Validaciones
 
