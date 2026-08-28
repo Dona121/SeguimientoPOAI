@@ -790,6 +790,13 @@ def cargar_secop(carga):
     return len(filas), detalle
 
 
+# El orden en que los FK exigen que se procesen. Dentro de una vigencia: el CDP
+# antes que el RP, el RP antes que la obligacion. Los de rango completo van al
+# final porque enganchan con lo que ya quedo cargado.
+ORDEN_DE_CARGA = ["cdp", "compromisos", "obligaciones", "reservas",
+                  "historial", "poai", "secop"]
+
+
 PROCESADORES = {
     "cdp": cargar_cdp,
     "compromisos": cargar_compromisos,

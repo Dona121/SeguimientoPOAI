@@ -4,7 +4,8 @@ import hashlib
 from django import forms
 from django.contrib import admin, messages
 from django.forms.models import BaseInlineFormSet
-from django.db.models import Count, DateField, DecimalField, F, OuterRef, Subquery, Sum, Q
+from django.db.models import (Case, Count, DateField, DecimalField, F, IntegerField, OuterRef,
+                              Q, Subquery, Sum, Value, When)
 from django.http import Http404, HttpResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -257,12 +258,20 @@ class CargaReporteAdmin(ModelAdmin):
 
     @action(description="Procesar los reportes seleccionados", icon="play_arrow")
     def procesar_cargas(self, request, queryset):
-        # Los FK exigen orden: primero los consolidados por vigencia ascendente y
-        # despues los de rango completo (historial, POAI, SECOP), que enganchan con
-        # lo que ya quedo cargado. Esos van sin vigencia, y donde caen los nulos
-        # depende del motor -SQLite los pone primero, PostgreSQL al final-, asi que
-        # se ordena explicitamente para que no dependa de la base.
-        for carga in queryset.order_by(F("vigencia").asc(nulls_last=True), "id"):
+        # Los FK exigen orden y la accion lo impone sola, para que "seleccionar todo
+        # y procesar" siempre funcione:
+        #   1. vigencia ascendente, con los de rango completo al final. Donde caen
+        #      los nulos depende del motor -SQLite los pone primero, PostgreSQL al
+        #      final-, asi que se ordena explicitamente.
+        #   2. dentro de una vigencia, por tipo de reporte (CDP -> RP -> obligacion
+        #      -> reserva) y no por el orden en que se crearon los registros.
+        prioridad = Case(
+            *[When(tipo_reporte=tipo, then=Value(i))
+              for i, tipo in enumerate(cargas.ORDEN_DE_CARGA)],
+            default=Value(len(cargas.ORDEN_DE_CARGA)), output_field=IntegerField())
+        ordenadas = (queryset.annotate(_orden=prioridad)
+                     .order_by(F("vigencia").asc(nulls_last=True), "_orden", "id"))
+        for carga in ordenadas:
             if cargas.procesar(carga):
                 self.message_user(request, f"{carga}: {carga.mensaje}", messages.SUCCESS)
             else:

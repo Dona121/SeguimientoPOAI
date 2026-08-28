@@ -43,20 +43,22 @@ muestra el error antes de guardar.
 ### Procesar todos a la vez o uno por uno
 
 Subir y procesar son dos pasos separados. Al grabar, la carga queda **pendiente**; no se
-migra hasta correr la accion. Se pueden crear los cinco registros y luego seleccionarlos
-todos y procesarlos de una sola pasada.
+migra hasta correr la accion.
 
-La accion no procesa en el orden en que se seleccionan, sino con
-`order_by(F("vigencia").asc(nulls_last=True), "id")`: **primero los consolidados, por
-vigencia ascendente, y al final los de rango completo** (historial, POAI y SECOP II), que
-son los que enganchan con lo ya cargado. Entre los consolidados de una misma vigencia manda
-el `id`, es decir el orden en que se crearon, asi que crearlos en el orden de carga los
-procesa bien.
+**Se pueden subir todos los reportes en cualquier orden, seleccionarlos todos y procesarlos
+de una sola pasada.** La accion no respeta el orden de seleccion ni el de creacion: ordena
+ella misma por lo que exigen los FK, con
+`order_by(F("vigencia").asc(nulls_last=True), "_orden", "id")`, donde `_orden` es la
+posicion del tipo de reporte en `cargas.ORDEN_DE_CARGA`. Es decir, vigencia ascendente;
+dentro de cada vigencia CDP -> compromisos -> obligaciones -> reservas; y al final los de
+rango completo (historial, POAI, SECOP II), que enganchan con lo ya cargado.
 
-> Antes se ordenaba solo por `vigencia`, y ahi donde caen los nulos depende del motor:
-> SQLite los pone primero y PostgreSQL al final. En un lote de "seleccionar todo" sobre
-> SQLite, el historial corria ANTES que los consolidados y los contratos de ese anio no
-> encontraban su RP. Por eso ahora el orden es explicito y no depende de la base.
+> Antes habia que hacerlo en dos pasadas -los cuatro consolidados juntos y despues el
+> historial- por dos razones que ya no aplican: se ordenaba solo por `vigencia`, y donde
+> caen los nulos depende del motor (SQLite los pone primero, PostgreSQL al final), de modo
+> que sobre SQLite el historial corria ANTES que los consolidados; y el desempate dentro de
+> una vigencia era el `id`, asi que subir la obligacion antes que su CDP la procesaba en
+> ese mismo orden y las imputaciones sin RP se descartaban.
 
 Saltarse uno no obliga a ir de a uno: el proceso es idempotente (recargar reemplaza), asi
 que se puede agregar el que falto y volver a correr la accion sobre todos, o solo sobre ese.

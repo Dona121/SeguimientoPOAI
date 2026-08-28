@@ -127,20 +127,14 @@ class OrdenDeProceso(TestCase):
         return CargaReporte.objects.create(tipo_reporte=tipo, vigencia=vigencia,
                                            hash=f"{tipo}-{vigencia}".ljust(64, "0"))
 
-    def test_los_de_rango_completo_van_despues_de_los_consolidados(self):
+    def procesar_todo(self):
+        """Corre la accion sobre todas las cargas y devuelve el orden en que las proceso."""
         from unittest.mock import patch
 
         from django.test import RequestFactory
 
         from siifweb import cargas
         from siifweb.models import CargaReporte
-
-        # Se crean a proposito en el orden equivocado
-        self.crear("historial", None)
-        self.crear("secop", None)
-        self.crear("obligaciones", 2025)
-        self.crear("cdp", 2024)
-        self.crear("poai", None)
 
         procesadas = []
         registro = admin.site._registry[CargaReporte]
@@ -154,11 +148,53 @@ class OrdenDeProceso(TestCase):
         with patch.object(cargas, "procesar", side_effect=anotar), \
                 patch.object(type(registro), "message_user"):
             registro.procesar_cargas(peticion, CargaReporte.objects.all())
+        return procesadas
 
+    def test_los_de_rango_completo_van_despues_de_los_consolidados(self):
+        # Se crean a proposito en el orden equivocado
+        self.crear("historial", None)
+        self.crear("secop", None)
+        self.crear("obligaciones", 2025)
+        self.crear("cdp", 2024)
+        self.crear("poai", None)
+
+        procesadas = self.procesar_todo()
         vigencias = [v for _, v in procesadas]
-        self.assertEqual(vigencias[:2], [2024, 2025])          # consolidados, ascendente
+        self.assertEqual(vigencias[:2], [2024, 2025])           # consolidados, ascendente
         self.assertTrue(all(v is None for v in vigencias[2:]))  # rango completo al final
-        self.assertEqual([t for t, _ in procesadas[2:]], ["historial", "secop", "poai"])
+        self.assertEqual([t for t, _ in procesadas[2:]], ["historial", "poai", "secop"])
+
+    def test_dentro_de_una_vigencia_manda_la_cadena_y_no_el_orden_de_creacion(self):
+        """Da igual como se suban: el CDP se procesa antes que el RP y este antes
+        que la obligacion."""
+        for tipo in ("reservas", "obligaciones", "compromisos", "cdp"):   # al reves
+            self.crear(tipo, 2025)
+
+        procesadas = self.procesar_todo()
+        self.assertEqual([t for t, _ in procesadas],
+                         ["cdp", "compromisos", "obligaciones", "reservas"])
+
+    def test_el_lote_completo_de_varias_vigencias_sale_en_orden(self):
+        import random
+
+        cargas_creadas = [(tipo, vigencia)
+                          for vigencia in (2024, 2025)
+                          for tipo in ("cdp", "compromisos", "obligaciones", "reservas")]
+        cargas_creadas += [("historial", None), ("poai", None), ("secop", None)]
+        random.shuffle(cargas_creadas)
+        for tipo, vigencia in cargas_creadas:
+            self.crear(tipo, vigencia)
+
+        procesadas = self.procesar_todo()
+        self.assertEqual(procesadas, [
+            ("cdp", 2024), ("compromisos", 2024), ("obligaciones", 2024), ("reservas", 2024),
+            ("cdp", 2025), ("compromisos", 2025), ("obligaciones", 2025), ("reservas", 2025),
+            ("historial", None), ("poai", None), ("secop", None),
+        ])
+
+    def test_el_orden_declarado_cubre_todos_los_tipos(self):
+        from siifweb import cargas
+        self.assertEqual(set(cargas.ORDEN_DE_CARGA), set(cargas.PROCESADORES))
 
 
 class Sistema(TestCase):
