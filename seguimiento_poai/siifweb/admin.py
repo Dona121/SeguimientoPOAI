@@ -916,6 +916,8 @@ class ProyectoAdmin(ModelAdmin):
             dependencia=entero("dependencia"), clasificacion=entero("clasificacion"))
 
         filas, totales = tablero.por_dependencia(filtros)
+        # El conteo de documentos ya no se muestra, pero es lo que distingue un periodo
+        # sin movimiento de una dependencia que no gestiono.
         movimientos = sum(totales[m] for m in ("cdps", "rps", "obligaciones", "actas"))
 
         # El enlace de cada fila conserva el corte de fechas y cambia solo la dependencia
@@ -946,10 +948,6 @@ class ProyectoAdmin(ModelAdmin):
             "dependencia_elegida": elegida,
             "tarjetas": [
                 ("Proyectos", totales["proyectos"], "con dependencia responsable", False),
-                ("CDPs", totales["cdps"], "disponibilidades expedidas", False),
-                ("RPs", totales["rps"], "compromisos registrados", False),
-                ("Obligaciones", totales["obligaciones"], "causadas en el periodo", False),
-                ("Actas de pago", totales["actas"], "giros con fecha de pago", False),
                 ("Comprometido", totales["comprometido"], "valor de los RP", True),
                 ("Obligado", totales["obligado"], "recibido a satisfaccion", True),
                 ("Pagado", totales["pagado"], "girado sobre las obligaciones", True),

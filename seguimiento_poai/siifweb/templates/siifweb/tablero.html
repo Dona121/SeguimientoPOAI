@@ -155,7 +155,6 @@
           <tr>
             <th class="px-4 pt-3 text-left"></th>
             <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="5">Proyectos</th>
-            <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="4">Documentos</th>
             <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="4">Montos</th>
             <th class="px-4 pt-3 text-center border-l dark:border-base-800" colspan="3">SECOP II</th>
           </tr>
@@ -166,10 +165,6 @@
             <th class="px-4 py-2 text-right">Con RP</th>
             <th class="px-4 py-2 text-right">Con oblig.</th>
             <th class="px-4 py-2 text-right">Con pago</th>
-            <th class="px-4 py-2 text-right border-l dark:border-base-800">CDPs</th>
-            <th class="px-4 py-2 text-right">RPs</th>
-            <th class="px-4 py-2 text-right">Obligaciones</th>
-            <th class="px-4 py-2 text-right">Actas</th>
             <th class="px-4 py-2 text-right border-l dark:border-base-800">Disponible</th>
             <th class="px-4 py-2 text-right">Comprometido</th>
             <th class="px-4 py-2 text-right">Obligado</th>
@@ -190,10 +185,6 @@
             <td class="px-4 py-2 text-right font-mono">{{ f.proyectos_con_rp }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.proyectos_con_obligacion }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.proyectos_con_pago }}</td>
-            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.cdps|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ f.rps|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ f.obligaciones|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ f.actas|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.disponible|floatformat:0|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.comprometido|floatformat:0|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.obligado|floatformat:0|intcomma }}</td>
@@ -205,7 +196,7 @@
               {{ f.valor_secop|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="17" class="px-4 py-5 text-center text-base-500">
+          <tr><td colspan="13" class="px-4 py-5 text-center text-base-500">
             No hay dependencias con proyectos asignados para este filtro</td></tr>
           {% endfor %}
         </tbody>
@@ -217,10 +208,6 @@
             <td class="px-4 py-2 text-right font-mono">{{ totales.proyectos_con_rp }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ totales.proyectos_con_obligacion }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ totales.proyectos_con_pago }}</td>
-            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ totales.cdps|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ totales.rps|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ totales.obligaciones|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ totales.actas|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ totales.disponible|floatformat:0|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ totales.comprometido|floatformat:0|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ totales.obligado|floatformat:0|intcomma }}</td>
@@ -253,10 +240,6 @@
                       dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
             <th class="px-4 py-2 text-left">Proyecto</th>
-            <th class="px-4 py-2 text-right border-l dark:border-base-800">CDPs</th>
-            <th class="px-4 py-2 text-right">RPs</th>
-            <th class="px-4 py-2 text-right">Obligaciones</th>
-            <th class="px-4 py-2 text-right">Actas</th>
             <th class="px-4 py-2 text-right border-l dark:border-base-800">Disponible</th>
             <th class="px-4 py-2 text-right">Comprometido</th>
             <th class="px-4 py-2 text-right">Obligado</th>
@@ -270,10 +253,6 @@
           {% for f in filas_proyecto %}
           <tr class="border-b dark:border-base-800">
             <td class="px-4 py-2"><a href="{{ f.url }}" class="text-primary-600">{{ f.nombre }}</a></td>
-            <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.cdps|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ f.rps|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ f.obligaciones|intcomma }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ f.actas|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono border-l dark:border-base-800">{{ f.disponible|floatformat:0|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.comprometido|floatformat:0|intcomma }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.obligado|floatformat:0|intcomma }}</td>
@@ -285,7 +264,7 @@
               {{ f.valor_secop|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="12" class="px-4 py-5 text-center text-base-500">
+          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">
             Esta dependencia no tiene proyectos con este filtro</td></tr>
           {% endfor %}
         </tbody>
