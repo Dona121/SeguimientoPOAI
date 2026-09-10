@@ -28,6 +28,13 @@ uv run --directory seguimiento_poai python manage.py runserver 8010
 
 Admin en http://localhost:8010/admin/ — usuario `admin`, clave `siifweb2026`.
 
+### Retomar en otra maquina
+
+El codigo esta en GitHub, pero el `.env` y las memorias del asistente no: viven en
+`respaldo_claude/` (sincronizada con MEGA, ignorada por git). El paso a paso —incluido
+el de Linux, con la sintaxis de bash y las tres diferencias que muerden al cambiar de
+sistema— esta en `respaldo_claude/COMO_RESTAURAR.md`.
+
 ## Cargar un reporte desde el admin
 
 1. Cargas del reporte -> Anadir carga del reporte.
