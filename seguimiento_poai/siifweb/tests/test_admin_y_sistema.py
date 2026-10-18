@@ -245,3 +245,6 @@ class Sistema(TestCase):
         self.assertEqual(settings.DATABASES["default"]["ENGINE"],
                          "django.db.backends.sqlite3")
         self.assertIn("FileSystemStorage", settings.STORAGES["default"]["BACKEND"])
+        # Y los archivos que suben las pruebas van a una carpeta temporal, no a media/
+        self.assertNotEqual(settings.MEDIA_ROOT, settings.BASE_DIR / "media")
+        self.assertIn("siifweb-pruebas-", str(settings.MEDIA_ROOT))

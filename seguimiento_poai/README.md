@@ -26,7 +26,20 @@ archivos pesados (ingresos con 417 mil filas, bitacora con 46 mil).
 uv run --directory seguimiento_poai python manage.py runserver 8010
 ```
 
-Admin en http://localhost:8010/admin/ — usuario `admin`, clave `siifweb2026`.
+Admin en http://localhost:8010/admin/, con un superusuario de la base local
+(`manage.py createsuperuser` si no hay uno).
+
+Ojo: si existe el `.env`, su `DATABASE_URL` apunta a produccion (Supabase). Para trabajar
+contra la sqlite local hay que pasarla explicita, y sin `.env` tambien hacen falta una
+`SECRET_KEY` cualquiera y `DEBUG=True` (sin DEBUG, Django redirige todo a HTTPS):
+
+```bash
+SECRET_KEY=desarrollo-local DEBUG=True DATABASE_URL="sqlite:///$PWD/seguimiento_poai/db.sqlite3" \
+  uv run --directory seguimiento_poai python manage.py runserver 8010
+```
+
+Con el `.env` presente, la subida de reportes desde el admin va al bucket S3 de
+produccion; sin el, falla por falta de llaves. Para revisar paginas no hace falta.
 
 ### Retomar en otra maquina
 
@@ -38,8 +51,9 @@ sistema— esta en `respaldo_claude/COMO_RESTAURAR.md`.
 ## Cargar un reporte desde el admin
 
 1. Cargas del reporte -> Anadir carga del reporte.
-2. Elegir tipo (disponibilidades / compromisos / obligaciones / reservas / historial),
-   vigencia y el archivo xlsx. Grabar.
+2. Elegir tipo (disponibilidades / compromisos / obligaciones / reservas / historial /
+   POAI / SECOP II), vigencia y el archivo xlsx. Grabar. La vigencia se deja vacia en
+   los tres de rango completo: historial, POAI y SECOP II.
 3. En el listado, seleccionar la carga y ejecutar la accion
    **"Procesar los reportes seleccionados"**.
 4. El resultado queda en las columnas `Estado` y `Resultado del proceso` del propio registro.
@@ -85,7 +99,7 @@ El cargador se escribio para ese formato crudo. Lo que emite SIIFWEB:
 | Aspecto | Como llega | Como lo maneja la carga |
 |---|---|---|
 | Codigos (`NRO_*`, `NIT`, `PROYECTO`/BPIN, `FONDO`, `TERCERO`, centros) | `int` — p. ej. `PROYECTO=202500000034777` | `texto()` -> `str(int)`, sin `.0` |
-| Valores en $ | `str` con **coma decimal** y sin separador de miles: `'1855247059,44'`; enteros tambien como texto | `decimal()` cambia `,` por `.` |
+| Valores en $ | `str` con **coma decimal** y sin separador de miles: `'1855247059,44'`; enteros tambien como texto | `decimal()` cambia `,` por `.`; si llegara separador de miles, el decimal es el ultimo signo (`'1.234,56'` = `'1,234.56'`) |
 | Fechas | `str`, con **el anio mezclado**: `'05/01/2026'` en los consolidados y `'02/01/26'` / `'13/12/22'` en reservas e historial | `fecha()` prueba `%d/%m/%y`, `%d/%m/%Y`, `%Y-%m-%d` |
 | Historial | filas de cabecera de contrato con las columnas presupuestales en `None` | los cargadores usan `.get()` y descartan filas totalmente vacias |
 
@@ -96,6 +110,12 @@ Verificado sobre los cinco reportes crudos de 2026 (corte 20260720, **67.000+ fi
 cero fallos de parseo en valores y fechas, ningun codigo con `.0` ni notacion exponencial,
 y todas las claves duras (`f["..."]`) presentes en su archivo. Los unicos valores que
 quedan en `0` son ceros reales (saldos ya ejecutados), no errores de conversion.
+
+**Un valor monetario ilegible aborta la carga** (`ValueError: Valor monetario ilegible:
+'N/A'`) y la transaccion no deja nada a medias. Antes se volvia cero en silencio: la carga
+salia bien y el descuadre aparecia despues sin causa visible. El cambio se verifico sobre
+1.123.428 valores de 29 reportes reales: ninguno ilegible y el mismo resultado de antes en
+todos.
 
 > Nota historica: los primeros archivos que se probaron venian con algunos tipos ya
 > formateados (valores como numero, fechas como fecha). Ese paso era innecesario; el crudo
@@ -277,12 +297,24 @@ Panel **SIIFWEB**:
 - Cuatro tarjetas con el total de cada etapa de la cadena.
 - Tabla de ejecucion **por vigencia**: certificado, comprometido, obligado, pagado, y los
   dos saldos (sin comprometer, sin obligar) con barra de avance.
+- **Filtro de fechas** (desde / hasta) sobre las tres tablas de documentos. Cada una se
+  corta por su propia fecha: CDPs por la de disponibilidad, RPs por la de registro y
+  obligaciones por la de obligacion. Los limites se incluyen. Las tarjetas, la cadena por
+  vigencia y las demas secciones no se filtran: siguen mostrando todo el proyecto. El
+  filtro queda en la URL (`?desde=...&hasta=...`), asi que la ficha filtrada se comparte
+  con el enlace.
 - CDPs y RPs del proyecto, con su objeto y su valor.
-- **Obligaciones**: vigencia, numero, fecha, objeto, tipo de orden de gasto y valor
-  definitivo. El objeto sale de `OBJETO_OBLIG` (el consolidado paso de 25 a 27 columnas y
-  ahora trae objeto, NIT y beneficiario); si una obligacion se cargo antes de que ese
-  campo existiera, se muestra el objeto del RP contra el que se causo, resuelto por
-  subconsulta para no multiplicar filas.
+- **Obligaciones**: vigencia, numero, fecha, beneficiario, NIT, objeto, tipo de orden de
+  gasto, valor definitivo, **saldo** y **pagado**. El objeto sale de `OBJETO_OBLIG` (el
+  consolidado paso de 25 a 27 columnas y ahora trae objeto, NIT y beneficiario); si una
+  obligacion se cargo antes de que ese campo existiera, se muestra el objeto del RP contra
+  el que se causo, resuelto por subconsulta para no multiplicar filas. Saldo y pagado son
+  `SALDO_OBLI` y `PAGOS` del mismo consolidado (valor = saldo + pagado en todas las filas);
+  suman sobre la misma relacion que el valor, asi que comparten el join y no se multiplican.
+- Las fechas de CDPs, RPs y obligaciones van en el formato regional (`4 de Julio de 2025`).
+- **PDF por tabla**: cada titulo (CDPs, RPs, Obligaciones) tiene a la derecha un
+  "Descargar PDF" que baja solo esa tabla, con el filtro de fechas que este aplicado. Ver
+  la seccion siguiente.
 - Fuentes de financiacion, con lo comprometido por cada una.
 - Contratos del proyecto con contratista, valor, numero de actas y pagado real.
 - **Calendario de pagos**: cada acta del contrato con su fecha, tipo, numero y contratista.
@@ -301,6 +333,25 @@ con `Sum()` **multiplica las filas**. El pagado de un contrato y el total del ca
 salian al doble porque el contrato tenia 2 imputaciones para ese proyecto y el join las
 cruzaba con sus actas. Se resuelve con `Subquery` (helper `suma_de`) o filtrando por una
 subconsulta de ids. Es el mismo problema del grano que cuidamos al cruzar los reportes.
+
+### PDF de cada tabla
+
+`?panel=siifweb&tabla=cdps|rps|obligaciones&descargar=pdf` (mas `desde`/`hasta` si hay
+filtro) devuelve el PDF de esa tabla; otra `tabla` da 404. Lo arma `siifweb/pdf_ficha.py`
+con ReportLab, a partir de **las mismas consultas** que dibuja la pantalla
+(`ProyectoAdmin._documentos_filtrados`), asi que el reporte y la ficha no pueden diferir.
+
+- Hoja carta horizontal. Encabezado con el BPIN, el nombre, la **dependencia responsable
+  (POAI)**, el periodo y la fecha de generacion; pie con "Pagina X de Y".
+- La tabla con las mismas columnas y totales de la pantalla, bordes en todas las celdas y
+  encabezados centrados. El encabezado se repite en cada pagina.
+- Fuente **Carlito**, la version abierta de Calibri (mismas formas y medidas). Calibri es
+  de Microsoft: no esta en el servidor Linux de Railway y su licencia no deja subir el
+  archivo al repositorio. Carlito (licencia OFL) vive en `siifweb/fuentes/` y queda
+  incrustada en el PDF, asi que se ve igual en local y en produccion.
+- ReportLab y no una conversion de HTML: es Python puro y no pide librerias del sistema.
+- Medido sobre el proyecto con mas documentos (1.880 obligaciones): el PDF completo sale
+  en unos 3 segundos; con un mes de filtro, en menos de uno.
 
 ## Dashboard de seguimiento
 
@@ -336,6 +387,11 @@ concentran su ejecucion en 2026.
 
 Atajos de periodo (esta semana, este mes, este trimestre, este ano), rango libre
 desde/hasta, chips de vigencia, y filtros por dependencia y por clasificacion.
+
+Los atajos se calculan con la fecha de Bogota (`timezone.localdate()`), no con la del
+servidor: Railway corre en UTC y desde las 7 p. m. `date.today()` ya da el dia siguiente.
+Una fecha bien formada pero imposible en la URL (`2025-13-45`) se ignora en vez de dar 500
+(helper `fecha_del_get`, que usa tambien la ficha).
 
 Lo que hace util el corte es que **cada etapa se filtra por su propia fecha**:
 
@@ -446,6 +502,8 @@ como lo que responde 403.
 - `siifweb/management/commands/cargar_reporte.py` — carga por consola
 - `siifweb/management/commands/validar.py` — conciliaciones sobre lo migrado
 - `siifweb/tablero.py` — el dashboard: agregacion por dependencia y por proyecto
+- `siifweb/pdf_ficha.py` — el PDF de cada tabla de la ficha (ReportLab)
+- `siifweb/fuentes/` — Carlito (regular y negrilla) con su licencia OFL, para el PDF
 - `siifweb/migrations/0009_roles_seguimiento_y_consulta.py` — los dos roles del equipo
 - `siifweb/tests/` — la bateria automatica (`manage.py test siifweb`)
 - `prueba_admin.py` — ejerce el flujo del admin (subir + procesar) sin navegador
@@ -488,19 +546,29 @@ uv run --directory seguimiento_poai python manage.py test siifweb
 **Nunca tocan produccion.** El `.env` apunta a Supabase y el almacenamiento por defecto
 es el bucket S3, asi que `settings.py` detecta el comando `test` y fuerza sqlite en
 memoria, disco temporal para los archivos y un hasher rapido. No hay que acordarse de
-exportar nada.
+exportar nada, y **no dependen del `.env`**: sin el, la guarda pone una `SECRET_KEY` de
+relleno y apaga la redireccion a HTTPS (antes, sin `DEBUG=True`, 121 pruebas fallaban
+con un 301).
 
-123 pruebas en siete modulos:
+Ojo con la carpeta temporal: `MEDIA_ROOT = BASE_DIR / 'media'` se define mas abajo que la
+guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
+`media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
+linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
+
+215 pruebas en diez modulos:
 
 | Modulo | Que vigila |
 |---|---|
 | `test_leer_filas.py` | El lector de xlsx: encontrar la TABLA por su nombre en la hoja que sea, fallar claro si no esta o si le faltan columnas, y seguir leyendo como antes los reportes sin tabla |
 | `test_cargar_secop.py` | El cargador: grano, deduplicacion, procesos sin contrato, BPIN fuera del catalogo, normalizacion, idempotencia, atomicidad y el mensaje de resultado. Al final, las cifras del archivo real |
 | `test_modelos_secop.py` | Llaves unicas, la restriccion de la fila BPIN, los `PROTECT` y el tipo de reporte nuevo |
-| `test_ficha_proyecto.py` | Los dos paneles: que cada uno consulte solo lo suyo, el orden del tramite, el modal, las ayudas, las tablas con alto limitado y que ninguna suma se multiplique |
-| `test_regresion_cargadores.py` | Que los cargadores de siempre sigan funcionando, ya que comparten `leer_filas` con el de SECOP |
+| `test_ficha_proyecto.py` | Los dos paneles: que cada uno consulte solo lo suyo, el orden del tramite, el modal, las ayudas, las tablas con alto limitado y que ninguna suma se multiplique. El saldo y el pagado de las obligaciones, el filtro de fechas (cada tabla por su fecha, limites incluidos, tarjetas sin filtrar, fechas invalidas) y el formato de fecha |
+| `test_pdf_ficha.py` | El PDF de cada tabla: que traiga solo la tabla pedida, que respete el filtro, el 404 de una tabla desconocida, los textos con `<`, `>` y `&`, las tablas de varias paginas, los permisos, el encabezado con la dependencia responsable y los enlaces junto a cada titulo |
+| `test_regresion_cargadores.py` | Que los cargadores de siempre sigan funcionando, ya que comparten `leer_filas` con el de SECOP. Los valores monetarios: separador de miles y que un valor ilegible aborte la carga |
 | `test_validar.py` | La seccion 8 del comando `validar` y que las siete anteriores sigan saliendo |
-| `test_admin_y_sistema.py` | Las paginas nuevas y **todas** las que ya existian, el menu lateral, `check` y que no queden migraciones sin crear |
+| `test_tablero.py` | El dashboard: solo proyectos con dependencia responsable, el grano (nada se cuenta dos veces), cada etapa cortada por su fecha y contrastada con la consulta directa, lo cancelado de SECOP fuera, atajos de periodo con la fecha de Bogota y filtros que no revientan |
+| `test_roles.py` | Los roles Seguimiento y Consulta: que ven, que editan y el menu lateral de cada uno |
+| `test_admin_y_sistema.py` | Las paginas nuevas y **todas** las que ya existian, el menu lateral, `check`, que no queden migraciones sin crear, que las pruebas no toquen produccion ni `media/`, y el formulario de carga (vigencia obligatoria salvo en historial, POAI y SECOP II) |
 
 Las cifras del archivo real (`data/secop/ReporteSIIFWEB_20260814.xlsx`) se comprueban solo
 si el archivo esta a mano; en otra maquina esas pruebas se saltan solas.
@@ -542,9 +610,10 @@ Los catalogos describen las imputaciones del proyecto.
   reserva (el caso de 2023, 43 imputaciones).
 - Las reservas resuelven su CDP de origen contra la vigencia anterior.
 - Los valores con coma decimal se convierten a Decimal; los identificadores pierden el `.0`.
+  Un valor monetario ilegible aborta la carga en vez de quedar en cero.
 - Los catalogos se enriquecen entre reportes: solo se rellenan campos vacios.
 
-## Dos trampas de Django que costaron encontrar
+## Trampas que costaron encontrar
 
 1. **`Sum()` sobre dos relaciones a la vez multiplica las filas.** Aparecio dos veces: el
    pagado de un contrato salia al doble (2 imputaciones del proyecto x sus actas), y el
@@ -553,3 +622,14 @@ Los catalogos describen las imputaciones del proyecto.
 2. **`max_num` no limita un inline de solo lectura**: el admin lo pone en 0 cuando
    `has_add_permission` es False. Y `get_queryset` del inline tampoco sirve, porque ahi
    todavia no se filtro por el padre. El corte va en el formset (`FormSetLimitado`).
+3. **`parse_date` no siempre devuelve `None`**: con un texto que no parece fecha si, pero
+   con una bien formada e imposible (`2025-13-45`) lanza `ValueError`. Las vistas leen las
+   fechas de la URL con `fecha_del_get`, que lo atrapa.
+4. **unfold no trae todas las clases de Tailwind.** Sirve una hoja ya compilada con las
+   clases que el mismo usa: `items-end` no existe y `text-base` es un color, no un tamano
+   de letra. Una clase que falta no da error, simplemente no hace nada, y el defecto solo
+   se ve en el navegador. En las plantillas propias, alineacion, alturas y tamanos de
+   iconos van en un `<style>` con selector acotado (`#filtro-fechas ...`, `.btn-pdf`).
+5. **En ReportLab, `keepWithNext` y `KeepTogether` agrupan el titulo con la tabla
+   entera**: una tabla larga salta completa a la pagina siguiente y deja un hueco. Para
+   que el titulo no quede solo al pie se usa `CondPageBreak` antes del titulo.

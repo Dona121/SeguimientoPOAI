@@ -235,9 +235,12 @@ STATICFILES_DIRS = [
     BASE_DIR / "static"
 ]
 
-# Archivos subidos (los xlsx de los reportes)
+# Archivos subidos (los xlsx de los reportes). En pruebas no se toca: la guarda de
+# arriba ya lo dejo en una carpeta temporal. Antes esta linea la pisaba y cada corrida
+# de la suite dejaba cientos de xlsx de prueba en media/reportes.
 MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+if sys.argv[1:2] != ["test"]:
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 # Los reportes grandes traen decenas de miles de filas en un solo POST del admin
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024
