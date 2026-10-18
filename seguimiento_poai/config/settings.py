@@ -186,6 +186,10 @@ if sys.argv[1:2] == ["test"]:
     }
     MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="siifweb-pruebas-"))
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+    # Las pruebas no dependen del .env: sin DEBUG el cliente de pruebas recibia el
+    # 301 a HTTPS en cada pagina, y sin SECRET_KEY no se podia abrir una sesion
+    SECURE_SSL_REDIRECT = False
+    SECRET_KEY = SECRET_KEY or "solo-para-pruebas"
 
 
 # Password validation

@@ -267,10 +267,35 @@
     </div>
     </div>
 
+    {# Recorta solo las tres tablas de abajo, cada una por su propia fecha #}
+    <form method="get" id="filtro-fechas"
+          class="bg-white border rounded-default shadow-xs px-4 py-3 flex items-end gap-3 flex-wrap
+                 dark:bg-base-900 dark:border-base-800">
+      <input type="hidden" name="panel" value="siifweb">
+      <div>
+        <label class="lbl" for="ficha-desde">Desde</label>
+        <input type="date" name="desde" id="ficha-desde" class="in" value="{{ desde }}">
+      </div>
+      <div>
+        <label class="lbl" for="ficha-hasta">Hasta</label>
+        <input type="date" name="hasta" id="ficha-hasta" class="in" value="{{ hasta }}">
+      </div>
+      <button type="submit" class="btn-verde">
+        <span class="material-symbols-outlined">filter_alt</span> Filtrar
+      </button>
+      {% if desde or hasta %}
+      <a href="?panel=siifweb" class="nota font-medium text-base-500">Limpiar</a>
+      {% endif %}
+      <span class="nota text-base-400">CDPs por fecha de disponibilidad, RPs por fecha de
+        registro y obligaciones por fecha de obligación</span>
+    </form>
+
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-4 py-3 dark:border-base-800">
+    <div class="titulo-tabla border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">CDPs ({{ cdps_proyecto|length }})
         {% include "siifweb/_ayuda.html" with etiqueta="Que es un CDP" texto="El certificado de disponibilidad presupuestal aparta el cupo antes de contratar: certifica que hay plata para ese gasto. Todavía no hay contratista ni compromiso, y lo que no se use se libera al cierre." %}</h2>
+      <a href="{{ enlaces_pdf.cdps }}" class="btn-pdf">
+        <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
     </div>
     <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
@@ -311,9 +336,11 @@
     </div>
 
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-4 py-3 dark:border-base-800">
+    <div class="titulo-tabla border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">RPs ({{ rps_por_proyecto|length }})
         {% include "siifweb/_ayuda.html" with etiqueta="Que es un RP" texto="El registro presupuestal compromete el cupo del CDP con un contratista concreto, al momento de firmar. De ahí en adelante esa plata ya tiene dueño y solo se puede usar para ese contrato." %}</h2>
+      <a href="{{ enlaces_pdf.rps }}" class="btn-pdf">
+        <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
     </div>
     <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
@@ -357,9 +384,11 @@
     </div>
 
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-    <div class="border-b px-4 py-3 dark:border-base-800">
+    <div class="titulo-tabla border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Obligaciones ({{ obligaciones_por_proyecto|length }})
         {% include "siifweb/_ayuda.html" with etiqueta="Que es una obligacion" texto="La obligación reconoce que lo contratado ya se recibió a satisfacción: es la cuenta por pagar del contratista, el paso previo al giro. Se causa contra un RP, y el valor definitivo es el que quedó tras las modificaciones." %}</h2>
+      <a href="{{ enlaces_pdf.obligaciones }}" class="btn-pdf">
+        <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
     </div>
     <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
@@ -373,6 +402,8 @@
             <th class="px-4 py-2 text-left">Objeto</th>
             <th class="px-4 py-2 text-left">Tipo de orden de gasto</th>
             <th class="px-4 py-2 text-right">Valor obligación definitiva</th>
+            <th class="px-4 py-2 text-right">Saldo</th>
+            <th class="px-4 py-2 text-right">Pagado</th>
           </tr>
         </thead>
         <tbody>
@@ -380,16 +411,18 @@
           <tr class="border-b dark:border-base-800">
             <td class="px-4 py-2 font-medium">{{ o.vigencia }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ o.nro_obligacion }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ o.fecha_obli|date:"Y-m-d" }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ o.fecha_obli }}</td>
             <td class="px-4 py-2">{{ o.beneficiario.nombre|default:"—"|truncatechars:38 }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ o.beneficiario.codigo|default:"—" }}</td>
             {# El objeto propio manda; el del RP es el respaldo de las cargas viejas #}
             <td class="px-4 py-2">{{ o.objeto_oblig|default:o.objeto_rp|default:"—"|truncatechars:90 }}</td>
             <td class="px-4 py-2">{{ o.tipo_orden_gasto.nombre|default:"—" }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ o.valor_obli|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ o.saldo_oblig|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ o.pagado_obli|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">
+          <tr><td colspan="10" class="px-4 py-5 text-center text-base-500">
             Sin obligaciones causadas</td></tr>
           {% endfor %}
         </tbody>
@@ -403,6 +436,8 @@
             <td class="px-4 py-2"></td>
             <td class="px-4 py-2"></td>
             <td class="px-4 py-2 text-right font-mono">{{ obligaciones_por_proyecto_total|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ obligaciones_por_proyecto_saldo|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ obligaciones_por_proyecto_pagado|floatformat:0|intcomma }}</td>
           </tr>
         </tfoot>
       </table>
@@ -612,6 +647,38 @@
       transition: opacity .12s ease;
     }
     .ayuda:hover .globo, .ayuda:focus-within .globo { visibility: visible; opacity: 1; }
+
+    /* Filtro de fechas. Campos, boton y textos comparten una altura fija para que
+       queden en la misma linea. El tamano del icono va aqui: en unfold "text-base" es
+       un color, no un tamano, y el icono quedaba en los 24px de Material Symbols. */
+    /* La alineacion tambien va aqui: "items-end" no viene en el CSS compilado de unfold */
+    #filtro-fechas { --alto: 2.25rem; display: flex; flex-wrap: wrap; align-items: flex-end;
+                     gap: .75rem; }
+    #filtro-fechas .in { height: var(--alto); border: 1px solid var(--color-base-200);
+                         border-radius: 6px; padding: 0 .7rem; font-size: .875rem;
+                         background: #fff; color: var(--color-base-800); }
+    #filtro-fechas .in:focus { outline: 2px solid var(--color-primary-600); outline-offset: -1px;
+                               border-color: transparent; }
+    #filtro-fechas .lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
+                          color: var(--color-base-500); font-weight: 600; margin-bottom: .35rem;
+                          display: block; }
+    #filtro-fechas .btn-verde { height: var(--alto); display: inline-flex; align-items: center;
+                                gap: .35rem; padding: 0 .9rem; border-radius: 6px;
+                                font-size: .8125rem; font-weight: 600; line-height: 1;
+                                background: var(--color-primary-600); color: #fff; }
+    #filtro-fechas .btn-verde:hover { background: var(--color-primary-700); }
+    #filtro-fechas .material-symbols-outlined { font-size: 1.05rem; line-height: 1; }
+    /* Descarga en PDF de cada tabla, a la derecha de su titulo; lleva el filtro aplicado */
+    .titulo-tabla { display: flex; align-items: center; justify-content: space-between;
+                    gap: .75rem; flex-wrap: wrap; }
+    .btn-pdf { display: inline-flex; align-items: center; gap: .3rem; height: 2rem;
+               padding: 0 .75rem; border-radius: 6px; font-size: .8125rem; font-weight: 600;
+               line-height: 1; border: 1px solid var(--color-primary-600);
+               color: var(--color-primary-700); white-space: nowrap; }
+    .btn-pdf:hover { background: var(--color-primary-50); }
+    .btn-pdf .material-symbols-outlined { font-size: 1.05rem; line-height: 1; }
+    #filtro-fechas .nota { height: var(--alto); display: inline-flex; align-items: center;
+                           font-size: .8125rem; }
   </style>
   <div id="modal-detalle" class="fixed inset-0 z-50 hidden items-center justify-center p-4"
        role="dialog" aria-modal="true" aria-labelledby="modal-detalle-titulo">

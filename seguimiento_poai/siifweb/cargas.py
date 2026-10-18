@@ -38,17 +38,35 @@ def texto(valor):
 
 
 def decimal(valor):
-    """Valor monetario. Acepta float, int y texto con coma decimal."""
+    """Valor monetario. Acepta float, int y texto con coma decimal.
+
+    SIIFWEB manda '1855247059,44', sin separador de miles. Si algun dia llega con
+    separador, el decimal es el ultimo signo que aparece: '1.234,56' y '1,234.56'
+    valen lo mismo. Un punto solo se lee como decimal, igual que antes.
+
+    Lo que no se puede leer aborta la carga. Antes se volvia cero en silencio: la
+    carga salia bien y el descuadre aparecia despues sin causa visible.
+    """
     if valor is None or valor == "":
         return CERO
     if isinstance(valor, (int, float, Decimal)):
         return Decimal(str(valor))
-    try:
-        return Decimal(str(valor).strip().replace(".", "").replace(",", ".")
-                       if str(valor).count(",") == 1 and str(valor).count(".") > 1
-                       else str(valor).strip().replace(",", "."))
-    except InvalidOperation:
+    limpio = str(valor).strip()
+    if not limpio:
         return CERO
+    if "," in limpio and "." in limpio:
+        miles, decimal_ = (".", ",") if limpio.rfind(",") > limpio.rfind(".") else (",", ".")
+        limpio = limpio.replace(miles, "").replace(decimal_, ".")
+    elif limpio.count(",") > 1:
+        limpio = limpio.replace(",", "")
+    elif limpio.count(".") > 1:
+        limpio = limpio.replace(".", "")
+    else:
+        limpio = limpio.replace(",", ".")
+    try:
+        return Decimal(limpio)
+    except InvalidOperation:
+        raise ValueError(f"Valor monetario ilegible: {valor!r}") from None
 
 
 def fecha(valor):

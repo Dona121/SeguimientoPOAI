@@ -193,6 +193,12 @@ class PanelSiifweb(FichaBase):
         self.assertEqual(obligacion.beneficiario.nombre, "Contratista de prueba")
         self.assertEqual(obligacion.beneficiario.codigo, "1005639763")
         self.assertEqual(contexto["obligaciones_por_proyecto_total"], Decimal("10000000.00"))
+        # El pagado sale de la columna PAGOS del consolidado: la cadena paga la mitad
+        self.assertEqual(obligacion.pagado_obli, Decimal("5000000.00"))
+        self.assertEqual(contexto["obligaciones_por_proyecto_pagado"], Decimal("5000000.00"))
+        # Saldo = valor - pagado, de la columna SALDO_OBLI
+        self.assertEqual(obligacion.saldo_oblig, Decimal("5000000.00"))
+        self.assertEqual(contexto["obligaciones_por_proyecto_saldo"], Decimal("5000000.00"))
 
     def test_el_beneficiario_se_dibuja_con_su_nit(self):
         html = self.html(self.client.get(self.url(self.proy, "siifweb")))
@@ -221,7 +227,8 @@ class PanelSiifweb(FichaBase):
         self.assertLess(html.index("RPs ("), html.index("Obligaciones (1)"))
         self.assertLess(html.index("Obligaciones (1)"), html.index("Fuentes de financiación"))
         for encabezado in ("Número obligación", "Fecha obligación", "Objeto", "Beneficiario",
-                           "NIT", "Tipo de orden de gasto", "Valor obligación definitiva"):
+                           "NIT", "Tipo de orden de gasto", "Valor obligación definitiva",
+                           "Pagado"):
             with self.subTest(columna=encabezado):
                 self.assertIn(encabezado, html)
 
@@ -238,6 +245,10 @@ class PanelSiifweb(FichaBase):
         obligaciones = list(contexto["obligaciones_por_proyecto"])
         self.assertEqual(len(obligaciones), 1)
         self.assertEqual(obligaciones[0].valor_obli, Decimal("12000000.00"))
+        # El pagado tampoco: 5.000.000 de la primera imputacion mas 0 de la segunda
+        self.assertEqual(obligaciones[0].pagado_obli, Decimal("5000000.00"))
+        # Y el saldo: 5.000.000 de la primera mas 2.000.000 de la segunda
+        self.assertEqual(obligaciones[0].saldo_oblig, Decimal("7000000.00"))
 
     def test_no_muestra_las_obligaciones_de_otro_proyecto(self):
         otro = proyecto(bpin="202600000000009", nombre="Otro")
@@ -245,6 +256,21 @@ class PanelSiifweb(FichaBase):
         contexto = self.client.get(self.url(self.proy, "siifweb")).context
         self.assertEqual(len(list(contexto["obligaciones_por_proyecto"])), 1)
         self.assertEqual(contexto["obligaciones_por_proyecto_total"], Decimal("10000000.00"))
+        self.assertEqual(contexto["obligaciones_por_proyecto_pagado"], Decimal("5000000.00"))
+
+    def test_el_saldo_va_entre_el_valor_y_el_pagado(self):
+        html = self.html(self.client.get(self.url(self.proy, "siifweb")))
+        tabla = html[html.index("Obligaciones (1)"):html.index("Fuentes de financiación")]
+        valor = tabla.index("Valor obligación definitiva")
+        saldo = tabla.index(">Saldo</th>")
+        pagado = tabla.index(">Pagado</th>")
+        self.assertLess(valor, saldo)
+        self.assertLess(saldo, pagado)
+
+    def test_el_pagado_de_la_obligacion_se_dibuja_en_su_fila(self):
+        html = self.html(self.client.get(self.url(self.proy, "siifweb")))
+        tabla = html[html.index("Obligaciones (1)"):html.index("Fuentes de financiación")]
+        self.assertRegex(tabla, r"5[.,]000[.,]000")
 
     def test_mas_contratos_no_significan_mas_consultas(self):
         """El modal muestra dependencia e interventor: sin select_related seria N+1."""
@@ -322,3 +348,82 @@ class Plantilla(FichaBase):
         html = self.html(self.client.get(self.url(self.proy, "secop")))
         self.assertIn("SECOP no cuenta con una columna que especifique", html)
         self.assertIn("solo se hace el cruce a nivel de BPIN", html)
+
+
+class FiltroDeFechas(FichaBase):
+    """La cadena de prueba: CDP del 15/01, RP del 01/02 y obligacion del 01/03 de 2025."""
+
+    def setUp(self):
+        super().setUp()
+        self.proy = proyecto()
+        cadena(self.proy)
+
+    def ficha(self, **fechas):
+        return self.client.get(self.url(self.proy), {"panel": "siifweb", **fechas})
+
+    def cuantos(self, contexto):
+        return (len(contexto["cdps_proyecto"]), len(contexto["rps_por_proyecto"]),
+                len(contexto["obligaciones_por_proyecto"]))
+
+    def test_sin_fechas_trae_todo(self):
+        self.assertEqual(self.cuantos(self.ficha().context), (1, 1, 1))
+
+    def test_cada_tabla_se_corta_por_su_propia_fecha(self):
+        # Desde el 20/01 queda fuera el CDP (15/01), pero no el RP ni la obligacion
+        self.assertEqual(self.cuantos(self.ficha(desde="2025-01-20").context), (0, 1, 1))
+        # Hasta el 15/02 queda fuera la obligacion (01/03)
+        self.assertEqual(self.cuantos(self.ficha(hasta="2025-02-15").context), (1, 1, 0))
+        # Entre el 20/01 y el 15/02 solo queda el RP
+        self.assertEqual(self.cuantos(self.ficha(desde="2025-01-20", hasta="2025-02-15").context),
+                         (0, 1, 0))
+
+    def test_los_limites_del_rango_se_incluyen(self):
+        contexto = self.ficha(desde="2025-01-15", hasta="2025-03-01").context
+        self.assertEqual(self.cuantos(contexto), (1, 1, 1))
+
+    def test_los_totales_de_las_tablas_siguen_al_filtro(self):
+        contexto = self.ficha(desde="2025-01-20", hasta="2025-02-15").context
+        self.assertEqual(contexto["cdps_proyecto_total"], 0)
+        self.assertEqual(contexto["rps_por_proyecto_total"], Decimal("10000000.00"))
+        self.assertEqual(contexto["obligaciones_por_proyecto_total"], 0)
+        self.assertEqual(contexto["obligaciones_por_proyecto_pagado"], 0)
+        self.assertEqual(contexto["obligaciones_por_proyecto_saldo"], 0)
+
+    def test_las_tarjetas_y_la_cadena_por_vigencia_no_se_filtran(self):
+        contexto = self.ficha(desde="2026-01-01").context
+        self.assertEqual(self.cuantos(contexto), (0, 0, 0))
+        self.assertEqual(contexto["totales"]["obligado"], Decimal("10000000.00"))
+        self.assertEqual(len(contexto["filas"]), 1)
+
+    def test_una_fecha_invalida_se_ignora(self):
+        respuesta = self.ficha(desde="no-es-fecha", hasta="2025-13-45")
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(self.cuantos(respuesta.context), (1, 1, 1))
+
+    def test_el_formulario_conserva_las_fechas_y_el_panel(self):
+        html = self.html(self.ficha(desde="2025-01-20", hasta="2025-02-15"))
+        self.assertIn('name="desde" id="ficha-desde" class="in" value="2025-01-20"', html)
+        self.assertIn('value="2025-02-15"', html)
+        self.assertIn('<input type="hidden" name="panel" value="siifweb">', html)
+        self.assertIn('href="?panel=siifweb"', html)       # Limpiar
+        self.assertLess(html.index('id="filtro-fechas"'), html.index("CDPs ("))
+
+    def test_el_panel_de_secop_no_muestra_el_filtro(self):
+        html = self.html(self.client.get(self.url(self.proy, "secop")))
+        self.assertNotIn('id="filtro-fechas"', html)
+
+
+class FormatoDeFechas(FichaBase):
+    def test_la_fecha_de_la_obligacion_va_en_el_mismo_formato_que_cdp_y_rp(self):
+        from datetime import date
+        from django.utils.formats import date_format
+        proy = proyecto()
+        cadena(proy)   # CDP del 15/01, RP del 01/02 y obligacion del 01/03 de 2025
+        html = self.html(self.client.get(self.url(proy, "siifweb")))
+        cdps = html[html.index("CDPs ("):html.index("RPs (")]
+        rps = html[html.index("RPs ("):html.index("Obligaciones (")]
+        obligaciones = html[html.index("Obligaciones ("):html.index("Fuentes de financiación")]
+        self.assertIn(date_format(date(2025, 1, 15)), cdps)
+        self.assertIn(date_format(date(2025, 2, 1)), rps)
+        self.assertIn(date_format(date(2025, 3, 1)), obligaciones)
+        self.assertNotIn("2025-03-01", obligaciones)

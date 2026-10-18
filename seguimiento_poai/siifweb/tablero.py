@@ -24,6 +24,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Count, F, Max, Sum
+from django.utils import timezone
 
 from .models import (BpinProceso, Cdp, CdpImputacion, Clasificacion, Compromiso,
                      CompromisoImputacion, ContratoActa, DependenciaResponsable,
@@ -68,7 +69,9 @@ class Filtros:
 
 def rango_del_preset(preset, hoy=None):
     """(desde, hasta) de los atajos de la barra de fechas. None si no hay preset."""
-    hoy = hoy or date.today()
+    # Fecha de Bogota, no la del servidor: Railway corre en UTC y desde las 7 p. m.
+    # date.today() ya devuelve el dia siguiente
+    hoy = hoy or timezone.localdate()
     if preset == "semana":
         inicio = hoy - timedelta(days=hoy.weekday())
         return inicio, inicio + timedelta(days=6)

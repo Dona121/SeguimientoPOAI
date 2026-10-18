@@ -210,3 +210,25 @@ class CargadorDeObligaciones(TestCase):
         from siifweb.models import Obligacion
         self.cargar("PAGO ACTA 1", nit=None, beneficiario=None)
         self.assertIsNone(Obligacion.objects.get(nro_obligacion="99").beneficiario)
+
+
+class ValoresMonetarios(TestCase):
+    def test_el_formato_de_siifweb_se_lee_igual(self):
+        self.assertEqual(cargas.decimal("1855247059,44"), Decimal("1855247059.44"))
+        self.assertEqual(cargas.decimal("1000000"), Decimal("1000000"))
+        self.assertEqual(cargas.decimal(1500.5), Decimal("1500.5"))
+        self.assertEqual(cargas.decimal(None), Decimal("0"))
+        self.assertEqual(cargas.decimal("  "), Decimal("0"))
+
+    def test_el_separador_de_miles_no_vuelve_cero_el_valor(self):
+        """Antes '1.234,56' y '1,234.56' salian en 0 sin avisar."""
+        for texto in ("1.234,56", "1,234.56"):
+            self.assertEqual(cargas.decimal(texto), Decimal("1234.56"), texto)
+        self.assertEqual(cargas.decimal("1.234.567,89"), Decimal("1234567.89"))
+        self.assertEqual(cargas.decimal("1,234,567"), Decimal("1234567"))
+
+    def test_un_valor_ilegible_aborta_la_carga(self):
+        carga = cargar([fila_cdp(), fila_cdp(**{"NRO_CDP": 2, "VALOR_CERTIFICADO": "N/A"})])
+        self.assertEqual(carga.estado, CargaReporte.Estado.ERROR)
+        self.assertIn("'N/A'", carga.mensaje)
+        self.assertEqual(CdpImputacion.objects.count(), 0)   # la transaccion no deja nada a medias

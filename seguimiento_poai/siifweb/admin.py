@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import hashlib
+from urllib.parse import urlencode
 
 from django import forms
 from django.contrib import admin, messages
@@ -56,6 +57,18 @@ def suma_de(modelo, campo, relacion="proyecto"):
         modelo.objects.filter(**{relacion: OuterRef("pk")})
         .values(relacion).annotate(t=Sum(campo)).values("t"),
         output_field=DecimalField(max_digits=20, decimal_places=2))
+
+
+def fecha_del_get(request, nombre):
+    """Fecha de un parametro GET, o None si viene vacia o no es una fecha.
+
+    parse_date devuelve None con un texto que no parece fecha, pero LANZA ValueError
+    con una bien formada e imposible ('2025-13-45'): sin esto la pagina daba 500.
+    """
+    try:
+        return parse_date(request.GET.get(nombre, "") or "")
+    except ValueError:
+        return None
 
 
 def primera_fecha(modelo, campo_fecha, relacion="proyecto"):
@@ -218,10 +231,11 @@ class CargaReporteForm(forms.ModelForm):
                     f"como '{previa}'. No se vuelve a procesar.")
             self.instance.hash = digest
         tipo = datos.get("tipo_reporte")
-        sin_vigencia = (CargaReporte.TipoReporte.HISTORIAL, CargaReporte.TipoReporte.POAI)
+        sin_vigencia = (CargaReporte.TipoReporte.HISTORIAL, CargaReporte.TipoReporte.POAI,
+                        CargaReporte.TipoReporte.SECOP)
         if tipo and tipo not in sin_vigencia and not datos.get("vigencia"):
-            raise forms.ValidationError("La vigencia es obligatoria salvo en el historial de contratos "
-                                        "y el cruce POAI, que cubren varias vigencias.")
+            raise forms.ValidationError("La vigencia es obligatoria salvo en el historial de contratos, "
+                                        "el cruce POAI y SECOP II, que cubren varias vigencias.")
         return datos
 
 
@@ -702,6 +716,29 @@ class ProyectoAdmin(ModelAdmin):
             return TemplateResponse(request, "siifweb/ficha_proyecto.html",
                                     {**comun, **self._ficha_secop(proyecto)})
 
+        # Filtro de fechas: recorta las tablas de CDPs, RPs y obligaciones, en la
+        # pantalla y en el PDF de cada una (?descargar=pdf&tabla=...), que sale de
+        # las mismas consultas
+        from . import pdf_ficha
+        desde = fecha_del_get(request, "desde")
+        hasta = fecha_del_get(request, "hasta")
+        documentos = self._documentos_filtrados(proyecto, desde, hasta)
+        if request.GET.get("descargar") == "pdf":
+            tabla = request.GET.get("tabla")
+            if tabla not in pdf_ficha.TABLAS:
+                raise Http404("Tabla desconocida para el PDF.")
+            respuesta = HttpResponse(pdf_ficha.generar(proyecto, desde, hasta, documentos, tabla),
+                                     content_type="application/pdf")
+            respuesta["Content-Disposition"] = (
+                f'attachment; filename="{tabla}_{proyecto.bpin}_{timezone.localdate():%Y%m%d}.pdf"')
+            return respuesta
+
+        # El enlace de descarga de cada tabla lleva el filtro que esta aplicado
+        filtro = {k: v for k, v in (("desde", desde), ("hasta", hasta)) if v}
+        enlaces_pdf = {tabla: "?" + urlencode({"panel": "siifweb", **filtro,
+                                               "tabla": tabla, "descargar": "pdf"})
+                       for tabla in pdf_ficha.TABLAS}
+
         por_vigencia = {}
 
         def acumular(consulta, clave):
@@ -759,54 +796,6 @@ class ProyectoAdmin(ModelAdmin):
         calendario = [{**p, "ancho": float(p["t"]) / float(max_pago) * 100 if max_pago else 0}
                       for p in pagos]
         
-        cdps_proyecto = (
-            Cdp.objects
-            .filter(cdps_imputados__proyecto=proyecto)
-            .annotate(valor_cdp=Sum("cdps_imputados__valor_disponibilidad_def"))
-            .order_by("fecha_disp")
-        )
-
-        # NO re-agregar cdps_proyecto (ya trae annotate sobre la misma relacion).
-        # aggregate() sobre annotate() de la misma relacion aplica un DISTINCT implicito
-        # y colapsa valores repetidos legitimos (dos imputaciones del mismo CDP con igual
-        # valor), dando un total mas bajo. Se suma directo desde las imputaciones.
-        cdps_proyecto_total = (CdpImputacion.objects
-                               .filter(proyecto=proyecto)
-                               .aggregate(t=Sum("valor_disponibilidad_def"))["t"] or 0)
-
-        rps_por_proyecto = (
-            Compromiso.objects
-            .filter(compromisos_imputados__proyecto = proyecto)
-            .annotate(valor_rp=Sum("compromisos_imputados__valor_compromiso_def"))
-            .order_by("fecha_reg")
-        )
-
-        rps_por_proyecto_total = (
-            Compromiso.objects
-            .filter(compromisos_imputados__proyecto = proyecto)
-            .aggregate(t=Sum("compromisos_imputados__valor_compromiso_def"))["t"] or 0
-        )
-
-        # Obligaciones del proyecto. El objeto propio viene en el consolidado
-        # (columna OBJETO_OBLIG); el del RP queda de respaldo para lo que se cargo
-        # antes de que ese campo existiera. Va por subconsulta y no por un segundo
-        # Sum: agregar dos relaciones a la vez multiplicaria las filas.
-        obligaciones_por_proyecto = (
-            Obligacion.objects
-            .filter(obligaciones_imputadas__proyecto=proyecto)
-            .annotate(valor_obli=Sum("obligaciones_imputadas__valor_obligacion"),
-                      objeto_rp=Subquery(ObligacionImputacion.objects
-                                         .filter(obligacion=OuterRef("pk"), proyecto=proyecto)
-                                         .values("compromiso__objeto_reg")[:1]))
-            .select_related("tipo_orden_gasto", "beneficiario")
-            .order_by("vigencia", "fecha_obli", "nro_obligacion")
-        )
-
-        obligaciones_por_proyecto_total = (
-            ObligacionImputacion.objects.filter(proyecto=proyecto)
-            .aggregate(t=Sum("valor_obligacion"))["t"] or 0
-        )
-
         fuentes_por_proyecto = (
             Fuente.objects
             .filter(compromisos_imputados__proyecto=proyecto)
@@ -818,9 +807,10 @@ class ProyectoAdmin(ModelAdmin):
             .filter(compromisos_imputados__proyecto=proyecto)
             .aggregate(tcomprometido=Sum("compromisos_imputados__valor_compromiso_def"))["tcomprometido"] or 0
         )
-        
+
         contexto = {
             **comun,
+            **documentos,
             "filas": filas,
             "totales": totales,
             "totales_tarjetas": [
@@ -829,12 +819,9 @@ class ProyectoAdmin(ModelAdmin):
                 ("Obligado", totales["obligado"], "recibido a satisfaccion"),
                 ("Pagado", totales["pagado"], "girado por tesoreria"),
             ],
-            "cdps_proyecto" : cdps_proyecto,
-            "cdps_proyecto_total" : cdps_proyecto_total,
-            "rps_por_proyecto" :rps_por_proyecto,
-            "rps_por_proyecto_total" : rps_por_proyecto_total,
-            "obligaciones_por_proyecto": obligaciones_por_proyecto,
-            "obligaciones_por_proyecto_total": obligaciones_por_proyecto_total,
+            "desde": desde.isoformat() if desde else "",
+            "hasta": hasta.isoformat() if hasta else "",
+            "enlaces_pdf": enlaces_pdf,
             "fuentes_por_proyecto":fuentes_por_proyecto,
             "fuentes_por_proyecto_total":fuentes_por_proyecto_total,
             "contratos": contratos,
@@ -844,6 +831,83 @@ class ProyectoAdmin(ModelAdmin):
                         .select_related("reserva", "cdp_origen", "rubro"),
         }
         return TemplateResponse(request, "siifweb/ficha_proyecto.html", contexto)
+
+    def _documentos_filtrados(self, proyecto, desde, hasta):
+        """CDPs, RPs y obligaciones del proyecto, recortados por el filtro de fechas.
+
+        Lo usan la ficha y su PDF, para que el reporte sea exactamente lo que se ve en
+        pantalla. Cada tabla se corta por su propia fecha (disponibilidad, registro,
+        obligacion); las tarjetas y la cadena por vigencia no pasan por aqui.
+        """
+        def en_rango(qs, campo):
+            if desde:
+                qs = qs.filter(**{f"{campo}__gte": desde})
+            if hasta:
+                qs = qs.filter(**{f"{campo}__lte": hasta})
+            return qs
+
+        cdps_proyecto = (
+            en_rango(Cdp.objects, "fecha_disp")
+            .filter(cdps_imputados__proyecto=proyecto)
+            .annotate(valor_cdp=Sum("cdps_imputados__valor_disponibilidad_def"))
+            .order_by("fecha_disp")
+        )
+
+        # NO re-agregar cdps_proyecto (ya trae annotate sobre la misma relacion).
+        # aggregate() sobre annotate() de la misma relacion aplica un DISTINCT implicito
+        # y colapsa valores repetidos legitimos (dos imputaciones del mismo CDP con igual
+        # valor), dando un total mas bajo. Se suma directo desde las imputaciones.
+        cdps_proyecto_total = (en_rango(CdpImputacion.objects, "cdp__fecha_disp")
+                               .filter(proyecto=proyecto)
+                               .aggregate(t=Sum("valor_disponibilidad_def"))["t"] or 0)
+
+        rps_por_proyecto = (
+            en_rango(Compromiso.objects, "fecha_reg")
+            .filter(compromisos_imputados__proyecto = proyecto)
+            .annotate(valor_rp=Sum("compromisos_imputados__valor_compromiso_def"))
+            .order_by("fecha_reg")
+        )
+
+        rps_por_proyecto_total = (
+            en_rango(Compromiso.objects, "fecha_reg")
+            .filter(compromisos_imputados__proyecto = proyecto)
+            .aggregate(t=Sum("compromisos_imputados__valor_compromiso_def"))["t"] or 0
+        )
+
+        # Obligaciones del proyecto. El objeto propio viene en el consolidado
+        # (columna OBJETO_OBLIG); el del RP queda de respaldo para lo que se cargo
+        # antes de que ese campo existiera. Va por subconsulta y no por un segundo
+        # Sum: agregar dos relaciones a la vez multiplicaria las filas.
+        # El saldo y el pagado salen de SALDO_OBLI y PAGOS del mismo consolidado
+        # (valor = saldo + pagado). Los tres suman sobre la MISMA relacion (las
+        # imputaciones del proyecto), asi que comparten el join y no se multiplican.
+        obligaciones_por_proyecto = (
+            en_rango(Obligacion.objects, "fecha_obli")
+            .filter(obligaciones_imputadas__proyecto=proyecto)
+            .annotate(valor_obli=Sum("obligaciones_imputadas__valor_obligacion"),
+                      saldo_oblig=Sum("obligaciones_imputadas__saldo_obli"),
+                      pagado_obli=Sum("obligaciones_imputadas__pagos"),
+                      objeto_rp=Subquery(ObligacionImputacion.objects
+                                         .filter(obligacion=OuterRef("pk"), proyecto=proyecto)
+                                         .values("compromiso__objeto_reg")[:1]))
+            .select_related("tipo_orden_gasto", "beneficiario")
+            .order_by("vigencia", "fecha_obli", "nro_obligacion")
+        )
+
+        totales_obligaciones = (en_rango(ObligacionImputacion.objects, "obligacion__fecha_obli")
+                                .filter(proyecto=proyecto)
+                                .aggregate(t=Sum("valor_obligacion"), s=Sum("saldo_obli"),
+                                           p=Sum("pagos")))
+        return {
+            "cdps_proyecto": cdps_proyecto,
+            "cdps_proyecto_total": cdps_proyecto_total,
+            "rps_por_proyecto": rps_por_proyecto,
+            "rps_por_proyecto_total": rps_por_proyecto_total,
+            "obligaciones_por_proyecto": obligaciones_por_proyecto,
+            "obligaciones_por_proyecto_total": totales_obligaciones["t"] or 0,
+            "obligaciones_por_proyecto_saldo": totales_obligaciones["s"] or 0,
+            "obligaciones_por_proyecto_pagado": totales_obligaciones["p"] or 0,
+        }
 
     def reporte_financiero(self, request):
         """Reporte Financiero del proyecto: una fila por (proyecto, vigencia).
@@ -907,8 +971,8 @@ class ProyectoAdmin(ModelAdmin):
         preset = request.GET.get("preset", "")
         desde, hasta = tablero.rango_del_preset(preset)
         if not preset:
-            desde = parse_date(request.GET.get("desde", "") or "")
-            hasta = parse_date(request.GET.get("hasta", "") or "")
+            desde = fecha_del_get(request, "desde")
+            hasta = fecha_del_get(request, "hasta")
 
         filtros = tablero.Filtros(
             desde=desde, hasta=hasta,

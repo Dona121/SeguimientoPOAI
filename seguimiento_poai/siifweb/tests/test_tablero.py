@@ -188,6 +188,15 @@ class LosPresets(TestCase):
                          (date(2026, 1, 1), date(2026, 12, 31)))
         self.assertEqual(tablero.rango_del_preset("", hoy), (None, None))
 
+    def test_sin_fecha_usa_el_dia_de_bogota_y_no_el_del_servidor(self):
+        """Railway corre en UTC: a las 9 p. m. de Bogota ya es el dia siguiente alla."""
+        from datetime import datetime, timezone as tz
+        from unittest import mock
+        noche_en_bogota = datetime(2026, 9, 1, 2, 0, tzinfo=tz.utc)    # 31/08, 9 p. m. local
+        with mock.patch("django.utils.timezone.now", return_value=noche_en_bogota):
+            self.assertEqual(tablero.rango_del_preset("mes"),
+                             (date(2026, 8, 1), date(2026, 8, 31)))
+
 
 class LaPagina(TableroBase):
     def setUp(self):
@@ -205,7 +214,7 @@ class LaPagina(TableroBase):
     def test_los_filtros_no_revientan(self):
         url = reverse("admin:siifweb_proyecto_tablero")
         casos = [{"preset": "mes"}, {"desde": "2025-01-01", "hasta": "2025-01-31"},
-                 {"vigencia": "2025"}, {"desde": "no es fecha"},
+                 {"vigencia": "2025"}, {"desde": "no es fecha"}, {"hasta": "2025-13-45"},
                  {"dependencia": self.educacion.pk}, {"dependencia": "abc"},
                  {"clasificacion": "999"}]
         for parametros in casos:

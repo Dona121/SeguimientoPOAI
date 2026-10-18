@@ -124,6 +124,25 @@ class PaginasQueYaExistian(AdminBase):
         self.assertEqual(self.client.get(url).status_code, 200)
 
 
+class FormularioDeCarga(AdminBase):
+    def subir(self, tipo, vigencia=""):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from siifweb.admin import CargaReporteForm
+        return CargaReporteForm(
+            data={"tipo_reporte": tipo, "vigencia": vigencia, "fecha_descarga": "2026-10-17"},
+            files={"archivo": SimpleUploadedFile(f"{tipo}.xlsx", tipo.encode())})
+
+    def test_los_de_rango_completo_no_piden_vigencia(self):
+        for tipo in ("historial", "poai", "secop"):
+            formulario = self.subir(tipo)
+            self.assertTrue(formulario.is_valid(), f"{tipo}: {formulario.errors}")
+
+    def test_los_consolidados_si_la_piden(self):
+        for tipo in ("cdp", "compromisos", "obligaciones", "reservas"):
+            self.assertFalse(self.subir(tipo).is_valid(), tipo)
+            self.assertTrue(self.subir(tipo, vigencia=2025).is_valid(), tipo)
+
+
 class OrdenDeProceso(TestCase):
     """La accion del admin procesa en el orden que exigen los FK, no en el de seleccion."""
 
