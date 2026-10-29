@@ -504,6 +504,13 @@ Desde el icono de carpeta del listado o el boton del detalle. Una vista propia
   proyecto no se programa dos veces en la misma meta y vigencia. Al guardar, la ficha se
   recarga con esa vigencia desplegada. Rutas: `programar/` y `buscar-proyectos/` del
   admin de la meta. El formulario completo queda como enlace dentro del modal.
+- **Editar** en el modal del proyecto: BPIN, nombre, tipo de banco y municipios y, con los
+  permisos de crear, cambiar y borrar programaciones, sus filas de meta, vigencia y meta de
+  la vigencia (la que se quita se borra; las del Access sin vigencia la conservan). Las
+  mismas reglas que al programar; el BPIN y el nombre solo se comparan con los demas si
+  cambian. Al guardar, la ficha se recarga con la vigencia desplegada y el proyecto
+  abierto. Ruta: `editar-desde-ficha/` del admin de la programacion; lo ve quien puede
+  cambiar proyectos programados.
 
 Ojo al comparar meta y programado: lo programado es la suma de lo que el Access dice que
 aporta cada proyecto. En las metas viales supera la meta (MT323: 10,75 contra 3 en 2024),
@@ -724,7 +731,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-297 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+304 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

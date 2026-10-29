@@ -14,4 +14,8 @@
    data-obligado="{% if d.total %}{{ d.total.obligado|floatformat:0|intcomma }}{% endif %}"
    data-pagado="{% if d.total %}{{ d.total.pagado|floatformat:0|intcomma }}{% endif %}"
    data-observacion-url="{{ d.observacion_url }}"
+   data-proyecto="{{ d.programacion.proyecto_id }}"
+   data-vigencia="{{ d.programacion.vigencia|default:'' }}"
+   data-editar-url="{{ d.editar_url }}"
+   data-editar="{{ d.editar }}"
    data-url="{{ d.url }}">{{ d.programacion.proyecto.nombre }}</a>

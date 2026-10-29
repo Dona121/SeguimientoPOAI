@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-297 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+304 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -218,6 +218,10 @@ una suma directa en la base.
 Y un boton **Programar proyecto**: un modal para programar en la meta un proyecto existente
 (con buscador) o uno nuevo (con municipios), en esta y otras metas, con una observacion
 opcional. Rechaza BPIN o nombres repetidos y programaciones dobles, y guarda todo o nada.
+
+El modal de cada proyecto se puede **editar** sin salir de la ficha: datos del proyecto,
+municipios y sus programaciones en todas las metas. Al guardar vuelve a la ficha con el
+proyecto abierto.
 
 Queda por confirmar con quien llevaba el Access si la meta del proyecto era lo que aporta
 en esa vigencia o el total repetido cada ano: en las metas viales lo programado supera la

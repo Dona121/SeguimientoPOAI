@@ -527,3 +527,112 @@ class ProgramarDesdeElModal(Base):
         self.client.force_login(otro)
         self.assertEqual(self.programar([(self.meta, 2026, "")], modo="existente").status_code, 403)
         self.assertEqual(self.client.get(self.buscar, {"q": "pavimento"}).status_code, 403)
+
+
+class EditarDesdeElModal(Base):
+    """El modal del proyecto en la ficha de la meta: editar el proyecto y sus programaciones."""
+
+    def setUp(self):
+        super().setUp()
+        self.meta = MetaIndicador.objects.get(codigo="MT323")
+        self.otra = MetaIndicador.objects.get(codigo="MT010")
+        self.ficha = reverse("admin:siifweb_metaindicador_ficha", args=(self.meta.pk,))
+        self.proyecto = (ProgramacionProyectos.objects.filter(programaciones__meta=self.meta)
+                         .exclude(bpin="").distinct().first())
+        self.url = reverse("admin:siifweb_programacionproyectos_editar_desde_ficha", args=(self.proyecto.pk,))
+
+    def datos(self, filas=None, **cambios):
+        """Lo que manda el formulario sin tocar nada; filas: [(id, meta, vigencia, valor)]."""
+        p = self.proyecto
+        datos = {"bpin": p.bpin, "nombre": p.nombre, "tipo_banco": p.tipo_banco_id or "",
+                 "municipios": [m.pk for m in p.municipios.all()]}
+        if filas is not None:
+            datos.update({"programaciones": "1", "programacion": [i or "" for i, _, _, _ in filas],
+                          "meta": [m.pk for _, m, _, _ in filas],
+                          "vigencia": ["" if v is None else v for _, _, v, _ in filas],
+                          "meta_vigencia": [x for _, _, _, x in filas]})
+        datos.update(cambios)
+        return datos
+
+    def actuales(self):
+        return [(q.pk, q.meta, q.vigencia, "") for q in self.proyecto.programaciones.all()]
+
+    def test_la_ficha_lleva_los_datos_para_editar(self):
+        respuesta = self.client.get(self.ficha)
+        self.assertContains(respuesta, 'id="editar-plantilla"')
+        self.assertContains(respuesta, f'data-editar-url="{self.url}"')
+        self.assertTrue(respuesta.context["editar"]["programaciones"])
+
+    def test_cambia_los_datos_del_proyecto(self):
+        banco = TipoBanco.objects.exclude(pk=self.proyecto.tipo_banco_id).first()
+        municipio = Municipio.objects.order_by("nombre").first()
+        respuesta = self.client.post(self.url, self.datos(nombre="  Nombre  corregido ", bpin="209900000000077",
+                                                          tipo_banco=banco.pk, municipios=[municipio.pk]))
+        self.assertEqual(respuesta.status_code, 200)
+        self.proyecto.refresh_from_db()
+        self.assertEqual((self.proyecto.nombre, self.proyecto.bpin, self.proyecto.tipo_banco),
+                         ("Nombre corregido", "209900000000077", banco))
+        self.assertEqual(list(self.proyecto.municipios.all()), [municipio])
+
+    def test_sin_filas_no_toca_las_programaciones(self):
+        antes = list(self.proyecto.programaciones.values_list("pk", "meta_vigencia"))
+        self.client.post(self.url, self.datos(nombre="Otro nombre para la prueba"))
+        self.assertEqual(list(self.proyecto.programaciones.values_list("pk", "meta_vigencia")), antes)
+
+    def test_modifica_agrega_y_borra_programaciones(self):
+        actuales = self.actuales()
+        primera = actuales[0]
+        filas = [(primera[0], primera[1], primera[2], "2,5"),
+                 (None, self.otra, 2027, "1")]
+        respuesta = self.client.post(self.url, self.datos(filas))
+        self.assertEqual(respuesta.status_code, 200, respuesta.content)
+        quedan = {q.pk: q for q in self.proyecto.programaciones.all()}
+        self.assertEqual(len(quedan), 2)
+        self.assertEqual(quedan[primera[0]].meta_vigencia, Decimal("2.5"))
+        self.assertEqual(self.proyecto.programaciones.get(meta=self.otra).vigencia, 2027)
+        self.assertFalse(ProgramacionMeta.objects.filter(pk__in=[a[0] for a in actuales[1:]]).exists())
+        self.proyecto.refresh_from_db()
+        self.assertIn("2027", self.proyecto.vigencias)
+
+    def test_conserva_las_programaciones_sin_vigencia(self):
+        q = ProgramacionMeta.objects.filter(vigencia=None).select_related("proyecto").first()
+        self.proyecto = q.proyecto
+        url = reverse("admin:siifweb_programacionproyectos_editar_desde_ficha", args=(q.proyecto_id,))
+        respuesta = self.client.post(url, self.datos(self.actuales()))
+        self.assertEqual(respuesta.status_code, 200, respuesta.content)
+        self.assertTrue(ProgramacionMeta.objects.filter(pk=q.pk, vigencia=None).exists())
+
+    def test_rechaza_bpin_de_otro_proyecto_y_filas_ajenas(self):
+        otro = ProgramacionProyectos.objects.exclude(bpin="").exclude(pk=self.proyecto.pk).first()
+        ajena = ProgramacionMeta.objects.exclude(proyecto=self.proyecto).first()
+        nombre = self.proyecto.nombre
+        casos = [(self.datos(bpin=otro.bpin), "Ya existe otro proyecto"),
+                 (self.datos(nombre=otro.nombre.lower()), "Ya existe otro proyecto"),
+                 (self.datos([(ajena.pk, self.meta, 2026, "")]), "no es de este proyecto"),
+                 (self.datos([]), "al menos una meta"),
+                 (self.datos(nombre=" "), "nombre")]
+        for datos, mensaje in casos:
+            with self.subTest(mensaje=mensaje):
+                respuesta = self.client.post(self.url, datos)
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn(mensaje, respuesta.json()["error"])
+        self.proyecto.refresh_from_db()
+        self.assertEqual(self.proyecto.nombre, nombre)
+        self.assertTrue(ProgramacionMeta.objects.filter(pk=ajena.pk, proyecto=ajena.proyecto).exists())
+
+    def test_permisos(self):
+        from django.contrib.auth.models import Permission
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        otro = get_user_model().objects.create_user("edita", "e@b.co", "clave", is_staff=True)
+        otro.user_permissions.add(Permission.objects.get(codename="view_metaindicador"))
+        self.client.force_login(otro)
+        self.assertNotContains(self.client.get(self.ficha), 'id="editar-plantilla"')
+        self.assertEqual(self.client.post(self.url, self.datos()).status_code, 403)
+        # Con permiso de cambiar el proyecto, pero no las programaciones
+        otro.user_permissions.add(Permission.objects.get(codename="change_programacionproyectos"))
+        otro = get_user_model().objects.get(pk=otro.pk)
+        self.client.force_login(otro)
+        respuesta = self.client.get(self.ficha)
+        self.assertFalse(respuesta.context["editar"]["programaciones"])
+        self.assertEqual(self.client.post(self.url, self.datos()).status_code, 200)
+        self.assertEqual(self.client.post(self.url, self.datos(self.actuales())).status_code, 403)

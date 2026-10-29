@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import hashlib
+import json
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
@@ -1443,6 +1444,88 @@ def cargas_llave(nombre):
     return re.sub(r"[^\w ]", "", limpio).strip()
 
 
+def leer_programaciones(post, sin_vigencia=False):
+    """Las filas de programacion de un modal de la ficha de la meta.
+
+    Llegan como listas paralelas (programacion, meta, vigencia, meta_vigencia). Devuelve
+    (filas, error), con cada fila como (id o None, meta, vigencia, valor). sin_vigencia
+    admite la vigencia vacia, que traen algunas programaciones del Access.
+    """
+    metas = post.getlist("meta")
+    metas_ok = {m.pk: m for m in MetaIndicador.objects.filter(pk__in=[x for x in metas if x.isdigit()])}
+    vigencias_ok = {v for v, _ in listado_vigencias_metas()}
+    ids = post.getlist("programacion")
+    filas, vistas = [], set()
+    for i, (m, v, valor) in enumerate(zip(metas, post.getlist("vigencia"), post.getlist("meta_vigencia")),
+                                      start=1):
+        meta = metas_ok.get(int(m)) if m.isdigit() else None
+        if meta is None:
+            return [], f"Fila {i}: elija la meta."
+        if v == "" and sin_vigencia:
+            vigencia = None
+        elif not v.isdigit() or int(v) not in vigencias_ok:
+            return [], f"Fila {i}: elija la vigencia."
+        else:
+            vigencia = int(v)
+        valor = (valor or "").strip().replace(",", ".")
+        if valor:
+            try:
+                valor = Decimal(valor)
+            except InvalidOperation:
+                return [], f"Fila {i}: la meta de la vigencia tiene que ser un número."
+            if valor.as_tuple().exponent < -5 or valor < 0:
+                return [], (f"Fila {i}: la meta de la vigencia admite hasta cinco decimales "
+                            "y no puede ser negativa.")
+        else:
+            valor = None
+        if (meta.pk, vigencia) in vistas:
+            return [], f"Fila {i}: {meta.codigo} en {vigencia or 'sin vigencia'} está repetida."
+        vistas.add((meta.pk, vigencia))
+        id_ = ids[i - 1] if i <= len(ids) else ""
+        filas.append((int(id_) if id_.isdigit() else None, meta, vigencia, valor))
+    return filas, None
+
+
+def leer_proyecto(post):
+    """BPIN, nombre, tipo de banco y municipios de un modal. Devuelve (datos, error)."""
+    nombre = " ".join((post.get("nombre") or "").split())
+    bpin = (post.get("bpin") or "").strip()
+    if not nombre:
+        return None, "Escriba el nombre del proyecto."
+    if bpin and (not bpin.isdigit() or len(bpin) > 20):
+        return None, "El BPIN lleva solo números, hasta 20."
+    tipo = post.get("tipo_banco") or ""
+    return {"bpin": bpin, "nombre": nombre,
+            "tipo_banco": TipoBanco.objects.filter(pk=tipo).first() if tipo.isdigit() else None,
+            "municipios": Municipio.objects.filter(
+                pk__in=[x for x in post.getlist("municipios") if x.isdigit()])}, None
+
+
+def proyecto_repetido(bpin, nombre, excluir=None):
+    """El proyecto programado que ya usa ese BPIN o ese nombre (comparado con cargas_llave).
+    Sin BPIN o sin nombre, esa parte no se revisa."""
+    otros = ProgramacionProyectos.objects.exclude(pk=excluir) if excluir else ProgramacionProyectos.objects.all()
+    llave = cargas_llave(nombre) if nombre else None
+    return (otros.filter(bpin=bpin).first() if bpin else None) or \
+        (next((p for p in otros.only("pk", "bpin", "nombre") if cargas_llave(p.nombre) == llave), None)
+         if llave else None)
+
+
+def puede_reprogramar(usuario):
+    """Cambiar las programaciones de un proyecto crea, modifica y borra filas."""
+    return all(usuario.has_perm(f"siifweb.{a}_programacionmeta") for a in ("add", "change", "delete"))
+
+
+def valor_editable(valor):
+    """La meta de la vigencia como se escribe en el modal: coma decimal y sin ceros de mas."""
+    if valor is None:
+        return ""
+    texto = format(valor, "f")
+    if "." in texto:
+        texto = texto.rstrip("0").rstrip(".")
+    return texto.replace(".", ",")
+
+
 def cifra(valor):
     """Una meta sin los ceros que sobran: 15 y no 15,00000; 3,0976 completo."""
     if valor is None:
@@ -1563,6 +1646,8 @@ class MetaIndicadorAdmin(ModelAdmin):
         ficha_de = {b: reverse("admin:siifweb_proyecto_ficha_ejecucion", args=(pk,))
                     for b, pk in Proyecto.objects.filter(bpin__in=bpins).values_list("bpin", "pk")}
         puede_anotar = request.user.has_perm("siifweb.add_observacionproyecto")
+        puede_programar = request.user.has_perm("siifweb.add_programacionmeta")
+        puede_editar = request.user.has_perm("siifweb.change_programacionproyectos")
 
         detalle = [{
             "programacion": p,
@@ -1581,6 +1666,17 @@ class MetaIndicadorAdmin(ModelAdmin):
             "metas": "\n".join(f"{q.meta.codigo}\t{q.vigencia or 'Sin vigencia'}\t{cifra(q.meta_vigencia)}"
                                 for q in p.proyecto.programaciones.all()),
             "url": reverse("admin:siifweb_programacionproyectos_change", args=(p.proyecto_id,)),
+            # Lo que llena el formulario de edicion del modal
+            "editar_url": (reverse("admin:siifweb_programacionproyectos_editar_desde_ficha",
+                                   args=(p.proyecto_id,)) if puede_editar else ""),
+            "editar": json.dumps({
+                "bpin": p.proyecto.bpin, "nombre": p.proyecto.nombre,
+                "tipo_banco": p.proyecto.tipo_banco_id,
+                "municipios": [m.pk for m in p.proyecto.municipios.all()],
+                "programaciones": [{"id": q.pk, "meta": q.meta_id, "vigencia": q.vigencia,
+                                    "valor": valor_editable(q.meta_vigencia)}
+                                   for q in p.proyecto.programaciones.all()],
+            }) if puede_editar else "",
         } for p in programaciones]
 
         # Una fila por vigencia: las del plan y las que traigan los proyectos. Cada una
@@ -1614,6 +1710,16 @@ class MetaIndicadorAdmin(ModelAdmin):
             ("Programado por los proyectos", cifra(total_programado) if programaciones else "-"),
             ("Proyectos", len({p.proyecto_id for p in programaciones})),
         ]
+        catalogos = {
+            # Las vigencias del plan (2024-2027), no las del ano: una meta se programa para
+            # el cuatrienio
+            "vigencias": sorted(set(VigenciaMeta.objects.order_by().values_list("vigencia", flat=True)))
+                         or [v for v, _ in listado_vigencias_metas()],
+            "metas": [(m.pk, f"{m.codigo} - {m.indicador_mga.codigo}: {corto(m.indicador_mga.descripcion, 70)}")
+                      for m in MetaIndicador.objects.select_related("indicador_mga").order_by("codigo")],
+            "tipos_banco": TipoBanco.objects.all(),
+            "municipios": Municipio.objects.all(),
+        } if puede_programar or puede_editar else {}
         contexto = {
             **self.admin_site.each_context(request),
             "title": f"Ficha de la meta {meta.codigo}",
@@ -1626,25 +1732,23 @@ class MetaIndicadorAdmin(ModelAdmin):
             "nuevo_proyecto": (reverse("admin:siifweb_programacionproyectos_add") + "?" + urlencode(
                 {"meta": meta.pk, "volver": request.path})
                 if request.user.has_perm("siifweb.add_programacionproyectos") else ""),
+            # Las listas de los dos modales: programar y editar
+            "catalogos": catalogos,
             # El modal de programar: solo para quien puede crear programaciones
             "programar": ({
+                **catalogos,
                 "url": reverse("admin:siifweb_metaindicador_programar", args=(meta.pk,)),
                 "buscar": reverse("admin:siifweb_metaindicador_buscar_proyectos", args=(meta.pk,)),
-                # Las vigencias del plan (2024-2027), no las del ano: una meta se programa
-                # para el cuatrienio
-                "vigencias": sorted(set(VigenciaMeta.objects.order_by()
-                                        .values_list("vigencia", flat=True)))
-                             or [v for v, _ in listado_vigencias_metas()],
-                "metas": [(m.pk, f"{m.codigo} - {m.indicador_mga.codigo}: "
-                                 f"{corto(m.indicador_mga.descripcion, 70)}")
-                          for m in MetaIndicador.objects.select_related("indicador_mga").order_by("codigo")],
-                "tipos_banco": TipoBanco.objects.all(),
-                "municipios": Municipio.objects.all(),
                 "puede_crear": request.user.has_perm("siifweb.add_programacionproyectos"),
-                "puede_anotar": request.user.has_perm("siifweb.add_observacionproyecto"),
-            } if request.user.has_perm("siifweb.add_programacionmeta") else None),
-            # La vigencia que se acaba de programar llega desplegada
+                "puede_anotar": puede_anotar,
+            } if puede_programar else None),
+            # Editar desde el modal del proyecto; las programaciones, con los tres permisos
+            "editar": ({**catalogos, "programaciones": puede_reprogramar(request.user)}
+                       if puede_editar else None),
+            # La vigencia que se acaba de programar llega desplegada, y el proyecto que se
+            # acaba de editar, abierto
             "abrir": request.GET.get("abrir", ""),
+            "ver": request.GET.get("ver", "") if request.GET.get("ver", "").isdigit() else "",
         }
         return TemplateResponse(request, "siifweb/ficha_meta.html", contexto)
 
@@ -1724,33 +1828,10 @@ class MetaIndicadorAdmin(ModelAdmin):
         def error(mensaje):
             return JsonResponse({"error": mensaje}, status=400)
 
-        # Las programaciones
-        metas_ok = {m.pk: m for m in MetaIndicador.objects.filter(
-            pk__in=[x for x in request.POST.getlist("meta") if x.isdigit()])}
-        vigencias_ok = {v for v, _ in listado_vigencias_metas()}
-        filas, vistas = [], set()
-        for i, (m, v, valor) in enumerate(zip(request.POST.getlist("meta"), request.POST.getlist("vigencia"),
-                                             request.POST.getlist("meta_vigencia")), start=1):
-            meta = metas_ok.get(int(m)) if m.isdigit() else None
-            if meta is None:
-                return error(f"Fila {i}: elija la meta.")
-            if not v.isdigit() or int(v) not in vigencias_ok:
-                return error(f"Fila {i}: elija la vigencia.")
-            valor = (valor or "").strip().replace(",", ".")
-            if valor:
-                try:
-                    valor = Decimal(valor)
-                except InvalidOperation:
-                    return error(f"Fila {i}: la meta de la vigencia tiene que ser un número.")
-                if valor.as_tuple().exponent < -5 or valor < 0:
-                    return error(f"Fila {i}: la meta de la vigencia admite hasta cinco decimales "
-                                 "y no puede ser negativa.")
-            else:
-                valor = None
-            if (meta.pk, int(v)) in vistas:
-                return error(f"Fila {i}: {meta.codigo} en {v} está repetida.")
-            vistas.add((meta.pk, int(v)))
-            filas.append((meta, int(v), valor))
+        filas, falla = leer_programaciones(request.POST)
+        if falla:
+            return error(falla)
+        filas = [(meta, vigencia, valor) for _, meta, vigencia, valor in filas]
         if not filas:
             return error("Agregue al menos una meta con su vigencia.")
 
@@ -1766,23 +1847,15 @@ class MetaIndicadorAdmin(ModelAdmin):
             else:
                 if not request.user.has_perm("siifweb.add_programacionproyectos"):
                     raise PermissionDenied
-                nombre = " ".join((request.POST.get("nombre") or "").split())
-                bpin = (request.POST.get("bpin") or "").strip()
-                if not nombre:
-                    return error("Escriba el nombre del proyecto.")
-                if bpin and (not bpin.isdigit() or len(bpin) > 20):
-                    return error("El BPIN lleva solo números, hasta 20.")
-                repetido = (ProgramacionProyectos.objects.filter(bpin=bpin).first() if bpin else None) or \
-                    next((p for p in ProgramacionProyectos.objects.all().only("pk", "bpin", "nombre")
-                          if cargas_llave(p.nombre) == cargas_llave(nombre)), None)
+                datos, falla = leer_proyecto(request.POST)
+                if falla:
+                    return error(falla)
+                repetido = proyecto_repetido(datos["bpin"], datos["nombre"])
                 if repetido:
                     return error(f"Ya existe: {repetido}. Elíjalo en «Proyecto existente».")
-                tipo = request.POST.get("tipo_banco") or ""
                 proyecto = ProgramacionProyectos.objects.create(
-                    bpin=bpin, nombre=nombre,
-                    tipo_banco=TipoBanco.objects.filter(pk=tipo).first() if tipo.isdigit() else None)
-                proyecto.municipios.set(Municipio.objects.filter(
-                    pk__in=[x for x in request.POST.getlist("municipios") if x.isdigit()]))
+                    bpin=datos["bpin"], nombre=datos["nombre"], tipo_banco=datos["tipo_banco"])
+                proyecto.municipios.set(datos["municipios"])
 
             ya = set(proyecto.programaciones.values_list("meta_id", "vigencia"))
             for meta, vigencia, _ in filas:
@@ -2025,7 +2098,71 @@ class ProgramacionProyectosAdmin(ModelAdmin):
                                                   fecha=timezone.localdate())
         return JsonResponse({"fecha": f"{nota.fecha:%Y-%m-%d}", "texto": nota.texto}, status=201)
 
+    def editar_desde_ficha(self, request, object_id):
+        """POST desde el modal de la ficha de la meta: los datos del proyecto y, con permiso,
+        sus programaciones.
+
+        Las programaciones llegan completas: la que no viene se borra. Todo o nada, con las
+        reglas del modal de programar. El BPIN y el nombre solo se comparan con los demas
+        proyectos si cambian, para no trabar la edicion de un dato viejo del Access.
+        """
+        if request.method != "POST":
+            return JsonResponse({"error": "Solo POST"}, status=405)
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+        proyecto = ProgramacionProyectos.objects.filter(pk=object_id).first()
+        if proyecto is None:
+            raise Http404("No hay proyecto con ese id.")
+
+        def error(mensaje):
+            return JsonResponse({"error": mensaje}, status=400)
+
+        datos, falla = leer_proyecto(request.POST)
+        if falla:
+            return error(falla)
+        repetido = proyecto_repetido(
+            datos["bpin"] if datos["bpin"] != proyecto.bpin else "",
+            datos["nombre"] if cargas_llave(datos["nombre"]) != cargas_llave(proyecto.nombre) else "",
+            excluir=proyecto.pk)
+        if repetido:
+            return error(f"Ya existe otro proyecto con ese BPIN o nombre: {repetido}.")
+
+        con_programaciones = request.POST.get("programaciones") == "1"
+        if con_programaciones:
+            if not puede_reprogramar(request.user):
+                raise PermissionDenied
+            filas, falla = leer_programaciones(request.POST, sin_vigencia=True)
+            if falla:
+                return error(falla)
+            if not filas:
+                return error("El proyecto tiene que quedar programado en al menos una meta.")
+            propias = {p.pk: p for p in proyecto.programaciones.all()}
+            if any(i is not None and i not in propias for i, *_ in filas):
+                return error("Una de las programaciones no es de este proyecto. Recargue la ficha.")
+
+        with transaction.atomic():
+            proyecto.bpin, proyecto.nombre, proyecto.tipo_banco = (datos["bpin"], datos["nombre"],
+                                                                    datos["tipo_banco"])
+            proyecto.save()
+            proyecto.municipios.set(datos["municipios"])
+            if con_programaciones:
+                quedan = {i for i, *_ in filas if i is not None}
+                ProgramacionMeta.objects.filter(pk__in=set(propias) - quedan).delete()
+                for i, meta, vigencia, valor in filas:
+                    if i is None:
+                        ProgramacionMeta.objects.create(proyecto=proyecto, meta=meta, vigencia=vigencia,
+                                                        meta_vigencia=valor)
+                        continue
+                    p = propias[i]
+                    if (p.meta_id, p.vigencia, p.meta_vigencia) != (meta.pk, vigencia, valor):
+                        p.meta, p.vigencia, p.meta_vigencia = meta, vigencia, valor
+                        p.save()
+                proyecto.actualizar_vigencias()
+        return JsonResponse({"proyecto": proyecto.pk})
+
     def get_urls(self):
         propia = [path("<path:object_id>/observacion/", self.admin_site.admin_view(self.agregar_observacion),
-                       name="siifweb_programacionproyectos_observacion")]
+                       name="siifweb_programacionproyectos_observacion"),
+                  path("<path:object_id>/editar-desde-ficha/", self.admin_site.admin_view(self.editar_desde_ficha),
+                       name="siifweb_programacionproyectos_editar_desde_ficha")]
         return propia + super().get_urls()
