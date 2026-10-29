@@ -1,0 +1,17 @@
+{# El nombre del proyecto que abre su detalle en el modal de la ficha de la meta. Recibe d, un elemento de "detalle" #}
+{% load humanize %}
+<a href="{{ d.url }}" class="text-primary-600" data-detalle
+   data-nombre="{{ d.programacion.proyecto.nombre }}"
+   data-bpin="{{ d.programacion.proyecto.bpin|default:'—' }}"
+   data-banco="{{ d.programacion.proyecto.tipo_banco|default:'—' }}"
+   data-vigencias="{{ d.programacion.proyecto.vigencias|default:'—' }}"
+   data-municipios="{{ d.municipios }}"
+   data-observaciones="{{ d.observaciones }}"
+   data-metas="{{ d.metas }}"
+   data-meta="{{ d.programacion.meta.codigo }}"
+   data-ficha-url="{{ d.ficha_url }}"
+   data-comprometido="{% if d.total %}{{ d.total.comprometido|floatformat:0|intcomma }}{% endif %}"
+   data-obligado="{% if d.total %}{{ d.total.obligado|floatformat:0|intcomma }}{% endif %}"
+   data-pagado="{% if d.total %}{{ d.total.pagado|floatformat:0|intcomma }}{% endif %}"
+   data-observacion-url="{{ d.observacion_url }}"
+   data-url="{{ d.url }}">{{ d.programacion.proyecto.nombre }}</a>

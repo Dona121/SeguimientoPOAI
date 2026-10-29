@@ -1,0 +1,36 @@
+{# base_site (no base): base.html deja el bloque branding vacio y desaparece el encabezado #}
+{% extends "admin/base_site.html" %}
+
+{% block title %}Reportes | POAI{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li>Reportes</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  /* La grilla va en estilo propio: las clases de columnas de Tailwind no estan todas en unfold */
+  .tarjetas-reporte { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); }
+  .tarjeta-reporte { display: flex; flex-direction: column; gap: .5rem; }
+  .tarjeta-reporte:hover { border-color: var(--color-primary-600); }
+  .tarjeta-reporte .material-symbols-outlined { font-size: 1.5rem; line-height: 1; color: var(--color-primary-600); }
+</style>
+<div class="tarjetas-reporte">
+  {% for r in reportes %}
+  <a href="{{ r.url }}" class="tarjeta-reporte bg-white border rounded-default shadow-xs p-5
+     dark:bg-base-900 dark:border-base-800">
+    <span class="material-symbols-outlined">table_view</span>
+    <span class="font-semibold text-base text-base-900 dark:text-base-100">{{ r.titulo }}</span>
+    <span class="text-xs text-base-400">{{ r.n_columnas }} columnas · Excel</span>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

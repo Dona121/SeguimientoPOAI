@@ -78,7 +78,8 @@ class TipoDeReporte(TestCase):
         self.assertIs(cargas.PROCESADORES["secop"], cargas.cargar_secop)
 
     def test_los_tipos_anteriores_siguen(self):
-        for tipo in ("cdp", "compromisos", "obligaciones", "reservas", "historial", "poai"):
+        # El cruce POAI ya no esta: se dejo de cargar en octubre de 2026
+        for tipo in ("cdp", "compromisos", "obligaciones", "reservas", "historial"):
             with self.subTest(tipo=tipo):
                 self.assertIn(tipo, CargaReporte.TipoReporte.values)
                 self.assertIn(tipo, cargas.PROCESADORES)

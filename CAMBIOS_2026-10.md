@@ -2,8 +2,11 @@
 
 Lo que se agrego y corrigio en el proyecto de seguimiento POAI en esta tanda: saldo y
 pagado en las obligaciones de la ficha, un filtro de fechas, el PDF de cada tabla, cinco
-correcciones que salieron de una revision del codigo y la limpieza de `media/`. Commit
-`5849e05` y el de esta documentacion.
+correcciones que salieron de una revision del codigo y la limpieza de `media/` (commits
+`5849e05` y `86aabee`). Despues, sin commit todavia: la barra lateral reorganizada, una
+copia de produccion en la sqlite local, las metas del plan de desarrollo traidas de SUTEC,
+la programacion de proyectos traida del Access, la ficha de la meta y los reportes
+(secciones 6 a 11).
 
 ---
 
@@ -89,9 +92,24 @@ anterior en todos.
 
 ---
 
+## 3b. El cruce POAI ya no se carga
+
+El usuario dejo de usarlo. La dependencia responsable y las clasificaciones de cada
+proyecto se mantienen a mano en el admin; el catalogo de dependencias responsables local se
+sincronizo con el de produccion (22, con los nombres completos).
+
+- `cargar_poai` sale de `cargas.py`, junto con su lugar en `ORDEN_DE_CARGA`.
+- El formulario de carga no ofrece el tipo; si se abre la carga de julio, se ve con su tipo.
+- `CargaReporte.TipoReporte.POAI` se queda en el modelo para que esa carga se lea con su
+  nombre. No cambia el esquema: no hay migracion.
+- Los 79 proyectos con origen "Cruce POAI" lo conservan.
+
+---
+
 ## 4. Pruebas
 
-215 pruebas en diez modulos (antes 186). Nuevo `test_pdf_ficha.py`. Las de cada
+297 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+`test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
 ---
@@ -113,3 +131,112 @@ ademas de lo que ya dice `respaldo_claude/COMO_RESTAURAR.md`:
   de la raiz (`dotenv`, `whitenoise`, `gunicorn`...) llegan con un `uv sync` en la raiz,
   que a su vez desinstala las de la carpeta. Funciona en el orden `uv sync` y despues
   `uv run --directory`, que es lo que hace Railway.
+
+---
+
+## 6. La barra lateral
+
+| Seccion | Que tiene |
+|---|---|
+| Seguimiento | Proyectos, Avance financiero (antes Dashboard), Reportes, Metas y Programacion de proyectos |
+| Plan de Desarrollo | El catalogo del plan, en el orden de su jerarquia (ver la seccion 8) |
+| SIIFWEB | Cadena de gasto, cierre de vigencia, contratos del historial y sus catalogos (terceros, rubros, fuentes, dependencias y clasificaciones) |
+| Contratacion | Lo de SECOP II (antes "Contratacion publica (SECOP II)") |
+| Configuracion y parametrizacion | Dependencias responsables, cargas del reporte, tipos de banco y municipios |
+
+Metas y Programacion de proyectos van con el permiso de su propio modelo: los roles
+Seguimiento y Consulta todavia no lo tienen, asi que no los ven (en vez de un enlace que
+les responderia 403).
+
+---
+
+## 7. Copia de produccion en la sqlite local
+
+La sqlite local se reemplazo por una copia de produccion (28/10/2026): `dumpdata` en una
+transaccion de solo lectura, con llaves naturales, sin sesiones, permisos ni tipos de
+contenido (Django los regenera). 304.677 objetos; las 33 tablas quedaron con las mismas
+filas que produccion y obligado y pagado cuadran al centavo. Los usuarios son los de
+produccion. La sqlite anterior quedo en `respaldo_claude/`.
+
+Antes se sincronizo el catalogo de dependencias responsables: en produccion estaban
+renombradas con su nombre completo ("Hacienda" -> "Secretaria de Hacienda"); se
+emparejaron por los proyectos asignados (194 de 194 BPIN) y se agrego "Secretaria de
+Transito y Transporte".
+
+---
+
+## 8. Metas del plan de desarrollo (de SUTEC)
+
+Integradas segun `modelos-metas/PLAN_METAS_PDD.md`: 13 modelos al final de
+`siifweb/models.py` y las migraciones `0011_metas_del_plan` (tablas) y
+`0012_datos_de_las_metas` (datos de produccion de SUTEC del 21/09/2026). En local: 436
+metas, 1.744 vigencias, 2.119 vinculos de relaciones multiples y 469 meta-dependencia,
+sin el aviso de dependencias creadas.
+
+- Admin de los 13 modelos, con autocompletado en los catalogos grandes y las vigencias
+  dentro de la meta.
+- `MetaIndicadorForm` valida que los indicadores PDD sean del programa de la meta; el
+  `clean()` del modelo juzga los indicadores que se van a guardar, para que cambiar
+  programa e indicadores a la vez no de un error falso.
+- Listado de Metas de menor a mayor (orden en el admin, para no tocar la `0011`), con una
+  flecha por meta que despliega sus proyectos programados (`list_sections` de unfold).
+- Filtros: MT (texto), linea estrategica, sector, programa e indicador PDD, sector,
+  programa, producto e indicador MGA, dependencia responsable y estado.
+
+---
+
+## 9. Programacion de proyectos (del Access "Seguimiento PDD STO")
+
+La tabla `tblProyectos` paso a cinco modelos: `ProgramacionProyectos`, `ProgramacionMeta`,
+`ObservacionProyecto`, `TipoBanco` y `Municipio`. Migraciones
+`0013_programacion_de_proyectos` y `0014_datos_programacion_proyectos`; la `0014` la
+escribe `modelos-metas/generar_migracion_proyectos.py` desde el Access. Las reglas de
+limpieza estan en el README y en el generador.
+
+Resultado, contrastado fila por fila con el Access: 1.265 proyectos, 1.609 programaciones
+y 539 observaciones, sin diferencias. La meta de la vigencia lleva 5 decimales (primero
+fueron 3, y 17 valores de metas viales con cuatro se redondeaban); se regenero la `0013`
+y la `0014` antes de desplegar.
+
+---
+
+## 10. La ficha de la meta
+
+Vista propia desde el icono de carpeta del listado o el boton del detalle: encabezado con
+la ruta del plan, tarjetas, y la tabla de meta y programacion por vigencia (el porcentaje de
+avance se quito despues: resultaba confuso). Cada vigencia despliega sus proyectos, con el nombre completo, y cada proyecto
+abre un modal con sus municipios, vigencias, observaciones y todas las metas en que esta
+programado, con su vigencia y su programacion.
+
+Despues se le sumo la ejecucion en SIIFWEB de los proyectos programados: comprometido,
+obligado, pagado y reservas, cruzando BPIN y vigencia, en la tabla por vigencia y en cada
+proyecto del desplegable (es la plata del proyecto completo, no la parte de la meta). El
+modal muestra las cifras del BPIN con el enlace a su ficha de ejecucion, y permite agregar
+observaciones con la fecha del dia. Contrastado con MT323: las cuatro vigencias cuadran con
+una suma directa en la base.
+
+Y un boton **Programar proyecto**: un modal para programar en la meta un proyecto existente
+(con buscador) o uno nuevo (con municipios), en esta y otras metas, con una observacion
+opcional. Rechaza BPIN o nombres repetidos y programaciones dobles, y guarda todo o nada.
+
+Queda por confirmar con quien llevaba el Access si la meta del proyecto era lo que aporta
+en esa vigencia o el total repetido cada ano: en las metas viales lo programado supera la
+meta (MT323: 10,75 programado contra 3 en 2024).
+
+---
+
+## 11. Los reportes
+
+`Reportes` pasa a ser un indice con tres reportes, cada uno con su pagina, sus filtros y su
+Excel: el Financiero de siempre, el **Plan indicativo** (una fila por meta, como `qryPI` del
+Access) y **Proyectos programados** (una fila por proyecto, meta y vigencia, como
+`qryProyectos`), con las columnas que hay en los modelos. La pagina de cada reporte es una
+sola plantilla (`reporte.html`); `reporte_financiero.html` se borro.
+
+Dos cosas que salieron al probar: Proyectos programados hacia 3.226 consultas (armaba el
+indicador de resultado y los ODS de cada fila, que no lleva) y ahora hace 8; y el filtro de
+vigencias repetia cada ano una vez por meta, por el orden por defecto de `ProgramacionMeta`
+dentro del `distinct`.
+
+**Pendiente de desplegar:** las migraciones `0011` a `0014`. El push las aplica en
+Supabase; antes va la copia de seguridad de la base.

@@ -52,8 +52,8 @@ sistema— esta en `respaldo_claude/COMO_RESTAURAR.md`.
 
 1. Cargas del reporte -> Anadir carga del reporte.
 2. Elegir tipo (disponibilidades / compromisos / obligaciones / reservas / historial /
-   POAI / SECOP II), vigencia y el archivo xlsx. Grabar. La vigencia se deja vacia en
-   los tres de rango completo: historial, POAI y SECOP II.
+   SECOP II), vigencia y el archivo xlsx. Grabar. La vigencia se deja vacia en los dos de
+   rango completo: historial y SECOP II.
 3. En el listado, seleccionar la carga y ejecutar la accion
    **"Procesar los reportes seleccionados"**.
 4. El resultado queda en las columnas `Estado` y `Resultado del proceso` del propio registro.
@@ -72,7 +72,7 @@ ella misma por lo que exigen los FK, con
 `order_by(F("vigencia").asc(nulls_last=True), "_orden", "id")`, donde `_orden` es la
 posicion del tipo de reporte en `cargas.ORDEN_DE_CARGA`. Es decir, vigencia ascendente;
 dentro de cada vigencia CDP -> compromisos -> obligaciones -> reservas; y al final los de
-rango completo (historial, POAI, SECOP II), que enganchan con lo ya cargado.
+rango completo (historial y SECOP II), que enganchan con lo ya cargado.
 
 > Antes habia que hacerlo en dos pasadas -los cuatro consolidados juntos y despues el
 > historial- por dos razones que ya no aplican: se ordenaba solo por `vigencia`, y donde
@@ -132,8 +132,7 @@ Las cabeceras (Cdp, Compromiso, Obligacion, Reserva) no se borran: se actualizan
 con `bulk_create(update_conflicts=True)`. Borrarlas romperia los documentos que las citan
 (un RP apunta a su CDP). El mensaje de la carga informa cuantas imputaciones reemplazo.
 
-El historial de contratos y el POAI se descargan por rango completo, asi que el historial
-se reemplaza entero y el POAI es idempotente (solo rellena el catalogo de proyectos).
+El historial de contratos se descarga por rango completo, asi que se reemplaza entero.
 
 **El equipo registra proyectos nuevos antes de que llegue la ejecucion.** Se crean desde
 Proyectos -> Anadir, con su BPIN, nombre, dependencia responsable y clasificacion. Cuando
@@ -161,12 +160,11 @@ orden ascendente** (2024 antes que 2025):
    busca en v-1, que es ejecucion de reserva)
 4. `reservas` de la vigencia v (apuntan a los **CDP de v-1**)
 
-Y despues, una sola vez, los tres que se descargan por **rango completo** y no llevan
+Y despues, una sola vez, los dos que se descargan por **rango completo** y no llevan
 vigencia:
 
 5. `historial` — engancha con los RP de **todas** las vigencias cargadas
-6. `poai` — opcional; completa nombre, dependencia responsable y clasificacion
-7. `secop` — va de ultimo: engancha por BPIN y **no crea proyectos**, asi que cuantos mas
+6. `secop` — va de ultimo: engancha por BPIN y **no crea proyectos**, asi que cuantos mas
    proyectos haya en el catalogo, menos BPIN quedan sin enganchar
 
 | Reporte | Vigencia | Depende de |
@@ -176,7 +174,6 @@ vigencia:
 | `obligaciones` | por vigencia | los RP de esa vigencia (y de v-1) |
 | `reservas` | por vigencia | los CDP de v-1 |
 | `historial` | rango completo | los RP de todas las vigencias |
-| `poai` | rango completo | nada; solo escribe en el catalogo |
 | `secop` | rango completo | el catalogo de proyectos (por BPIN) |
 
 ## El historial de orden de gasto
@@ -203,7 +200,14 @@ cinco vigencias cargadas: **10.092 de 10.099 (99,9%)**, 100% en cada vigencia de
 Es la unica fuente que da: interventor, el calendario de actas de cada contrato, y el
 vinculo contrato -> proyecto directo (incluidos los convenios que la orden de gasto no trae).
 
-## Cruce POAI (carga opcional)
+## Cruce POAI (ya no se carga)
+
+**Se dejo de cargar en octubre de 2026.** La dependencia responsable y las
+clasificaciones de cada proyecto las mantiene ahora el equipo en el admin (Proyectos y
+Configuracion y parametrizacion). El tipo de reporte sigue en el modelo para que la carga
+de julio se lea con su nombre, pero el formulario no lo ofrece y no tiene cargador; los 79
+proyectos que creo conservan su origen "Cruce POAI". Lo que sigue describe como funcionaba
+y de donde salieron esos datos.
 
 El archivo `CruceProyectosPOAI-GESPROYPIIP-PI` no es de SIIFWEB: viene del banco de
 proyectos y solo alimenta el catalogo `Proyecto`. Se descarga sin vigencia (cubre varias)
@@ -353,9 +357,9 @@ con ReportLab, a partir de **las mismas consultas** que dibuja la pantalla
 - Medido sobre el proyecto con mas documentos (1.880 obligaciones): el PDF completo sale
   en unos 3 segundos; con un mes de filtro, en menos de uno.
 
-## Dashboard de seguimiento
+## Avance financiero
 
-`Proyectos -> Dashboard` (o el enlace del menu). Responde una sola pregunta: **como va la
+`Seguimiento -> Avance financiero` (antes "Dashboard"). Responde una sola pregunta: **como va la
 gestion de cada dependencia respecto a sus proyectos.**
 
 Una fila por dependencia responsable (POAI), ordenada por lo comprometido, con cuatro
@@ -432,10 +436,166 @@ Para comprobarlo contra la base cargada, `uv run --directory seguimiento_poai py
 prueba_tablero.py` recalcula cada metrica con consultas escritas aparte, rango por rango,
 y muestra hasta que fecha llegan los datos.
 
+## Plan de desarrollo y metas (traidas de SUTEC)
+
+El catalogo de metas del plan de desarrollo, que vivia en SUTEC: el plan, sus lineas
+estrategicas, sectores, programas e indicadores del PDD; la cadena MGA del DNP (sector,
+programa, producto e indicador); los ODS; y las **436 metas** con sus **1.744 vigencias**
+(2024 a 2027). Trece modelos al final de `siifweb/models.py`.
+
+- `0011_metas_del_plan` crea las tablas y `0012_datos_de_las_metas` carga los datos del
+  volcado de produccion de SUTEC del 21/09/2026, con sus id y sus fechas. La `0012` enlaza
+  cada meta con su `DependenciaResponsable` **por el nombre**; si alguno no existe, lo crea
+  y avisa en la salida de `migrate` ("Dependencias que no existian y se crearon").
+- La meta cuelga solo de su programa: el sector, la linea y el plan suben desde el
+  (`meta.sector_pdd`, `meta.linea_estrategica`, `meta.plan_desarrollo`).
+- Sus indicadores PDD tienen que ser del programa. Lo vigila una senal sobre la relacion y,
+  en el admin, el formulario de la meta (`MetaIndicadorForm`), que lo avisa en el campo y
+  no como un 500. El modelo juzga los indicadores que se van a guardar, no los de la base:
+  cambiar programa e indicadores a la vez no da un error falso.
+- Las decisiones de diseno y los pasos de la integracion estan en
+  `modelos-metas/PLAN_METAS_PDD.md` (carpeta fuera de git hasta desplegar).
+
+**El listado de Metas** va de menor a mayor (MT001, MT002...), con la meta del cuatrienio
+en el formato de la ficha (1.500, no 1500,000). El orden esta en el admin
+y no en el `Meta` del modelo, para no tocar la `0011`. Cada meta tiene a la izquierda una
+flecha que despliega sus **proyectos programados** (BPIN, proyecto, vigencia, meta de la
+vigencia y tipo de banco), como el subformulario del Access; es un `TableSection` de
+unfold (`list_sections`), con los proyectos de toda la pagina traidos en una consulta.
+
+Filtros, en el orden de las dos jerarquias: la **MT** (texto: "MT323", o "MT32" para
+varias), linea estrategica, sector, programa e indicador PDD; sector, programa, producto
+e indicador MGA; dependencia responsable y estado.
+
+### Ficha de la meta
+
+Desde el icono de carpeta del listado o el boton del detalle. Una vista propia
+(`MetaIndicadorAdmin.ficha_meta`, plantilla `ficha_meta.html`), como la del proyecto:
+
+- Encabezado: codigo, indicador MGA, descripcion, la ruta en el plan (plan › linea ›
+  sector › programa), dependencias responsables y ODS.
+- Tarjetas: meta del cuatrienio, meta en las vigencias, programado por los proyectos y
+  numero de proyectos.
+- **Meta y programacion por vigencia**: la meta del plan, lo programado por los
+  proyectos y los proyectos (con cuantos no traen valor); el porcentaje de avance se quito
+  porque resultaba confuso (ver abajo). Cada
+  vigencia despliega sus proyectos, con el nombre completo; cada proyecto abre un
+  **modal** con sus municipios, vigencias, observaciones y **todas las metas en que esta
+  programado** (meta, vigencia y programacion, con la de la ficha resaltada), sin salir
+  de la ficha. Lo programado sin vigencia va en una fila "Sin vigencia".
+- **Ejecucion en SIIFWEB** de los proyectos programados, en la misma tabla y en cada
+  proyecto del desplegable: comprometido, obligado, pagado y reservas, cruzando el BPIN del
+  proyecto con el `Proyecto` de SIIFWEB y la vigencia de la programacion con la del
+  documento. Las reservas de una vigencia son los compromisos de la vigencia anterior que
+  quedaron sin obligar y pasaron a ese ano. Cada BPIN cuenta una vez por vigencia. Es la plata del proyecto
+  completo, no la parte de esta meta: SIIFWEB no la separa por meta.
+- En el modal, si el BPIN esta en SIIFWEB: comprometido, obligado y pagado de todas las
+  vigencias y el boton **Abrir la ficha de ejecucion**. Y un campo para **agregar una
+  observacion** con la fecha del dia, que se guarda sin recargar la pagina
+  (`ProgramacionProyectosAdmin.agregar_observacion`, por POST con su token CSRF); solo lo
+  ve quien puede crear observaciones.
+- **Programar proyecto** (boton del encabezado): un modal que programa en la meta un
+  proyecto **existente** (buscador por BPIN o nombre, con el BPIN exacto primero y la marca
+  de los que ya estan en la meta) o uno **nuevo** (BPIN, nombre, tipo de banco y
+  municipios). Lleva filas de meta, vigencia y meta de la vigencia: la primera es la de la
+  ficha y se pueden agregar otras metas; y una observacion opcional con la fecha del dia.
+  Todo o nada: si una fila falla no se guarda ninguna. Para no duplicar, un proyecto nuevo
+  no puede repetir un BPIN ni un nombre (comparado sin mayusculas, tildes ni signos), y un
+  proyecto no se programa dos veces en la misma meta y vigencia. Al guardar, la ficha se
+  recarga con esa vigencia desplegada. Rutas: `programar/` y `buscar-proyectos/` del
+  admin de la meta. El formulario completo queda como enlace dentro del modal.
+
+Ojo al comparar meta y programado: lo programado es la suma de lo que el Access dice que
+aporta cada proyecto. En las metas viales supera la meta (MT323: 10,75 contra 3 en 2024),
+y hay proyectos con el mismo valor
+en dos o tres vigencias; si el Access repetia la meta total del proyecto cada ano, la suma
+la infla. Esta por confirmar con quien llevaba el Access.
+
+## Programacion de proyectos (traida del Access "Seguimiento PDD STO")
+
+La tabla `tblProyectos` del Access: cada fila era un proyecto en una meta y una vigencia,
+con la meta del proyecto para ese ano. Cinco modelos:
+
+| Modelo | Que guarda |
+|---|---|
+| `ProgramacionProyectos` | El proyecto: BPIN (20), nombre, tipo de banco, municipios y vigencias ("2024, 2025") |
+| `ProgramacionMeta` | El proyecto en una meta (`MetaIndicador`) y una vigencia, con la meta de la vigencia (decimal, 5 decimales) y el `Id` de su fila en Access |
+| `ObservacionProyecto` | Observaciones individuales del proyecto, con fecha |
+| `TipoBanco` | Banco Territorial, de Gestiones, de Regalias, de Aliados |
+| `Municipio` | Los 26 de Sucre, mas "Todo el departamento" |
+
+No es el `Proyecto` de SIIFWEB: muchos no tienen BPIN (iniciativas por gestion, recursos
+propios), asi que el BPIN es solo un dato. Las vigencias del proyecto se recalculan de sus
+programaciones al guardar en el admin (`actualizar_vigencias()`), por eso salen de solo
+lectura. En el admin, las programaciones y las observaciones son tablas dentro del proyecto.
+
+`0013_programacion_de_proyectos` crea las tablas y `0014_datos_programacion_proyectos`
+carga los datos. La `0014` la escribe `modelos-metas/generar_migracion_proyectos.py` a
+partir del Access, para que el despliegue no dependa del archivo; no se edita a mano. Las
+reglas de limpieza, acordadas el 29/10/2026:
+
+| Caso | Regla |
+|---|---|
+| Que filas son el mismo proyecto | BPIN + nombre limpio (espacios y bordes, sin distinguir mayusculas ni tildes); sin BPIN, por el nombre. Se guarda la escritura mas repetida |
+| BPIN escrito como texto ("Por Gestion", "Recursos Propios"...) | BPIN vacio y el texto a una observacion |
+| "TODO EL DEPARTAMENTO", "Departamento de Sucre" | El municipio "Todo el departamento" |
+| Municipio que no se reconoce ("SAN ANDRES") | A una observacion |
+| "Sin Tipo de Banco" | Tipo vacio. Dos bancos, o bancos distintos entre filas: el mas repetido, y los demas a una observacion |
+| Observaciones de Access | Sin fecha; las nuevas llevan la del dia |
+| Meta que no esta en el catalogo (MT465, MT468) | Sin programacion; queda como observacion |
+| Filas repetidas exactas | Una sola |
+| Filas sin BPIN ni nombre (12, vacias) | No se cargan |
+
+Resultado contra el Access, fila por fila: **1.265 proyectos, 1.609 programaciones y 539
+observaciones**, sin diferencias de meta, vigencia ni valor. Las 17 filas sin programacion
+son las 12 vacias, 3 repetidas y las 2 de metas fuera del catalogo. La meta de la vigencia
+lleva 5 decimales porque hay metas viales con cuatro (3,0976 km): entran exactas.
+
+### Despliegue pendiente
+
+Las migraciones `0011` a `0014` no estan en produccion. En Railway el `preDeployCommand`
+corre `migrate`, asi que **hacer push es aplicarlas en Supabase**: antes va la copia de
+seguridad de la base (paso 6 de `PLAN_METAS_PDD.md`). Y con el `.env` presente, cualquier
+`migrate` local sin `DATABASE_URL` explicita tambien va contra Supabase.
+
+## Reportes
+
+`Seguimiento -> Reportes` abre un indice con tres reportes. Cada uno tiene su pagina, con
+sus filtros, el boton **Descargar Excel** y la lista de sus columnas:
+
+| Reporte | Una fila por... | Filtros |
+|---|---|---|
+| Reporte Financiero del proyecto | proyecto y vigencia: CDP, compromiso, obligacion, reserva y contratacion | vigencia, BPIN, nombre |
+| Plan indicativo | meta: su lugar en el plan, la cadena MGA y la meta fisica de cada ano | MT, linea, sector PDD, dependencia responsable |
+| Proyectos programados | proyecto, meta y vigencia: la meta del plan y lo que aporta el proyecto | vigencia, MT, linea, sector PDD, dependencia, tipo de banco, BPIN, nombre |
+
+El Plan indicativo y Proyectos programados siguen la estructura de las consultas `qryPI` y
+`qryProyectos` del Access, con las columnas que hay en los modelos. Quedan fuera las que
+no se trajeron de SUTEC (meta agrupada, serie, linea base, unidades de medida, ano base,
+fuente, meta del indicador de resultado, tipo de acumulacion, observaciones) y la
+Ejecucion por ano, que `tblProyectos` ya no tenia.
+
+Cada reporte se define en `ProyectoAdmin._reportes` (filtros, columnas, constructor y
+permiso) y comparte la plantilla `reporte.html`; los constructores estan en
+`siifweb/reportes.py` (`construir`, `construir_plan`, `construir_proyectos`) y el Excel sale
+de `a_excel`, que sirve para cualquier juego de columnas. Las metas van con formato
+General: 15 y no 15,00000; 3,0976 completo. El indice solo muestra los reportes que el
+usuario puede abrir: el Plan indicativo pide el permiso de metas y Proyectos programados el
+de programacion, que los roles del equipo todavia no tienen.
+
 ## El admin (django-unfold)
 
-Interfaz con [django-unfold](https://unfoldadmin.com/): barra lateral agrupada por
-etapa de la cadena, filtros desplegables, rangos de fecha y badges de estado.
+Interfaz con [django-unfold](https://unfoldadmin.com/): barra lateral por modulos,
+filtros desplegables, rangos de fecha y badges de estado.
+
+| Seccion de la barra | Que tiene |
+|---|---|
+| Usuarios | Roles y usuarios |
+| Seguimiento | Proyectos, Avance financiero, Reportes, Metas y Programacion de proyectos |
+| Plan de Desarrollo | Planes, lineas estrategicas, sectores, programas e indicadores PDD; vigencias de las metas; sector, programa, producto e indicador MGA; ODS y metas ODS |
+| SIIFWEB | CDP, RP, obligaciones, reservas, contratos, actas de pago, terceros, rubros, fuentes, dependencias y clasificaciones |
+| Contratacion | Contratos, procesos y BPIN por proceso de SECOP II |
+| Configuracion y parametrizacion | Dependencias responsables, cargas del reporte, tipos de banco y municipios |
 
 **Los inlines muestran la cadena completa sin salir de la pagina.** Cada documento
 trae las tablas relacionadas como pestanas:
@@ -464,14 +624,16 @@ Dos grupos que crea la migracion `0009`, para no repartir permisos a mano:
 
 | Rol | Que puede hacer |
 |---|---|
-| **Consulta** | Solo mirar: el proyecto, su informacion presupuestal (CDP, RP, obligaciones, reservas y sus imputaciones), los contratos de SIIFWEB y la contratacion de SECOP II, mas los catalogos. Entra al Dashboard, a la ficha de ejecucion y al Reporte Financiero |
+| **Consulta** | Solo mirar: el proyecto, su informacion presupuestal (CDP, RP, obligaciones, reservas y sus imputaciones), los contratos de SIIFWEB y la contratacion de SECOP II, mas los catalogos. Entra al Avance financiero, a la ficha de ejecucion y al Reporte Financiero |
 | **Seguimiento** | Lo mismo que Consulta y ademas **crear y editar proyectos**, que es el unico dato que el equipo alimenta a mano |
 
 Ninguno de los dos ve las **cargas del reporte** (subir un archivo dispara el proceso y
 reescribe datos) ni los **usuarios y roles** de Django, y ninguno puede **borrar**: un
 proyecto con ejecucion colgando no se elimina, se corrige.
 
-**En el menu lateral ven un solo modulo, el de Seguimiento** (Proyectos, Dashboard y Reportes). Las
+**En el menu lateral ven un solo modulo, el de Seguimiento** (Proyectos, Avance financiero y
+Reportes). Metas y Programacion de proyectos van con el permiso de su propio modelo, que
+los roles todavia no tienen: no los ven, en vez de ver un enlace que les responderia 403. Las
 demas secciones —catalogos, cadena de gasto, cierre, contratacion y SECOP II— listan
 documento por documento lo que producen las cargas, y esa misma informacion la revisan
 agregada en la ficha del proyecto. Las paginas siguen abiertas por URL a proposito: los
@@ -501,15 +663,22 @@ como lo que responde 403.
 - `siifweb/admin.py` — formulario con validacion de duplicados y la accion de procesar
 - `siifweb/management/commands/cargar_reporte.py` — carga por consola
 - `siifweb/management/commands/validar.py` — conciliaciones sobre lo migrado
-- `siifweb/tablero.py` — el dashboard: agregacion por dependencia y por proyecto
+- `siifweb/tablero.py` — el Avance financiero: agregacion por dependencia y por proyecto
 - `siifweb/pdf_ficha.py` — el PDF de cada tabla de la ficha (ReportLab)
 - `siifweb/fuentes/` — Carlito (regular y negrilla) con su licencia OFL, para el PDF
+- `siifweb/reportes.py` — los tres reportes y su Excel; `templates/siifweb/reportes.html` (el
+  indice) y `reporte.html` (la pagina de cada uno)
+- `siifweb/templates/siifweb/ficha_meta.html` — la ficha de la meta, con
+  `_proyecto_programado.html` (el enlace que abre el modal del proyecto)
+- `siifweb/migrations/0011` a `0014` — metas del plan (SUTEC) y programacion de proyectos (Access)
+- `../modelos-metas/` (fuera de git) — el plan de la integracion, los generadores de la
+  `0012` y la `0014`, y el Access de origen
 - `siifweb/migrations/0009_roles_seguimiento_y_consulta.py` — los dos roles del equipo
 - `siifweb/tests/` — la bateria automatica (`manage.py test siifweb`)
 - `prueba_admin.py` — ejerce el flujo del admin (subir + procesar) sin navegador
 - `prueba_admin_unfold.py` — verifica que las 18 paginas cargan y que los inlines traen datos
 - `prueba_secop.py` — carga el consolidado de SECOP II real en la sqlite local
-- `prueba_tablero.py` — contrasta el dashboard contra la base real, rango por rango
+- `prueba_tablero.py` — contrasta el Avance financiero contra la base real, rango por rango
 
 ## Validaciones
 
@@ -555,7 +724,8 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-215 pruebas en diez modulos:
+297 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
 |---|---|
@@ -566,9 +736,12 @@ linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion`
 | `test_pdf_ficha.py` | El PDF de cada tabla: que traiga solo la tabla pedida, que respete el filtro, el 404 de una tabla desconocida, los textos con `<`, `>` y `&`, las tablas de varias paginas, los permisos, el encabezado con la dependencia responsable y los enlaces junto a cada titulo |
 | `test_regresion_cargadores.py` | Que los cargadores de siempre sigan funcionando, ya que comparten `leer_filas` con el de SECOP. Los valores monetarios: separador de miles y que un valor ilegible aborte la carga |
 | `test_validar.py` | La seccion 8 del comando `validar` y que las siete anteriores sigan saliendo |
-| `test_tablero.py` | El dashboard: solo proyectos con dependencia responsable, el grano (nada se cuenta dos veces), cada etapa cortada por su fecha y contrastada con la consulta directa, lo cancelado de SECOP fuera, atajos de periodo con la fecha de Bogota y filtros que no revientan |
+| `test_tablero.py` | El Avance financiero: solo proyectos con dependencia responsable, el grano (nada se cuenta dos veces), cada etapa cortada por su fecha y contrastada con la consulta directa, lo cancelado de SECOP fuera, atajos de periodo con la fecha de Bogota y filtros que no revientan |
 | `test_roles.py` | Los roles Seguimiento y Consulta: que ven, que editan y el menu lateral de cada uno |
-| `test_admin_y_sistema.py` | Las paginas nuevas y **todas** las que ya existian, el menu lateral, `check`, que no queden migraciones sin crear, que las pruebas no toquen produccion ni `media/`, y el formulario de carga (vigencia obligatoria salvo en historial, POAI y SECOP II) |
+| `test_plan_desarrollo.py` | La seccion del menu y su orden, que cada enlace abra, que los roles no la vean, el detalle y el autocompletado de la meta, que el listado no haga una consulta por fila, cada filtro del listado con un valor real (MT, linea, indicador PDD y la cadena MGA, sin filas repetidas), y la regla de los indicadores del programa (rechazo en el campo y sin error falso al cambiar programa e indicadores a la vez) |
+| `test_programacion_proyectos.py` | Las cifras de la `0014` y sus reglas (BPIN solo codigos, municipios, observaciones sin fecha, cinco decimales exactos), el menu, el recalculo de vigencias al guardar, el desplegable del listado de metas, el orden ascendente y la ficha de la meta (cifras por vigencia, desplegables, modal con todas las metas del proyecto, la ejecucion de SIIFWEB por BPIN y vigencia con reservas, las observaciones desde el modal, 404 y permisos) |
+| `test_reportes.py` | El indice y la pagina de cada reporte, los permisos (los roles solo ven el financiero), el Excel del Plan indicativo y de Proyectos programados contra la base (filas, encabezados, datos de una meta, filtros, la meta del proyecto exacta), que no haga una consulta por fila y que las vigencias del filtro no se repitan |
+| `test_admin_y_sistema.py` | Las paginas nuevas y **todas** las que ya existian, el menu lateral, `check`, que no queden migraciones sin crear, que las pruebas no toquen produccion ni `media/`, y el formulario de carga (vigencia obligatoria salvo en historial y SECOP II; el cruce POAI ya no se ofrece) |
 
 Las cifras del archivo real (`data/secop/ReporteSIIFWEB_20260814.xlsx`) se comprueban solo
 si el archivo esta a mano; en otra maquina esas pruebas se saltan solas.
@@ -580,11 +753,12 @@ de `OBJETO_OBLIG`, su actualizacion en el upsert…) y en todos los casos fallo 
 que corresponde. Tres pruebas resultaron pasar con el codigo roto y se corrigieron: no
 basta con que la suite este en verde.
 
-## Los 18 modelos
+## Los 41 modelos
 
 ```
 CATALOGOS     Proyecto (bpin, nombre, dependencia)   <- el eje del seguimiento
               Rubro · Fuente · CentroCosto · Tercero · OrdenGasto
+              DependenciaResponsable · Clasificacion  (POAI, las mantiene el equipo)
 
 CADENA        Cdp ───────── CdpImputacion ─────────┐
               Compromiso ── CompromisoImputacion ──┤ FK a Proyecto
@@ -594,6 +768,17 @@ CIERRE        Reserva ───── ReservaImputacion ──────┘  (
 
 CONTRACTUAL   Contrato ──┬─ ContratoActa (fecha y valor de cada pago)
                          └─ ContratoImputacion ────┘  (compromiso -> RP)
+
+SECOP II      ProcesoSecop ── ContratoSecop ── BpinProceso (por BPIN al Proyecto)
+
+PLAN (SUTEC)  PlanDesarrollo <- LineaEstrategica <- SectorPDD <- ProgramaPDD
+              IndicadorPDD (varios programas) · ODS · MetaODS
+              SectorMGA <- ProgramaMGA <- ProductoMGA <- IndicadorMGA
+              MetaIndicador (programa, indicador MGA) ── VigenciaMeta
+
+PROGRAMACION  ProgramacionProyectos ──┬─ ProgramacionMeta (meta x vigencia)
+(Access)                              └─ ObservacionProyecto
+              TipoBanco · Municipio
 
 OPERACION     CargaReporte
 ```

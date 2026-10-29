@@ -62,7 +62,7 @@ class RolBase(TestCase):
         self.assertEqual(self.enlaces_del_menu(), [
             reverse("admin:siifweb_proyecto_changelist"),
             reverse("admin:siifweb_proyecto_tablero"),
-            reverse("admin:siifweb_proyecto_reporte_financiero"),
+            reverse("admin:siifweb_proyecto_reportes"),
         ])
 
 

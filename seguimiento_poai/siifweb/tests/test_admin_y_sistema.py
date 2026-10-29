@@ -133,9 +133,24 @@ class FormularioDeCarga(AdminBase):
             files={"archivo": SimpleUploadedFile(f"{tipo}.xlsx", tipo.encode())})
 
     def test_los_de_rango_completo_no_piden_vigencia(self):
-        for tipo in ("historial", "poai", "secop"):
+        for tipo in ("historial", "secop"):
             formulario = self.subir(tipo)
             self.assertTrue(formulario.is_valid(), f"{tipo}: {formulario.errors}")
+
+    def test_el_cruce_poai_ya_no_se_ofrece(self):
+        """Se dejo de usar en octubre de 2026: no aparece ni se acepta en una carga nueva."""
+        from siifweb.admin import CargaReporteForm
+        self.assertNotIn("poai", [v for v, _ in CargaReporteForm().fields["tipo_reporte"].choices])
+        formulario = self.subir("poai")
+        self.assertFalse(formulario.is_valid())
+        self.assertIn("tipo_reporte", formulario.errors)
+
+    def test_la_carga_poai_de_antes_se_sigue_leyendo_con_su_tipo(self):
+        from siifweb.admin import CargaReporteForm
+        from siifweb.models import CargaReporte
+        vieja = CargaReporte.objects.create(tipo_reporte="poai", hash="p" * 64)
+        self.assertIn("poai", [v for v, _ in CargaReporteForm(instance=vieja).fields["tipo_reporte"].choices])
+        self.assertEqual(vieja.get_tipo_reporte_display()[:21], "Cruce proyectos POAI ")
 
     def test_los_consolidados_si_la_piden(self):
         for tipo in ("cdp", "compromisos", "obligaciones", "reservas"):
@@ -184,13 +199,12 @@ class OrdenDeProceso(TestCase):
         self.crear("secop", None)
         self.crear("obligaciones", 2025)
         self.crear("cdp", 2024)
-        self.crear("poai", None)
 
         procesadas = self.procesar_todo()
         vigencias = [v for _, v in procesadas]
         self.assertEqual(vigencias[:2], [2024, 2025])           # consolidados, ascendente
         self.assertTrue(all(v is None for v in vigencias[2:]))  # rango completo al final
-        self.assertEqual([t for t, _ in procesadas[2:]], ["historial", "poai", "secop"])
+        self.assertEqual([t for t, _ in procesadas[2:]], ["historial", "secop"])
 
     def test_dentro_de_una_vigencia_manda_la_cadena_y_no_el_orden_de_creacion(self):
         """Da igual como se suban: el CDP se procesa antes que el RP y este antes
@@ -208,7 +222,7 @@ class OrdenDeProceso(TestCase):
         cargas_creadas = [(tipo, vigencia)
                           for vigencia in (2024, 2025)
                           for tipo in ("cdp", "compromisos", "obligaciones", "reservas")]
-        cargas_creadas += [("historial", None), ("poai", None), ("secop", None)]
+        cargas_creadas += [("historial", None), ("secop", None)]
         random.shuffle(cargas_creadas)
         for tipo, vigencia in cargas_creadas:
             self.crear(tipo, vigencia)
@@ -217,12 +231,21 @@ class OrdenDeProceso(TestCase):
         self.assertEqual(procesadas, [
             ("cdp", 2024), ("compromisos", 2024), ("obligaciones", 2024), ("reservas", 2024),
             ("cdp", 2025), ("compromisos", 2025), ("obligaciones", 2025), ("reservas", 2025),
-            ("historial", None), ("poai", None), ("secop", None),
+            ("historial", None), ("secop", None),
         ])
 
     def test_el_orden_declarado_cubre_todos_los_tipos(self):
         from siifweb import cargas
         self.assertEqual(set(cargas.ORDEN_DE_CARGA), set(cargas.PROCESADORES))
+
+    def test_una_carga_poai_de_antes_ya_no_se_procesa(self):
+        from siifweb import cargas
+        from siifweb.models import CargaReporte
+        vieja = self.crear("poai", None)
+        self.assertNotIn("poai", cargas.PROCESADORES)
+        self.assertFalse(cargas.procesar(vieja))
+        vieja.refresh_from_db()
+        self.assertEqual(vieja.estado, CargaReporte.Estado.ERROR)
 
 
 class Sistema(TestCase):

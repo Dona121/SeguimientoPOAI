@@ -18,8 +18,8 @@ from io import BytesIO
 from django.db import transaction
 from openpyxl import load_workbook
 
-from .models import (BpinProceso, Cdp, CdpImputacion, CentroCosto, Clasificacion, Compromiso,
-                     CompromisoImputacion, Contrato, ContratoSecop, DependenciaResponsable,
+from .models import (BpinProceso, Cdp, CdpImputacion, CentroCosto, Compromiso,
+                     CompromisoImputacion, Contrato, ContratoSecop,
                      ContratoActa, ContratoImputacion, Fuente, Obligacion, ObligacionImputacion,
                      OrdenGasto, ProcesoSecop, Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
 
@@ -576,91 +576,6 @@ def cargar_historial(carga):
         previas, cat, f"{con_rp} enganchadas a un RP cargado")
 
 
-@transaction.atomic
-def cargar_poai(carga):
-    """Cruce POAI: enriquece el catalogo de proyectos. Carga OPCIONAL.
-
-    El reporte trae una fila por indicador y vigencia, asi que cada BPIN se repite
-    (194 proyectos en 380 filas). Los atributos del proyecto son identicos en todas
-    sus filas -verificado-, de modo que se deduplica quedandose con la primera.
-
-    Reglas de escritura:
-      - nombre: solo si SIIFWEB no lo trajo (el historial es la fuente primaria)
-      - dependencia responsable y clasificaciones: SIIFWEB no los tiene, asi que este
-        reporte es la fuente autoritativa y siempre los actualiza
-    """
-    filas = leer_filas(stream(carga.archivo), hoja="Completo")
-
-    unicos = {}
-    for f in filas:
-        bpin = texto(f.get("BPIN"))
-        if bpin and bpin not in unicos:
-            unicos[bpin] = f
-
-    cache_dep, cache_clas = {}, {}
-
-    def dependencia(valor):
-        """NO se parte por coma: estos nombres las llevan dentro
-        ('Mujer, Juventud, e Inclusion Social')."""
-        nombre = util(valor)
-        if not nombre:
-            return None
-        if nombre not in cache_dep:
-            cache_dep[nombre], _ = DependenciaResponsable.objects.get_or_create(nombre=nombre[:150])
-        return cache_dep[nombre]
-
-    def clasificaciones(valor):
-        """Aqui si: en una celda pueden venir varias separadas por coma
-        ('POAI 2026, Recursos del Balance')."""
-        salida = []
-        for parte in str(util(valor)).split(","):
-            nombre = parte.strip()
-            if not nombre:
-                continue
-            if nombre not in cache_clas:
-                cache_clas[nombre], _ = Clasificacion.objects.get_or_create(nombre=nombre[:120])
-            salida.append(cache_clas[nombre])
-        return salida
-
-    creados = nombres = otros = manuales = 0
-    for bpin, f in unicos.items():
-        proyecto, nuevo = Proyecto.objects.get_or_create(
-            bpin=bpin, defaults={"origen": Proyecto.Origen.POAI})
-        creados += nuevo
-        if not nuevo and proyecto.origen == Proyecto.Origen.MANUAL:
-            manuales += 1
-        cambios = []
-
-        nombre = util(f.get("NombreProyecto"))
-        if nombre and not proyecto.nombre:  # no pisa lo que ya trajo SIIFWEB
-            proyecto.nombre = nombre
-            cambios.append("nombre")
-            nombres += 1
-
-        dep = dependencia(f.get("Dependencia Responsable"))
-        if dep and proyecto.dependencia_responsable_id != dep.pk:
-            proyecto.dependencia_responsable = dep
-            cambios.append("dependencia_responsable")
-            otros += 1
-
-        if cambios:
-            proyecto.save(update_fields=cambios)
-
-        clases = clasificaciones(f.get("Clasificación"))
-        if clases:
-            proyecto.clasificaciones.set(clases)
-            otros += len(clases)
-
-    detalle = (f"{len(unicos)} proyectos en el reporte ({len(filas)} filas antes de deduplicar) | "
-               f"{nombres} nombres completados, {otros} campos POAI escritos | "
-               f"{len(cache_dep)} dependencias responsables, {len(cache_clas)} clasificaciones")
-    if creados:
-        detalle += f" | {creados} proyectos nuevos (estan en el POAI, sin ejecucion en SIIFWEB)"
-    if manuales:
-        detalle += f" | {manuales} proyectos del equipo completados"
-    return len(filas), detalle
-
-
 # ---------- SECOP II ----------
 
 # Las 23 columnas de la tabla consolidada. Si el libro no las trae todas, la carga
@@ -811,8 +726,10 @@ def cargar_secop(carga):
 # El orden en que los FK exigen que se procesen. Dentro de una vigencia: el CDP
 # antes que el RP, el RP antes que la obligacion. Los de rango completo van al
 # final porque enganchan con lo que ya quedo cargado.
+# El cruce POAI ya no se carga (octubre de 2026): la dependencia responsable y la
+# clasificacion de cada proyecto las mantiene el equipo en el admin.
 ORDEN_DE_CARGA = ["cdp", "compromisos", "obligaciones", "reservas",
-                  "historial", "poai", "secop"]
+                  "historial", "secop"]
 
 
 PROCESADORES = {
@@ -821,7 +738,6 @@ PROCESADORES = {
     "obligaciones": cargar_obligaciones,
     "reservas": cargar_reservas,
     "historial": cargar_historial,
-    "poai": cargar_poai,
     "secop": cargar_secop,
 }
 

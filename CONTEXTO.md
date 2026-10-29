@@ -19,8 +19,7 @@ indicativo. El trabajo se hace en polars; los exportes se convierten a Parquet.
 - `conciliaciones.py` — suite de validación (correr tras cada descarga; todo debe dar
   OK salvo las excepciones documentadas dentro del propio script).
 - `esquema/` — modelo de datos: `esquema_siifweb.dbml` (completo, 12 tablas) y
-  `esquema_siifweb_simple.dbml` (9 tablas) para dbdiagram.io; versiones mermaid,
-  draw.io y PNG.
+  `esquema_siifweb_simple.dbml` (9 tablas) para dbdiagram.io, cada uno con su PNG.
 - `NOTAS_CRUCES.md` — consideraciones de llaves para cruzar cada par de tablas.
 - La memoria persistente del asistente tiene el detalle en
   `siifweb-bases-presupuestales.md` (llaves verificadas, hallazgos, convenciones).

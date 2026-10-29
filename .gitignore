@@ -14,6 +14,8 @@ db.sqlite3
 db.sqlite3-journal
 db.sqlite3-wal
 db.sqlite3-shm
+# Y cualquier copia o respaldo de una base sqlite
+*.sqlite3
 *.log
 
 # Reportes subidos desde el admin (grandes; se recargan, no se versionan)
@@ -31,10 +33,22 @@ env_*.txt
 # Respaldo personal en MEGA: memorias del asistente y copia de los secretos
 respaldo_claude/
 
-# Scripts temporales de una sesion
+# Scripts temporales de una sesion. La excepcion es necesaria: el patron tambien
+# atrapaba __init__.py, y sin el de siifweb/tests un clon nuevo no corre ninguna prueba
 _*.py
+!__init__.py
+
+# Insumos de las integraciones: el Access de seguimiento (datos reales) y la carpeta de
+# trabajo de las metas. Lo que vale ya esta en siifweb/ (modelos y migraciones); la
+# carpeta se conserva fuera del repo para poder regenerar la 0012 y la 0014
+modelos-metas/
+*.accdb
+*.mdb
+*.laccdb
 
 # Sistema operativo
 Thumbs.db
 .DS_Store
 desktop.ini
+# Archivos temporales de Office (Excel, Word, PowerPoint abiertos)
+~$*

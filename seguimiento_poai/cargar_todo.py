@@ -14,7 +14,23 @@ from pathlib import Path
 import django
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+# Guarda contra produccion, como en prueba_secop.py: este script escribe en la base y
+# sube xlsx, y con el .env presente iria a Supabase y al bucket S3. DATABASE_URL vacia
+# hace que settings caiga en la sqlite local (python-dotenv no pisa lo que ya esta en el
+# entorno). Para apuntar a otra base hay que exportar DATABASE_URL a proposito.
+# SECRET_KEY y DEBUG dejan correrlo tambien sin .env.
+os.environ.setdefault("DATABASE_URL", "")
+os.environ.setdefault("SECRET_KEY", "solo-local")
+os.environ.setdefault("DEBUG", "True")
 django.setup()
+
+from django.test.utils import override_settings  # noqa: E402
+
+# Los archivos van a media/ local, no al bucket
+override_settings(STORAGES={
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}).enable()
 
 from django.core.files import File  # noqa: E402
 

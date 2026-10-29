@@ -1,7 +1,11 @@
+from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
 from django.db.models import Sum
+from django.db.models.signals import m2m_changed
+from django.dispatch import receiver
+from django.utils import timezone
+from django.utils.html import strip_tags
+from django.utils.translation import gettext_lazy as _
 
 
 def listado_vigencias():
@@ -26,6 +30,8 @@ class CargaReporte(Fechas):
         OBLIGACIONES = "obligaciones", _("Consolidado de obligaciones")
         RESERVAS = "reservas", _("Consolidado de reservas")
         HISTORIAL = "historial", _("Historial de orden de gasto 2 (rango completo)")
+        # Ya no se carga (octubre de 2026): queda para que las cargas viejas se lean con
+        # su nombre. El formulario no lo ofrece y no tiene cargador.
         POAI = "poai", _("Cruce proyectos POAI (opcional: nombre, dependencia y clasificacion)")
         SECOP = "secop", _("Consolidado BPIN por proceso de SECOP II (rango completo)")
 
@@ -594,3 +600,498 @@ class BpinProceso(Fechas):
         return f"{self.bpin} - {self.proceso.id_proceso} - {contrato}"
 
 
+# 6. Metas del plan de desarrollo (traidas de SUTEC)
+#
+# El catalogo del plan: PlanDesarrollo <- LineaEstrategica <- SectorPDD <- ProgramaPDD,
+# con IndicadorPDD ligado a varios programas; la cadena MGA del DNP (SectorMGA <-
+# ProgramaMGA <- ProductoMGA <- IndicadorMGA), que es otra clasificacion y no lleva al
+# PDD; los ODS; y las metas con sus vigencias. La meta cuelga solo de su programa: sector,
+# linea y plan suben desde el. Su dependencia es la DependenciaResponsable de siifweb.
+# Los datos los carga la migracion 0012 desde el volcado de produccion de SUTEC.
+# Decisiones de diseno y pasos: modelos-metas/PLAN_METAS_PDD.md.
+
+class PlanDesarrollo(Fechas):
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    descripcion = models.CharField(max_length=255, verbose_name="Nombre")
+    vigencia_inicio = models.CharField(max_length=255, verbose_name="Año en el que empieza")
+    vigencia_fin = models.CharField(max_length=255, verbose_name="Año en el que finaliza")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Plan de desarrollo"
+        verbose_name_plural="Planes de desarrollo"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class LineaEstrategica(Fechas):
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    plan_desarrollo = models.ForeignKey(PlanDesarrollo, verbose_name="Plan de desarrollo", on_delete=models.SET_NULL, blank=True, null=True)
+    descripcion = models.CharField(max_length=255, verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Línea estratégica"
+        verbose_name_plural="Líneas estratégicas"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class SectorPDD(Fechas):
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    linea_estrategica = models.ForeignKey(LineaEstrategica, verbose_name="Línea estratégica", on_delete=models.SET_NULL, blank=True, null=True)
+    descripcion = models.CharField(max_length=255, verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Sector PDD"
+        verbose_name_plural="Sectores PDD"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class ProgramaPDD(Fechas):
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    sector_pdd = models.ForeignKey(SectorPDD, verbose_name="Sector PDD", on_delete=models.SET_NULL, blank=True, null=True)
+    descripcion = models.CharField(max_length=255, verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Programa PDD"
+        verbose_name_plural="Programas PDD"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class IndicadorPDD(Fechas):
+    programas_pdd = models.ManyToManyField(
+        ProgramaPDD,
+        verbose_name="Programas PDD",
+        blank=True,
+        related_name="indicadores_pdd",
+        help_text="Permite asociar el indicador a uno o más programas PDD. Útil para filtros por programa/sector/línea estratégica.",
+    )
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    descripcion = models.TextField(verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Indicador PDD"
+        verbose_name_plural="Indicadores PDD"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class SectorMGA(Fechas):
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    descripcion = models.TextField(verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Sector MGA"
+        verbose_name_plural="Sectores MGA"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class ProgramaMGA(Fechas):
+    sector_mga = models.ForeignKey(SectorMGA, verbose_name="Sector MGA", on_delete=models.SET_NULL, blank=True, null=True)
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    descripcion = models.TextField(verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Programa MGA"
+        verbose_name_plural="Programas MGA"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class ProductoMGA(Fechas):
+    programa_mga = models.ForeignKey(ProgramaMGA, verbose_name="Programa MGA", on_delete=models.SET_NULL, blank=True, null=True)
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    descripcion = models.TextField(verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Producto MGA"
+        verbose_name_plural="Productos MGA"
+
+    def __str__(self):
+        # Con el codigo delante: el catalogo tiene cientos de productos y la
+        # descripcion sola no basta para distinguirlos al elegir uno.
+        try:
+            descripcion = strip_tags(self.descripcion)
+        except Exception:
+            descripcion = self.descripcion
+        if self.codigo:
+            return '%s - %s' % (self.codigo, descripcion)
+        return descripcion
+
+
+class IndicadorMGA(Fechas):
+    producto_mga = models.ForeignKey(ProductoMGA, verbose_name="Producto MGA", on_delete=models.SET_NULL, blank=True, null=True)
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    ods = models.ManyToManyField('ODS', verbose_name="Objetivos de desarrollo sostenible", blank=True)
+    descripcion = models.TextField(verbose_name="Nombre")
+    
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Indicador MGA"
+        verbose_name_plural="Indicadores MGA"
+
+    def __str__(self):
+        if self.codigo:
+            try:
+                return f"{self.codigo} - {strip_tags(self.descripcion or '')}"
+            except:
+                return f"{self.codigo} - {self.descripcion or ''}"
+        else:
+            try:
+                return strip_tags(self.descripcion or '')
+            except:
+                return self.descripcion or ''
+
+
+class MetaIndicador(Fechas):
+    codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
+    indicador_mga = models.ForeignKey(IndicadorMGA, verbose_name="Indicador MGA", on_delete=models.CASCADE, related_name='metas')
+    descripcion = models.TextField(verbose_name="Descripción")
+    dependencias_responsables = models.ManyToManyField(DependenciaResponsable, verbose_name="Dependencias responsables", blank=True)
+    ods = models.ManyToManyField('ODS', verbose_name="Objetivos de desarrollo sostenible", blank=True)
+    # Decimal y no float, con tres decimales y no los dos del dinero: las metas
+    # de vías van en kilómetros con precisión de metros (11,187 km).
+    meta_cuatrenio = models.DecimalField(max_digits=20, decimal_places=3, verbose_name="Meta cuatrenio", blank=True, null=True)
+
+    # El sitio de la meta en el plan es su programa, y solo él. El sector, la
+    # línea estratégica y el plan no se guardan: se suben desde el programa
+    # (ver las propiedades de abajo), así no hay forma de que se descuadren.
+    #
+    # Obligatorio, y por eso PROTECT: un programa con metas no se puede borrar.
+    # SET_NULL no cabe en un campo sin nulos, y CASCADE borraría las metas con
+    # sus vigencias por borrar una fila del catálogo.
+    programa_pdd = models.ForeignKey(
+        ProgramaPDD,
+        verbose_name="Programa PDD",
+        on_delete=models.PROTECT,
+        related_name="metas_indicador",
+    )
+    indicadores_pdd = models.ManyToManyField(
+        IndicadorPDD,
+        verbose_name="Indicadores PDD",
+        blank=True,
+        related_name="metas_indicador",
+        help_text="Indicadores de resultado del plan a los que aporta esta "
+                  "meta. Son varios mas veces de las que parece: en 55 de las "
+                  "436 del Plan Indicativo, y en dos de ellas son catorce. "
+                  "Por eso no puede ser una sola clave ajena.",
+    )
+
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name = "Meta de Indicador MGA"
+        verbose_name_plural = "Metas de Indicadores MGA"
+        ordering = ['-codigo']
+
+    def __str__(self):
+        # La etiqueta se arma con el consecutivo de la meta y con el código y la
+        # descripción **del indicador MGA**, no con la descripción propia.
+        #
+        # La descripción propia llegó irregular en la carga: unas filas dicen
+        # «450203400 | Personas capacitadas» y otras «MT467 - 450203400 -
+        # Personas capacitadas», así que anteponerle cualquier cosa producía
+        # etiquetas repetidas —«MT467 - MT467 - …»—. El 06/09 eso se resolvió
+        # dejando solo la descripción; el 07/09 el usuario pidió armarla desde
+        # el indicador MGA, que sí es uniforme en las 468 filas cargadas:
+        #
+        #     MT467 - 450203400: Personas capacitadas
+        #
+        # El **sector PDD** va detrás del consecutivo porque es lo que separa
+        # las que se leen igual. Hay 28 grupos de metas que comparten
+        # consecutivo e indicador MGA —«MT467 - 450203400: Personas
+        # capacitadas» aparece tres veces— y lo único que las distingue es el
+        # sector del plan de desarrollo al que responden: Inclusión Social,
+        # Comercio e Industria, Salud. Sin él, en el desplegable parecen
+        # duplicados y no hay forma de saber cuál elegir.
+        #
+        # `indicador_mga` es obligatorio en el modelo, así que una meta guardada
+        # siempre lo tiene; el sector PDD admite nulos, pero las 468 cargadas lo
+        # traen.
+        return f"{self.codigo} - {self.sector_pdd} - {self.indicador_mga.codigo}: {strip_tags(self.indicador_mga.descripcion)}"
+
+    @property
+    def sector_pdd(self):
+        return self.programa_pdd.sector_pdd if self.programa_pdd else None
+
+    @property
+    def linea_estrategica(self):
+        sector = self.sector_pdd
+        return sector.linea_estrategica if sector else None
+
+    @property
+    def plan_desarrollo(self):
+        linea = self.linea_estrategica
+        return linea.plan_desarrollo if linea else None
+
+    def clean(self):
+        # Cambiar el programa de una meta que ya tiene indicadores no puede
+        # dejarlos colgando de otro programa.
+        super().clean()
+        # Si el formulario trae los indicadores que va a guardar, se juzgan esos y
+        # no los de la base: al cambiar programa e indicadores a la vez, los
+        # guardados son los viejos y darian un error falso.
+        indicadores = getattr(self, '_indicadores_pdd_por_guardar', None)
+        if indicadores is None and self.pk:
+            indicadores = self.indicadores_pdd.values_list('pk', flat=True)
+        if indicadores is not None:
+            fuera = indicadores_fuera_del_programa(self.programa_pdd_id, indicadores)
+            if fuera:
+                raise ValidationError({'programa_pdd': (
+                    'Estos indicadores PDD de la meta no pertenecen al programa '
+                    'elegido: %s.' % ', '.join(str(i) for i in fuera))})
+
+
+def indicadores_fuera_del_programa(programa_id, indicador_ids):
+    """Los indicadores PDD que no tienen al programa entre sus `programas_pdd`.
+
+    Una meta pertenece a un solo programa y aporta a varios indicadores PDD,
+    todos de ese programa. Un indicador puede compartirse entre programas, así
+    que basta con que el de la meta esté entre los suyos. Sin programa, ningún
+    indicador cuadra.
+    """
+    indicadores = IndicadorPDD.objects.filter(pk__in=list(indicador_ids))
+    if programa_id is None:
+        # No vale pasarle None al exclude: lo traduce a «sin ningún programa»
+        # y dejaría entrar justo a los indicadores huérfanos.
+        return list(indicadores)
+    return list(indicadores.exclude(programas_pdd__pk=programa_id))
+
+
+@receiver(m2m_changed, sender=MetaIndicador.indicadores_pdd.through)
+def indicadores_pdd_del_programa_de_la_meta(sender, instance, action, reverse, pk_set, **kwargs):
+    # Guardia de último recurso para cualquier vía (admin, guiones, cargues).
+    # En un formulario conviene validarlo también en su `clean()`, porque una
+    # excepción aquí llega como error 500 y no como aviso en el campo.
+    if action != 'pre_add':
+        return
+    if reverse:
+        # Se añaden metas desde el indicador: cada meta debe ser de un
+        # programa del indicador.
+        programas = set(instance.programas_pdd.values_list('pk', flat=True))
+        malas = MetaIndicador.objects.filter(pk__in=pk_set).exclude(
+            programa_pdd__in=programas)
+        if malas.exists():
+            raise ValidationError(
+                'El indicador PDD %s no pertenece al programa de las metas: %s.'
+                % (instance, ', '.join(str(m) for m in malas)))
+    else:
+        fuera = indicadores_fuera_del_programa(instance.programa_pdd_id, pk_set)
+        if fuera:
+            raise ValidationError(
+                'Estos indicadores PDD no pertenecen al programa de la meta: %s.'
+                % ', '.join(str(i) for i in fuera))
+
+
+def listado_vigencias_metas():
+    """Las vigencias que se pueden elegir para una meta.
+
+    Como `listado_vigencias`, pero con tres años más: ese llega hasta el año en
+    curso, y una meta se programa para el cuatrienio entero, así que necesita
+    los años que aún no han llegado. Va aparte para no abrir años futuros en
+    las demás vigencias de siifweb (CDP, compromisos, obligaciones...).
+    """
+    year = timezone.localdate().year
+    return [(y, y) for y in range(2017, year + 4)]
+
+
+class VigenciaMeta(Fechas):
+    meta_indicador = models.ForeignKey(MetaIndicador, verbose_name="Meta Indicador", on_delete=models.CASCADE, related_name='vigencias')
+    vigencia = models.IntegerField(verbose_name="Vigencia", choices=listado_vigencias_metas)
+    valor = models.DecimalField(max_digits=20, decimal_places=3, verbose_name="Valor")
+
+    class Meta:
+        verbose_name = "Vigencia de Indicador MGA"
+        verbose_name_plural = "Vigencias de Indicadores MGA"
+        ordering = ['-vigencia']
+
+    def __str__(self):
+        return f"{self.meta_indicador} - {self.vigencia}: {self.valor}"
+
+    def clean(self):
+        # Que sea un año ya lo valida el campo; vacía la rechaza él también.
+        if self.vigencia is not None and self.vigencia < 2020:
+            raise ValidationError('La vigencia debe ser mayor a 2020')
+
+
+class ODS(Fechas):
+    descripcion = models.TextField(verbose_name="Nombre")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Objetivo de desarrollo sostenible"
+        verbose_name_plural="Objetivos de desarrollo sostenible"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+class MetaODS(Fechas):
+    ods = models.ForeignKey(ODS, verbose_name="Objetivo de desarrollo sostenible", on_delete=models.SET_NULL, blank=True, null=True)
+    descripcion = models.TextField(verbose_name="Nombre")
+    productos_mga = models.ManyToManyField(
+        ProductoMGA, verbose_name="Productos MGA", blank=True,
+        related_name='metas_ods',
+        help_text="Productos del catálogo del DNP que aportan a esta meta. "
+                  "Con esta relación, el ODS de un proyecto se deduce de sus "
+                  "metas y no hace falta registrarlo a mano.")
+    estado = models.BooleanField(default=True, verbose_name="Estado")
+
+    class Meta:
+        verbose_name="Meta ODS"
+        verbose_name_plural="Metas ODS"
+
+    def __str__(self):
+        try:
+            return strip_tags(self.descripcion)
+        except:
+            return self.descripcion
+
+
+# 7. Programacion de proyectos en las metas del plan (traida del Access "Seguimiento PDD STO")
+#
+# Cada fila de tblProyectos era una programacion: un proyecto en una meta y una vigencia,
+# con la meta del proyecto para ese ano. Aqui el proyecto queda una sola vez y sus
+# programaciones y observaciones cuelgan de el. No es el Proyecto de SIIFWEB: muchos no
+# tienen BPIN (iniciativas por gestion, recursos propios), asi que el BPIN es solo un dato.
+
+class TipoBanco(Fechas):
+    nombre = models.CharField(max_length=100, unique=True, verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Tipo de banco"
+        verbose_name_plural = "Tipos de banco"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
+class Municipio(Fechas):
+    """Los 26 municipios de Sucre, mas "Todo el departamento" para los proyectos que lo
+    cubren entero."""
+    nombre = models.CharField(max_length=100, unique=True, verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Municipio"
+        verbose_name_plural = "Municipios"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
+class ProgramacionProyectos(Fechas):
+    bpin = models.CharField(max_length=20, blank=True, verbose_name="BPIN")
+    nombre = models.TextField(verbose_name="Nombre del proyecto")
+    tipo_banco = models.ForeignKey(TipoBanco, on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name="proyectos", verbose_name="Tipo de banco")
+    municipios = models.ManyToManyField(Municipio, blank=True, related_name="proyectos",
+                                        verbose_name="Municipios")
+    # Las vigencias en que el proyecto tiene programacion, separadas por coma ("2024, 2025").
+    # Se recalculan desde sus programaciones al guardar en el admin.
+    vigencias = models.CharField(max_length=60, blank=True, verbose_name="Vigencias")
+
+    class Meta:
+        verbose_name = "Programacion de proyecto"
+        verbose_name_plural = "Programacion de proyectos"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return f"{self.bpin} - {self.nombre}" if self.bpin else self.nombre
+
+    def vigencias_programadas(self):
+        """Las vigencias de sus programaciones, en el formato del campo."""
+        anios = sorted({v for v in self.programaciones.values_list("vigencia", flat=True) if v})
+        return ", ".join(str(a) for a in anios)
+
+    def actualizar_vigencias(self):
+        """Pone al dia el campo con sus programaciones. Lo llaman los dos admins que las
+        editan: el del proyecto y el de la meta."""
+        vigencias = self.vigencias_programadas()
+        if self.vigencias != vigencias:
+            self.vigencias = vigencias
+            self.save(update_fields=["vigencias", "fecha_actualizacion"])
+
+
+class ProgramacionMeta(Fechas):
+    """El proyecto en una meta del plan y una vigencia, con lo que aporta a esa meta."""
+    proyecto = models.ForeignKey(ProgramacionProyectos, on_delete=models.CASCADE,
+                                 related_name="programaciones", verbose_name="Proyecto")
+    meta = models.ForeignKey(MetaIndicador, on_delete=models.PROTECT,
+                             related_name="programaciones_de_proyectos", verbose_name="Meta")
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, null=True, blank=True,
+                                   verbose_name="Vigencia")
+    # Cinco decimales: en Access hay metas viales en kilometros con cuatro (3,0976 km), y
+    # con tres se redondeaban. VigenciaMeta.valor sigue con tres, que es lo que trae SUTEC.
+    meta_vigencia = models.DecimalField(max_digits=20, decimal_places=5, null=True, blank=True,
+                                        verbose_name="Meta de la vigencia")
+    # La fila de tblProyectos de la que salio, para rastrear el origen
+    id_access = models.PositiveIntegerField(null=True, blank=True, unique=True, editable=False,
+                                            verbose_name="Id en Access")
+
+    class Meta:
+        verbose_name = "Programacion en meta"
+        verbose_name_plural = "Programacion en metas"
+        ordering = ("vigencia", "meta__codigo")
+
+    def __str__(self):
+        return f"{self.meta.codigo} - {self.vigencia or 'sin vigencia'}: {self.meta_vigencia}"
+
+
+class ObservacionProyecto(Fechas):
+    proyecto = models.ForeignKey(ProgramacionProyectos, on_delete=models.CASCADE,
+                                 related_name="observaciones", verbose_name="Proyecto")
+    # Las traidas de Access no tenian fecha y quedan vacias; las nuevas llevan la del dia
+    fecha = models.DateField(null=True, blank=True, default=timezone.localdate, verbose_name="Fecha")
+    texto = models.TextField(verbose_name="Observacion")
+
+    class Meta:
+        verbose_name = "Observacion del proyecto"
+        verbose_name_plural = "Observaciones del proyecto"
+        ordering = ("-fecha", "-id")
+
+    def __str__(self):
+        return f"{self.fecha or 'sin fecha'}: {self.texto[:60]}"
