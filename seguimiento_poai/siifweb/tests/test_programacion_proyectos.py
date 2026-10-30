@@ -26,9 +26,17 @@ class Base(TestCase):
 
 class LosDatosMigrados(TestCase):
     def test_las_cifras_de_la_migracion(self):
-        self.assertEqual(ProgramacionProyectos.objects.count(), 1265)
-        self.assertEqual(ProgramacionMeta.objects.count(), 1609)
+        """La 0014 cargo 1265 proyectos y 1609 programaciones; los ajustes del Access (0015)
+        quitan cuatro de cada uno."""
+        self.assertEqual(ProgramacionProyectos.objects.count(), 1261)
+        self.assertEqual(ProgramacionMeta.objects.count(), 1605)
         self.assertEqual(ObservacionProyecto.objects.count(), 539)
+
+    def test_los_ajustes_del_access_del_29_de_octubre(self):
+        self.assertFalse(ProgramacionMeta.objects.filter(id_access__in=[552, 553, 606, 1648]).exists())
+        self.assertFalse(ProgramacionProyectos.objects.filter(bpin__in=["2021002700148", "202600000012343"]).exists())
+        fila = ProgramacionMeta.objects.select_related("meta", "proyecto").get(id_access=1693)
+        self.assertEqual((fila.meta.codigo, fila.vigencia, fila.proyecto.vigencias), ("MT242", 2027, "2027"))
 
     def test_las_observaciones_de_access_no_tienen_fecha(self):
         self.assertFalse(ObservacionProyecto.objects.exclude(fecha=None).exists())

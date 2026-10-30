@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-304 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+305 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -242,5 +242,23 @@ indicador de resultado y los ODS de cada fila, que no lleva) y ahora hace 8; y e
 vigencias repetia cada ano una vez por meta, por el orden por defecto de `ProgramacionMeta`
 dentro del `distinct`.
 
-**Pendiente de desplegar:** las migraciones `0011` a `0014`. El push las aplica en
-Supabase; antes va la copia de seguridad de la base.
+Las migraciones `0011` a `0014` se desplegaron el 29/10/2026, despues de la copia de
+seguridad de Supabase (`respaldo_claude/supabase_antes_de_metas_20261029.json`).
+
+---
+
+## 12. Ajustes del Access del 29 de octubre
+
+El Access se actualizo despues del despliegue. Comparando los datos de la `0014` con los
+que el generador produce del Access nuevo (`tblProyectos` paso de 1.626 a 1.622 filas):
+cuatro filas borradas (Id 552, 553, 606 y 1648; cada una era la unica programacion de su
+proyecto) y una que cambio de vigencia (Id 1693, MT242, de 2026 a 2027). Las
+observaciones no cambiaron.
+
+Van en `0015_ajustes_access_2026_10_29`, que reconoce cada fila por su Id de Access y no
+toca las que ya se hayan editado en la aplicacion. Quedan 1.261 proyectos, 1.605
+programaciones y 539 observaciones. Probada en la sqlite local en los dos sentidos.
+
+El Plan Indicativo del Access difiere de SUTEC en tres metas (MT172, MT175 y MT390: la
+meta de 2026 y la de 2027 aparecen cruzadas) y trae tres codigos que SUTEC no tiene
+(MT465, MT466 y MT468). Las metas salen de SUTEC, asi que la `0015` no las toca.

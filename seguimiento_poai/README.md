@@ -558,12 +558,23 @@ observaciones**, sin diferencias de meta, vigencia ni valor. Las 17 filas sin pr
 son las 12 vacias, 3 repetidas y las 2 de metas fuera del catalogo. La meta de la vigencia
 lleva 5 decimales porque hay metas viales con cuatro (3,0976 km): entran exactas.
 
-### Despliegue pendiente
+### Cambios posteriores del Access
 
-Las migraciones `0011` a `0014` no estan en produccion. En Railway el `preDeployCommand`
-corre `migrate`, asi que **hacer push es aplicarlas en Supabase**: antes va la copia de
-seguridad de la base (paso 6 de `PLAN_METAS_PDD.md`). Y con el `.env` presente, cualquier
-`migrate` local sin `DATABASE_URL` explicita tambien va contra Supabase.
+La `0014` se desplego el 29/10/2026, asi que no se regenera: lo que cambie despues en el
+Access va en una migracion nueva. Para saber que cambio, se corre el generador sobre el
+Access nuevo hacia un archivo temporal y se comparan sus datos con los de la `0014`,
+fila por fila por el Id de Access (`id_access`).
+
+`0015_ajustes_access_2026_10_29`: el Access de ese dia borro cuatro filas (Id 552, 553,
+606 y 1648, cada una la unica programacion de su proyecto, que tambien sale) y paso la
+Id 1693 (MT242) de 2026 a 2027. Quedan **1.261 proyectos, 1.605 programaciones y 539
+observaciones**, lo mismo que daria cargar el Access nuevo desde cero. Una fila que ya
+se haya editado en la aplicacion no se toca y se avisa en la salida del `migrate`; la
+migracion se puede deshacer.
+
+En Railway el `preDeployCommand` corre `migrate`, asi que **llevar a `main` una migracion
+es aplicarla en Supabase**. Con el `.env` presente, cualquier `migrate` local sin
+`DATABASE_URL` explicita tambien va contra Supabase.
 
 ## Reportes
 
@@ -677,7 +688,8 @@ como lo que responde 403.
   indice) y `reporte.html` (la pagina de cada uno)
 - `siifweb/templates/siifweb/ficha_meta.html` — la ficha de la meta, con
   `_proyecto_programado.html` (el enlace que abre el modal del proyecto)
-- `siifweb/migrations/0011` a `0014` — metas del plan (SUTEC) y programacion de proyectos (Access)
+- `siifweb/migrations/0011` a `0015` — metas del plan (SUTEC), programacion de proyectos (Access)
+  y los ajustes posteriores del Access
 - `../modelos-metas/` (fuera de git) — el plan de la integracion, los generadores de la
   `0012` y la `0014`, y el Access de origen
 - `siifweb/migrations/0009_roles_seguimiento_y_consulta.py` — los dos roles del equipo
@@ -731,7 +743,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-304 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+305 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
@@ -746,7 +758,7 @@ datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 | `test_tablero.py` | El Avance financiero: solo proyectos con dependencia responsable, el grano (nada se cuenta dos veces), cada etapa cortada por su fecha y contrastada con la consulta directa, lo cancelado de SECOP fuera, atajos de periodo con la fecha de Bogota y filtros que no revientan |
 | `test_roles.py` | Los roles Seguimiento y Consulta: que ven, que editan y el menu lateral de cada uno |
 | `test_plan_desarrollo.py` | La seccion del menu y su orden, que cada enlace abra, que los roles no la vean, el detalle y el autocompletado de la meta, que el listado no haga una consulta por fila, cada filtro del listado con un valor real (MT, linea, indicador PDD y la cadena MGA, sin filas repetidas), y la regla de los indicadores del programa (rechazo en el campo y sin error falso al cambiar programa e indicadores a la vez) |
-| `test_programacion_proyectos.py` | Las cifras de la `0014` y sus reglas (BPIN solo codigos, municipios, observaciones sin fecha, cinco decimales exactos), el menu, el recalculo de vigencias al guardar, el desplegable del listado de metas, el orden ascendente y la ficha de la meta (cifras por vigencia, desplegables, modal con todas las metas del proyecto, la ejecucion de SIIFWEB por BPIN y vigencia con reservas, las observaciones desde el modal, 404 y permisos) |
+| `test_programacion_proyectos.py` | Las cifras de la `0014` y la `0015`, sus reglas (BPIN solo codigos, municipios, observaciones sin fecha, cinco decimales exactos), el menu, el recalculo de vigencias al guardar, el desplegable del listado de metas, el orden ascendente y la ficha de la meta (cifras por vigencia, desplegables, modal con todas las metas del proyecto, la ejecucion de SIIFWEB por BPIN y vigencia con reservas, las observaciones desde el modal, 404 y permisos) |
 | `test_reportes.py` | El indice y la pagina de cada reporte, los permisos (los roles solo ven el financiero), el Excel del Plan indicativo y de Proyectos programados contra la base (filas, encabezados, datos de una meta, filtros, la meta del proyecto exacta), que no haga una consulta por fila y que las vigencias del filtro no se repitan |
 | `test_admin_y_sistema.py` | Las paginas nuevas y **todas** las que ya existian, el menu lateral, `check`, que no queden migraciones sin crear, que las pruebas no toquen produccion ni `media/`, y el formulario de carga (vigencia obligatoria salvo en historial y SECOP II; el cruce POAI ya no se ofrece) |
 
