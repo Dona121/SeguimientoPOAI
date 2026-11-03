@@ -457,8 +457,11 @@ programa, producto e indicador); los ODS; y las **436 metas** con sus **1.744 vi
   `modelos-metas/PLAN_METAS_PDD.md` (carpeta fuera de git hasta desplegar).
 - Del **catalogo de productos MGA** del DNP (junio de 2025): el producto lleva su
   descripcion (`descripcion_producto`, porque `descripcion` ya es el nombre) y "medido a
-  traves de"; el indicador, su unidad de medida y si es nacional y territorial.
-  `0016_campos_catalogo_mga` crea los campos y `0017_datos_catalogo_mga` los llena; la
+  traves de"; el indicador, su unidad de medida y si es nacional y territorial. "Medido a
+  traves de" (`MedidoATravesDe`, 161 valores) y la unidad de medida (`UnidadMedida`, 7) son
+  modelos propios, enlazados por llave foranea y con su entrada en el menu del plan. La
+  ficha de la meta muestra la descripcion del producto.
+  `0016_catalogo_mga` crea los modelos y los campos, y `0017_datos_catalogo_mga` los llena; la
   escribe `modelos-metas/generar_migracion_catalogo_mga.py` desde el Excel, cruzando por el
   codigo del producto y del indicador, y guarda solo los codigos que hay en la base. El plan
   se formulo con el catalogo de 2024: el producto 4101093 y su indicador 410109300 ya no
@@ -757,7 +760,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-310 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+312 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

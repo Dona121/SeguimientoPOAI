@@ -29,9 +29,9 @@ from .models import (BpinProceso, CargaReporte, Cdp, CdpImputacion, CentroCosto,
                      Compromiso, CompromisoImputacion, Contrato, ContratoActa, ContratoImputacion,
                      ContratoSecop, DependenciaResponsable, Fuente, Obligacion, ObligacionImputacion,
                      OrdenGasto, ProcesoSecop, Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
-from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MetaIndicador, MetaODS, ODS,
-                     PlanDesarrollo, ProductoMGA, ProgramaMGA, ProgramaPDD, SectorMGA, SectorPDD,
-                     VigenciaMeta, indicadores_fuera_del_programa)
+from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MedidoATravesDe, MetaIndicador, MetaODS,
+                     ODS, PlanDesarrollo, ProductoMGA, ProgramaMGA, ProgramaPDD, SectorMGA, SectorPDD,
+                     UnidadMedida, VigenciaMeta, indicadores_fuera_del_programa)
 from .models import (Municipio, ObservacionProyecto, ProgramacionMeta, ProgramacionProyectos,
                      TipoBanco, listado_vigencias_metas)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
@@ -1636,7 +1636,7 @@ class MetaIndicadorAdmin(ModelAdmin):
         if not self.has_view_permission(request):
             raise PermissionDenied
         meta = (MetaIndicador.objects
-                .select_related("indicador_mga", "programa_pdd__sector_pdd__linea_estrategica"
+                .select_related("indicador_mga__producto_mga", "programa_pdd__sector_pdd__linea_estrategica"
                                 "__plan_desarrollo")
                 .prefetch_related("dependencias_responsables", "ods")
                 .filter(pk=object_id).first())
@@ -1942,20 +1942,47 @@ class ProgramaMGAAdmin(CatalogoPlan):
 @admin.register(ProductoMGA)
 class ProductoMGAAdmin(CatalogoPlan):
     list_display = ("codigo", "nombre", "programa_mga", "medido_a_traves_de", "estado")
-    list_filter = (("programa_mga", RelatedDropdownFilter), "estado")
+    list_filter = (("programa_mga", RelatedDropdownFilter), ("medido_a_traves_de", RelatedDropdownFilter),
+                   "estado")
     search_fields = ("codigo", "descripcion", "descripcion_producto")
-    list_select_related = ("programa_mga",)
-    autocomplete_fields = ("programa_mga",)
+    list_select_related = ("programa_mga", "medido_a_traves_de")
+    autocomplete_fields = ("programa_mga", "medido_a_traves_de")
 
 
 @admin.register(IndicadorMGA)
 class IndicadorMGAAdmin(CatalogoPlan):
     list_display = ("codigo", "nombre", "producto_mga", "unidad_medida", "es_nacional", "es_territorial",
                     "estado")
-    list_filter = (("ods", RelatedDropdownFilter), "es_nacional", "es_territorial", "estado")
-    list_select_related = ("producto_mga",)
-    autocomplete_fields = ("producto_mga",)
+    list_filter = (("ods", RelatedDropdownFilter), ("unidad_medida", RelatedDropdownFilter),
+                   "es_nacional", "es_territorial", "estado")
+    list_select_related = ("producto_mga", "unidad_medida")
+    autocomplete_fields = ("producto_mga", "unidad_medida")
     filter_horizontal = ("ods",)
+
+
+class CatalogoDeMedidas(ModelAdmin):
+    """Medido a traves de y Unidad de medida: un nombre y cuantos lo usan."""
+    compressed_fields = True
+    list_display = ("nombre", "n_usos")
+    search_fields = ("nombre",)
+    relacion = ""
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(n=Count(self.relacion, distinct=True))
+
+    @display(description="Usos", ordering="n")
+    def n_usos(self, obj):
+        return obj.n
+
+
+@admin.register(MedidoATravesDe)
+class MedidoATravesDeAdmin(CatalogoDeMedidas):
+    relacion = "productos"
+
+
+@admin.register(UnidadMedida)
+class UnidadMedidaAdmin(CatalogoDeMedidas):
+    relacion = "indicadores"
 
 
 @admin.register(ODS)

@@ -735,6 +735,32 @@ class ProgramaMGA(Fechas):
             return self.descripcion
 
 
+class MedidoATravesDe(Fechas):
+    """Como se mide un producto MGA ("Número de documentos"...), del catalogo de productos."""
+    nombre = models.CharField(max_length=255, unique=True, verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Medido a través de"
+        verbose_name_plural = "Medido a través de"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
+class UnidadMedida(Fechas):
+    """La unidad de medida de un indicador MGA ("Número", "Porcentaje"...), del catalogo."""
+    nombre = models.CharField(max_length=255, unique=True, verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Unidad de medida"
+        verbose_name_plural = "Unidades de medida"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
 class ProductoMGA(Fechas):
     programa_mga = models.ForeignKey(ProgramaMGA, verbose_name="Programa MGA", on_delete=models.SET_NULL, blank=True, null=True)
     codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
@@ -742,8 +768,8 @@ class ProductoMGA(Fechas):
     # Del catalogo de productos MGA. "descripcion" ya es el nombre del producto, por eso
     # este campo lleva otro nombre
     descripcion_producto = models.TextField(blank=True, default="", verbose_name="Descripción")
-    medido_a_traves_de = models.CharField(max_length=255, blank=True, default="",
-                                          verbose_name="Medido a través de")
+    medido_a_traves_de = models.ForeignKey(MedidoATravesDe, on_delete=models.PROTECT, null=True, blank=True,
+                                           related_name="productos", verbose_name="Medido a través de")
     estado = models.BooleanField(default=True, verbose_name="Estado")
 
     class Meta:
@@ -768,7 +794,8 @@ class IndicadorMGA(Fechas):
     ods = models.ManyToManyField('ODS', verbose_name="Objetivos de desarrollo sostenible", blank=True)
     descripcion = models.TextField(verbose_name="Nombre")
     # Del catalogo de productos MGA; vacios si el codigo ya no esta en el catalogo
-    unidad_medida = models.CharField(max_length=255, blank=True, default="", verbose_name="Unidad de medida")
+    unidad_medida = models.ForeignKey(UnidadMedida, on_delete=models.PROTECT, null=True, blank=True,
+                                      related_name="indicadores", verbose_name="Unidad de medida")
     es_nacional = models.BooleanField(null=True, blank=True, verbose_name="Es nacional")
     es_territorial = models.BooleanField(null=True, blank=True, verbose_name="Es territorial")
 

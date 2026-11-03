@@ -17,7 +17,7 @@ from siifweb.models import IndicadorPDD, MetaIndicador, ProgramaPDD
 # Las metas no: van en Seguimiento, con la programacion de proyectos
 ORDEN = ["plandesarrollo", "lineaestrategica", "sectorpdd", "programapdd", "indicadorpdd",
          "vigenciameta", "sectormga", "programamga", "productomga",
-         "indicadormga", "ods", "metaods"]
+         "indicadormga", "medidoatravesde", "unidadmedida", "ods", "metaods"]
 
 
 def datos_del_formulario(meta, **cambios):
@@ -203,22 +203,39 @@ class ElCatalogoDeProductosMGA(Base):
         from siifweb.models import IndicadorMGA, ProductoMGA
         producto = ProductoMGA.objects.get(codigo="0401102")
         self.assertTrue(producto.descripcion_producto.startswith("Corresponde al proceso"))
-        self.assertEqual(producto.medido_a_traves_de, "Número de sistemas")
+        self.assertEqual(producto.medido_a_traves_de.nombre, "Número de sistemas")
         indicador = IndicadorMGA.objects.get(codigo="040110200")
-        self.assertEqual((indicador.unidad_medida, indicador.es_nacional, indicador.es_territorial),
+        self.assertEqual((indicador.unidad_medida.nombre, indicador.es_nacional, indicador.es_territorial),
                          ("Número", True, True))
+
+    def test_medido_a_traves_de_y_unidad_de_medida_son_catalogos_propios(self):
+        from siifweb.models import MedidoATravesDe, UnidadMedida
+        self.assertEqual(MedidoATravesDe.objects.count(), 161)
+        self.assertEqual(sorted(UnidadMedida.objects.values_list("nombre", flat=True)),
+                         ["Hectáreas", "Kilómetros", "Metros cuadrados", "Metros cúbicos", "Metros lineales",
+                          "Número", "Porcentaje"])
+        self.assertEqual(UnidadMedida.objects.get(nombre="Número").indicadores.count() > 300, True)
 
     def test_cruzan_todos_menos_el_que_ya_no_esta_en_el_catalogo(self):
         from siifweb.models import IndicadorMGA, ProductoMGA
-        self.assertEqual(list(ProductoMGA.objects.filter(medido_a_traves_de="").values_list("codigo", flat=True)),
+        self.assertEqual(list(ProductoMGA.objects.filter(medido_a_traves_de=None).values_list("codigo", flat=True)),
                          ["4101093"])
-        sin_dato = IndicadorMGA.objects.filter(unidad_medida="")
+        sin_dato = IndicadorMGA.objects.filter(unidad_medida=None)
         self.assertEqual(list(sin_dato.values_list("codigo", flat=True)), ["410109300"])
         self.assertIsNone(sin_dato.get().es_nacional)
         self.assertEqual(IndicadorMGA.objects.filter(es_nacional=False).count(), 127)
 
     def test_los_listados_muestran_las_columnas_nuevas(self):
-        for modelo, texto in (("productomga", "Medido a través de"), ("indicadormga", "Es territorial")):
+        for modelo, texto in (("productomga", "Medido a través de"), ("indicadormga", "Es territorial"),
+                              ("medidoatravesde", "Número de sistemas"), ("unidadmedida", "Porcentaje")):
             with self.subTest(modelo=modelo):
-                respuesta = self.client.get(reverse(f"admin:siifweb_{modelo}_changelist"))
+                respuesta = self.client.get(reverse(f"admin:siifweb_{modelo}_changelist"), {"q": texto})
                 self.assertContains(respuesta, texto)
+
+    def test_la_ficha_de_la_meta_muestra_la_descripcion_del_producto(self):
+        meta = MetaIndicador.objects.select_related("indicador_mga__producto_mga").exclude(
+            indicador_mga__producto_mga__descripcion_producto="").first()
+        respuesta = self.client.get(reverse("admin:siifweb_metaindicador_ficha", args=(meta.pk,)))
+        producto = meta.indicador_mga.producto_mga
+        self.assertContains(respuesta, f"Producto MGA {producto.codigo}")
+        self.assertContains(respuesta, producto.descripcion_producto[:40])

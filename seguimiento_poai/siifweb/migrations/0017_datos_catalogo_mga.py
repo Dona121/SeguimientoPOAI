@@ -4,6 +4,9 @@ Generada con modelos-metas/generar_migracion_catalogo_mga.py desde "CatalogoProd
 edita a mano. Cruza por codigo: el del producto con "Codigo del Producto" y el del
 indicador con "Codigo del Indicador de Producto". El plan se formulo en 2024 y el
 catalogo es de junio de 2025, asi que un codigo que ya no esta queda sin estos datos.
+
+"Medido a traves de" y "Unidad de medida" son modelos propios: se crean los valores que
+usan estos productos e indicadores, y cada uno se enlaza por el nombre.
 """
 from django.db import migrations
 
@@ -775,24 +778,31 @@ INDICADORES_SIN_CRUCE = ['410109300']
 def cargar(apps, schema_editor):
     Producto = apps.get_model(APP, "ProductoMGA")
     Indicador = apps.get_model(APP, "IndicadorMGA")
+    Medido = apps.get_model(APP, "MedidoATravesDe")
+    Unidad = apps.get_model(APP, "UnidadMedida")
+    medidos = {n: Medido.objects.get_or_create(nombre=n)[0] for n in sorted({m for _, _, m in PRODUCTOS if m})}
+    unidades = {n: Unidad.objects.get_or_create(nombre=n)[0] for n in sorted({u for _, u, _, _ in INDICADORES if u})}
     for codigo, descripcion, medido in PRODUCTOS:
         Producto.objects.filter(codigo=codigo).update(descripcion_producto=descripcion,
-                                                      medido_a_traves_de=medido)
+                                                      medido_a_traves_de=medidos.get(medido))
     for codigo, unidad, nacional, territorial in INDICADORES:
-        Indicador.objects.filter(codigo=codigo).update(unidad_medida=unidad, es_nacional=nacional,
+        Indicador.objects.filter(codigo=codigo).update(unidad_medida=unidades.get(unidad), es_nacional=nacional,
                                                        es_territorial=territorial)
 
 
 def descargar(apps, schema_editor):
-    apps.get_model(APP, "ProductoMGA").objects.update(descripcion_producto="", medido_a_traves_de="")
-    apps.get_model(APP, "IndicadorMGA").objects.update(unidad_medida="", es_nacional=None,
+    apps.get_model(APP, "ProductoMGA").objects.update(descripcion_producto="", medido_a_traves_de=None)
+    apps.get_model(APP, "IndicadorMGA").objects.update(unidad_medida=None, es_nacional=None,
                                                        es_territorial=None)
+    # Solo los valores que nadie mas usa
+    apps.get_model(APP, "MedidoATravesDe").objects.filter(productos__isnull=True).delete()
+    apps.get_model(APP, "UnidadMedida").objects.filter(indicadores__isnull=True).delete()
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        (APP, "0016_campos_catalogo_mga"),
+        (APP, "0016_catalogo_mga"),
     ]
 
     operations = [
