@@ -455,6 +455,15 @@ programa, producto e indicador); los ODS; y las **436 metas** con sus **1.744 vi
   cambiar programa e indicadores a la vez no da un error falso.
 - Las decisiones de diseno y los pasos de la integracion estan en
   `modelos-metas/PLAN_METAS_PDD.md` (carpeta fuera de git hasta desplegar).
+- Del **catalogo de productos MGA** del DNP (junio de 2025): el producto lleva su
+  descripcion (`descripcion_producto`, porque `descripcion` ya es el nombre) y "medido a
+  traves de"; el indicador, su unidad de medida y si es nacional y territorial.
+  `0016_campos_catalogo_mga` crea los campos y `0017_datos_catalogo_mga` los llena; la
+  escribe `modelos-metas/generar_migracion_catalogo_mga.py` desde el Excel, cruzando por el
+  codigo del producto y del indicador, y guarda solo los codigos que hay en la base. El plan
+  se formulo con el catalogo de 2024: el producto 4101093 y su indicador 410109300 ya no
+  estan en el de 2025 y quedan sin estos datos. Seis productos no traen descripcion en el
+  propio catalogo.
 
 **El listado de Metas** va de menor a mayor (MT001, MT002...), con la meta del cuatrienio
 y la de cada vigencia (2024 a 2027, anotadas en la consulta y ordenables) en el formato de
@@ -693,10 +702,10 @@ como lo que responde 403.
   indice) y `reporte.html` (la pagina de cada uno)
 - `siifweb/templates/siifweb/ficha_meta.html` — la ficha de la meta, con
   `_proyecto_programado.html` (el enlace que abre el modal del proyecto)
-- `siifweb/migrations/0011` a `0015` — metas del plan (SUTEC), programacion de proyectos (Access)
-  y los ajustes posteriores del Access
+- `siifweb/migrations/0011` a `0017` — metas del plan (SUTEC), programacion de proyectos (Access),
+  los ajustes posteriores del Access y los datos del catalogo de productos MGA
 - `../modelos-metas/` (fuera de git) — el plan de la integracion, los generadores de la
-  `0012` y la `0014`, y el Access de origen
+  `0012`, la `0014` y la `0017`, el Access y el catalogo MGA de origen
 - `siifweb/migrations/0009_roles_seguimiento_y_consulta.py` — los dos roles del equipo
 - `siifweb/tests/` — la bateria automatica (`manage.py test siifweb`)
 - `prueba_admin.py` — ejerce el flujo del admin (subir + procesar) sin navegador
@@ -748,7 +757,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-307 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+310 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

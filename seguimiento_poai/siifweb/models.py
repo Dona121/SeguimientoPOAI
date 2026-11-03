@@ -739,6 +739,11 @@ class ProductoMGA(Fechas):
     programa_mga = models.ForeignKey(ProgramaMGA, verbose_name="Programa MGA", on_delete=models.SET_NULL, blank=True, null=True)
     codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
     descripcion = models.TextField(verbose_name="Nombre")
+    # Del catalogo de productos MGA. "descripcion" ya es el nombre del producto, por eso
+    # este campo lleva otro nombre
+    descripcion_producto = models.TextField(blank=True, default="", verbose_name="Descripción")
+    medido_a_traves_de = models.CharField(max_length=255, blank=True, default="",
+                                          verbose_name="Medido a través de")
     estado = models.BooleanField(default=True, verbose_name="Estado")
 
     class Meta:
@@ -762,7 +767,11 @@ class IndicadorMGA(Fechas):
     codigo = models.CharField(max_length=50, verbose_name="Código", blank=True, null=True)
     ods = models.ManyToManyField('ODS', verbose_name="Objetivos de desarrollo sostenible", blank=True)
     descripcion = models.TextField(verbose_name="Nombre")
-    
+    # Del catalogo de productos MGA; vacios si el codigo ya no esta en el catalogo
+    unidad_medida = models.CharField(max_length=255, blank=True, default="", verbose_name="Unidad de medida")
+    es_nacional = models.BooleanField(null=True, blank=True, verbose_name="Es nacional")
+    es_territorial = models.BooleanField(null=True, blank=True, verbose_name="Es territorial")
+
     estado = models.BooleanField(default=True, verbose_name="Estado")
 
     class Meta:

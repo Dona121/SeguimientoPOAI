@@ -1941,16 +1941,18 @@ class ProgramaMGAAdmin(CatalogoPlan):
 
 @admin.register(ProductoMGA)
 class ProductoMGAAdmin(CatalogoPlan):
-    list_display = ("codigo", "nombre", "programa_mga", "estado")
+    list_display = ("codigo", "nombre", "programa_mga", "medido_a_traves_de", "estado")
     list_filter = (("programa_mga", RelatedDropdownFilter), "estado")
+    search_fields = ("codigo", "descripcion", "descripcion_producto")
     list_select_related = ("programa_mga",)
     autocomplete_fields = ("programa_mga",)
 
 
 @admin.register(IndicadorMGA)
 class IndicadorMGAAdmin(CatalogoPlan):
-    list_display = ("codigo", "nombre", "producto_mga", "estado")
-    list_filter = (("ods", RelatedDropdownFilter), "estado")
+    list_display = ("codigo", "nombre", "producto_mga", "unidad_medida", "es_nacional", "es_territorial",
+                    "estado")
+    list_filter = (("ods", RelatedDropdownFilter), "es_nacional", "es_territorial", "estado")
     list_select_related = ("producto_mga",)
     autocomplete_fields = ("producto_mga",)
     filter_horizontal = ("ods",)

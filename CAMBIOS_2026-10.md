@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-307 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+310 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -273,3 +273,16 @@ Access trae ademas tres codigos que no estan en la base (MT465, MT466 y MT468).
 
 En el listado de Metas, la columna Estado se cambio por la meta de cada vigencia (2024 a
 2027).
+
+---
+
+## 13. Catalogo de productos MGA (3 de noviembre)
+
+`ProductoMGA` suma la descripcion del producto y "medido a traves de", e `IndicadorMGA` la
+unidad de medida y si es nacional y territorial, traidos del catalogo de productos MGA de
+junio de 2025 (`modelos-metas/CatalogoProductoMGA_junio_2025.xlsx`) por el codigo del
+producto y del indicador. Migraciones `0016_campos_catalogo_mga` y `0017_datos_catalogo_mga`
+(generada con `modelos-metas/generar_migracion_catalogo_mga.py`). Cruzan 375 de los 376
+productos y de los 376 indicadores: el 4101093 y el 410109300 no estan en el catalogo de
+2025, porque el plan se formulo con el de 2024. Los listados de productos e indicadores MGA
+muestran los campos nuevos, y el de indicadores filtra por nacional y territorial.
