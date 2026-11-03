@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-305 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+307 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -266,6 +266,10 @@ El proyecto nuevo se parece al BPIN 2021000020074 ("Diseno de la alternativa sos
 provision de agua...", Banco Territorial), que sigue en el Access con las mismas metas,
 vigencia y valor. Quedan los dos, como en el Access.
 
-El Plan Indicativo del Access difiere de SUTEC en tres metas (MT172, MT175 y MT390: la
-meta de 2026 y la de 2027 aparecen cruzadas) y trae tres codigos que SUTEC no tiene
-(MT465, MT466 y MT468). Las metas salen de SUTEC, asi que la `0015` no las toca.
+El Plan Indicativo del Access difiere del cargue de SUTEC en tres metas: en MT172 y MT390
+la unidad de 2026 paso a 2027, y en MT175 la de 2027 paso a 2026. SUTEC todavia no se usa
+y los ajustes se hacen en el Access, asi que la `0015` toma los valores del Access. El
+Access trae ademas tres codigos que no estan en la base (MT465, MT466 y MT468).
+
+En el listado de Metas, la columna Estado se cambio por la meta de cada vigencia (2024 a
+2027).

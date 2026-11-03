@@ -43,6 +43,15 @@ class LosDatosMigrados(TestCase):
         self.assertEqual((nuevo.vigencias, nuevo.tipo_banco.nombre, nuevo.municipios.count()),
                          ("2027", "Banco de Regalías", 14))
 
+    def test_las_metas_por_vigencia_toman_las_del_access(self):
+        from siifweb.models import VigenciaMeta
+        valores = {(v.meta_indicador.codigo, v.vigencia): v.valor for v in VigenciaMeta.objects.filter(
+            meta_indicador__codigo__in=["MT172", "MT175", "MT390"]).select_related("meta_indicador")}
+        esperado = {("MT172", 2026): 0, ("MT172", 2027): 1, ("MT175", 2025): 1, ("MT175", 2026): 1,
+                    ("MT175", 2027): 0, ("MT390", 2026): 0, ("MT390", 2027): 1}
+        for clave, valor in esperado.items():
+            self.assertEqual(valores[clave], Decimal(valor), clave)
+
     def test_las_observaciones_de_access_no_tienen_fecha(self):
         self.assertFalse(ObservacionProyecto.objects.exclude(fecha=None).exists())
 

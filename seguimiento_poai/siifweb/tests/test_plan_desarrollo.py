@@ -3,6 +3,8 @@
 
 La base de pruebas ya trae el catalogo real: la migracion 0012 lo carga al crearla.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -101,6 +103,17 @@ class LasPaginas(Base):
         with CaptureQueriesContext(connection) as consultas:
             self.client.get(url)
         self.assertLess(len(consultas), 20)
+
+    def test_el_listado_muestra_la_meta_de_cada_vigencia_y_no_el_estado(self):
+        meta = MetaIndicador.objects.get(codigo="MT175")
+        respuesta = self.client.get(reverse("admin:siifweb_metaindicador_changelist"), {"q": "MT175"})
+        from django.contrib.admin.templatetags.admin_list import result_headers
+        encabezados = [str(h["text"]) for h in result_headers(respuesta.context["cl"])]
+        self.assertEqual(encabezados[-4:], ["Meta 2024", "Meta 2025", "Meta 2026", "Meta 2027"])
+        self.assertNotIn("Estado", encabezados)
+        fila = respuesta.context["cl"].result_list.get(pk=meta.pk)
+        self.assertEqual([fila.valor_2024, fila.valor_2025, fila.valor_2026, fila.valor_2027],
+                         [Decimal(0), Decimal(1), Decimal(1), Decimal(0)])
 
 
 class LosIndicadoresDeLaMeta(TestCase):

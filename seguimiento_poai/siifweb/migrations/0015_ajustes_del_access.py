@@ -13,6 +13,10 @@ de comparar los datos de la 0014 con los que el generador produce del Access nue
     MT435 para 2027. Si el BPIN ya existe en la aplicacion, las programaciones van a ese
     proyecto.
 
+Y en el Plan Indicativo del Access, la meta fisica por vigencia de MT172, MT175 y MT390
+cambio de ano desde el cargue a SUTEC del que salio la 0012. SUTEC todavia no se usa y
+los ajustes se hacen en el Access, asi que la base toma los valores del Access.
+
 Cada fila se reconoce por su Id en Access (id_access). Si una ya se habia editado en la
 aplicacion y no esta como la dejo la 0014, no se toca y se avisa en la salida.
 """
@@ -36,6 +40,16 @@ QUITADAS = [
 AGREGADAS = [
     (1720, 'MT273', 2027, '1.00000', '2024002700194', 'ELABORAR LOS ESTUDIOS Y DISEÑOS QUE PERMITAN IMPLEMENTAR UNA ALTERNATIVA SOSTENIBLE DE PROVISIÓN DE AGUA PARA LAS SUBREGIONES SABANA Y MONTES DE MARÍA EN EL DEPARTAMENTO DE SUCRE', 'Banco de Regalías', ['Buenavista', 'Chalán', 'Colosó', 'Corozal', 'El Roble', 'Galeras', 'Los Palmitos', 'Morroa', 'Ovejas', 'Sampués', 'San Juan de Betulia', 'San Luis de Sincé', 'San Pedro', 'Sincelejo']),
     (1721, 'MT435', 2027, '1.00000', '2024002700194', 'ELABORAR LOS ESTUDIOS Y DISEÑOS QUE PERMITAN IMPLEMENTAR UNA ALTERNATIVA SOSTENIBLE DE PROVISIÓN DE AGUA PARA LAS SUBREGIONES SABANA Y MONTES DE MARÍA EN EL DEPARTAMENTO DE SUCRE', 'Banco de Regalías', ['Buenavista', 'Chalán', 'Colosó', 'Corozal', 'El Roble', 'Galeras', 'Los Palmitos', 'Morroa', 'Ovejas', 'Sampués', 'San Juan de Betulia', 'San Luis de Sincé', 'San Pedro', 'Sincelejo']),
+]
+
+# (meta, vigencia, valor en la 0012 (SUTEC), valor en el Access): la meta fisica esperada
+METAS_POR_VIGENCIA = [
+    ("MT172", 2026, "1.000", "0.000"),
+    ("MT172", 2027, "0.000", "1.000"),
+    ("MT175", 2026, "0.000", "1.000"),
+    ("MT175", 2027, "1.000", "0.000"),
+    ("MT390", 2026, "1.000", "0.000"),
+    ("MT390", 2027, "0.000", "1.000"),
 ]
 
 # (id en Access, vigencia en la 0014, vigencia en el Access nuevo)
@@ -110,6 +124,15 @@ def aplicar(apps, schema_editor):
         if proyecto.vigencias != vigencias:
             proyecto.vigencias = vigencias
             proyecto.save(update_fields=["vigencias", "fecha_actualizacion"])
+    VigenciaMeta = apps.get_model(APP, "VigenciaMeta")
+    for codigo, vigencia, antes, despues in METAS_POR_VIGENCIA:
+        fila = VigenciaMeta.objects.filter(meta_indicador__codigo=codigo, vigencia=vigencia).first()
+        if fila is None or fila.valor != Decimal(antes):
+            avisos.append(f"{codigo} {vigencia}: ya no vale {antes}, no se cambia")
+            continue
+        fila.valor = Decimal(despues)
+        fila.save(update_fields=["valor", "fecha_actualizacion"])
+
     if avisos:
         print("\n  Ajustes del Access sin aplicar: " + "; ".join(avisos))
 
@@ -120,6 +143,11 @@ def deshacer(apps, schema_editor):
     Meta = apps.get_model(APP, "MetaIndicador")
     TipoBanco = apps.get_model(APP, "TipoBanco")
     Municipio = apps.get_model(APP, "Municipio")
+
+    VigenciaMeta = apps.get_model(APP, "VigenciaMeta")
+    for codigo, vigencia, antes, despues in METAS_POR_VIGENCIA:
+        VigenciaMeta.objects.filter(meta_indicador__codigo=codigo, vigencia=vigencia,
+                                    valor=Decimal(despues)).update(valor=Decimal(antes))
 
     # Las filas nuevas salen, y su proyecto si no le queda nada
     nuevas = Programacion.objects.filter(id_access__in=[a[0] for a in AGREGADAS])

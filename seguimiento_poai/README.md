@@ -457,7 +457,8 @@ programa, producto e indicador); los ODS; y las **436 metas** con sus **1.744 vi
   `modelos-metas/PLAN_METAS_PDD.md` (carpeta fuera de git hasta desplegar).
 
 **El listado de Metas** va de menor a mayor (MT001, MT002...), con la meta del cuatrienio
-en el formato de la ficha (1.500, no 1500,000). El orden esta en el admin
+y la de cada vigencia (2024 a 2027, anotadas en la consulta y ordenables) en el formato de
+la ficha (1.500, no 1500,000). El estado ya no es columna; sigue como filtro. El orden esta en el admin
 y no en el `Meta` del modelo, para no tocar la `0011`. Cada meta tiene a la izquierda una
 flecha que despliega sus **proyectos programados** (BPIN, proyecto, vigencia, meta de la
 vigencia y tipo de banco), como el subformulario del Access; es un `TableSection` de
@@ -570,7 +571,9 @@ cuatro filas (Id 552, 553, 606 y 1648, cada una la unica programacion de su proy
 tambien sale), la Id 1693 (MT242) paso de 2026 a 2027 y entraron dos filas (Id 1720 y
 1721) de un proyecto nuevo, BPIN 2024002700194, en MT273 y MT435 para 2027. Quedan
 **1.262 proyectos, 1.607 programaciones y 539 observaciones**, lo mismo que daria cargar
-el Access nuevo desde cero. Una fila que ya
+el Access nuevo desde cero. Tambien pasa a la base la meta fisica por vigencia de MT172,
+MT175 y MT390 tal como esta en el Plan Indicativo del Access: SUTEC todavia no se usa y
+los ajustes del plan se hacen en el Access, que por ahora es la fuente de las metas. Una fila que ya
 se haya editado en la aplicacion no se toca y se avisa en la salida del `migrate`; la
 migracion se puede deshacer.
 
@@ -745,7 +748,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-305 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+307 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

@@ -1565,6 +1565,17 @@ class CodigoMetaFilter(FieldTextFilter):
         self.title = "MT"
 
 
+VIGENCIAS_DEL_CUATRIENIO = (2024, 2025, 2026, 2027)
+
+
+def _columna_meta_del_anio(anio):
+    """Columna del listado de metas con la meta de una vigencia (anotada en get_queryset)."""
+    @display(description=f"Meta {anio}", ordering=f"valor_{anio}")
+    def columna(self, obj):
+        return cifra(getattr(obj, f"valor_{anio}", None))
+    return columna
+
+
 @admin.register(MetaIndicador)
 class MetaIndicadorAdmin(ModelAdmin):
     form = MetaIndicadorForm
@@ -1572,7 +1583,8 @@ class MetaIndicadorAdmin(ModelAdmin):
     list_fullwidth = True
     inlines = (VigenciaMetaInline,)
     list_sections = (ProyectosDeLaMeta,)
-    list_display = ("codigo", "ficha_link", "indicador", "programa_pdd", "meta_del_cuatrienio", "estado")
+    list_display = ("codigo", "ficha_link", "indicador", "programa_pdd", "meta_del_cuatrienio",
+                    "meta_2024", "meta_2025", "meta_2026", "meta_2027")
     # De menor a mayor (MT001, MT002...). Va aqui y no en el Meta del modelo para no
     # tocar la migracion 0011, que se genero con el orden de SUTEC
     ordering = ("codigo",)
@@ -1604,6 +1616,9 @@ class MetaIndicadorAdmin(ModelAdmin):
     def meta_del_cuatrienio(self, obj):
         # 1.500 y no 1500,000: el campo lleva tres decimales y asi se leia como millon y medio
         return cifra(obj.meta_cuatrenio)
+
+    # Las anota get_queryset
+    meta_2024, meta_2025, meta_2026, meta_2027 = (_columna_meta_del_anio(a) for a in VIGENCIAS_DEL_CUATRIENIO)
 
     @display(description="")
     def ficha_link(self, obj):
@@ -1888,11 +1903,15 @@ class MetaIndicadorAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         # El desplegable se arma para las 100 metas de la pagina: los proyectos se traen de
-        # una vez y no con una consulta por meta
+        # una vez y no con una consulta por meta. Y la meta de cada vigencia del cuatrienio,
+        # en la misma consulta y ordenable
         return super().get_queryset(request).prefetch_related(Prefetch(
             "programaciones_de_proyectos",
             queryset=ProgramacionMeta.objects.select_related("proyecto", "proyecto__tipo_banco")
-            .order_by("vigencia", "proyecto__nombre")))
+            .order_by("vigencia", "proyecto__nombre"))).annotate(**{
+                f"valor_{anio}": Subquery(VigenciaMeta.objects.filter(meta_indicador=OuterRef("pk"), vigencia=anio)
+                                          .values("valor")[:1])
+                for anio in VIGENCIAS_DEL_CUATRIENIO})
 
 
 @admin.register(VigenciaMeta)
