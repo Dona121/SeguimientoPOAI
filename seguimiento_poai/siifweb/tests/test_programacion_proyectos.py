@@ -27,16 +27,21 @@ class Base(TestCase):
 class LosDatosMigrados(TestCase):
     def test_las_cifras_de_la_migracion(self):
         """La 0014 cargo 1265 proyectos y 1609 programaciones; los ajustes del Access (0015)
-        quitan cuatro de cada uno."""
-        self.assertEqual(ProgramacionProyectos.objects.count(), 1261)
-        self.assertEqual(ProgramacionMeta.objects.count(), 1605)
+        quitan cuatro de cada uno y agregan un proyecto con dos programaciones."""
+        self.assertEqual(ProgramacionProyectos.objects.count(), 1262)
+        self.assertEqual(ProgramacionMeta.objects.count(), 1607)
         self.assertEqual(ObservacionProyecto.objects.count(), 539)
 
-    def test_los_ajustes_del_access_del_29_de_octubre(self):
+    def test_los_ajustes_del_access(self):
         self.assertFalse(ProgramacionMeta.objects.filter(id_access__in=[552, 553, 606, 1648]).exists())
         self.assertFalse(ProgramacionProyectos.objects.filter(bpin__in=["2021002700148", "202600000012343"]).exists())
         fila = ProgramacionMeta.objects.select_related("meta", "proyecto").get(id_access=1693)
         self.assertEqual((fila.meta.codigo, fila.vigencia, fila.proyecto.vigencias), ("MT242", 2027, "2027"))
+        nuevo = ProgramacionProyectos.objects.get(bpin="2024002700194")
+        self.assertEqual(sorted(nuevo.programaciones.values_list("id_access", "meta__codigo", "vigencia")),
+                         [(1720, "MT273", 2027), (1721, "MT435", 2027)])
+        self.assertEqual((nuevo.vigencias, nuevo.tipo_banco.nombre, nuevo.municipios.count()),
+                         ("2027", "Banco de Regalías", 14))
 
     def test_las_observaciones_de_access_no_tienen_fecha(self):
         self.assertFalse(ObservacionProyecto.objects.exclude(fecha=None).exists())

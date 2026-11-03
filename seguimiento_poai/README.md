@@ -565,10 +565,12 @@ Access va en una migracion nueva. Para saber que cambio, se corre el generador s
 Access nuevo hacia un archivo temporal y se comparan sus datos con los de la `0014`,
 fila por fila por el Id de Access (`id_access`).
 
-`0015_ajustes_access_2026_10_29`: el Access de ese dia borro cuatro filas (Id 552, 553,
-606 y 1648, cada una la unica programacion de su proyecto, que tambien sale) y paso la
-Id 1693 (MT242) de 2026 a 2027. Quedan **1.261 proyectos, 1.605 programaciones y 539
-observaciones**, lo mismo que daria cargar el Access nuevo desde cero. Una fila que ya
+`0015_ajustes_del_access`, con las versiones del 29/10 y del 01/11/2026: se borraron
+cuatro filas (Id 552, 553, 606 y 1648, cada una la unica programacion de su proyecto, que
+tambien sale), la Id 1693 (MT242) paso de 2026 a 2027 y entraron dos filas (Id 1720 y
+1721) de un proyecto nuevo, BPIN 2024002700194, en MT273 y MT435 para 2027. Quedan
+**1.262 proyectos, 1.607 programaciones y 539 observaciones**, lo mismo que daria cargar
+el Access nuevo desde cero. Una fila que ya
 se haya editado en la aplicacion no se toca y se avisa en la salida del `migrate`; la
 migracion se puede deshacer.
 

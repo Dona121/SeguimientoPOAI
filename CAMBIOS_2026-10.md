@@ -247,17 +247,24 @@ seguridad de Supabase (`respaldo_claude/supabase_antes_de_metas_20261029.json`).
 
 ---
 
-## 12. Ajustes del Access del 29 de octubre
+## 12. Ajustes del Access (29 de octubre y 1 de noviembre)
 
-El Access se actualizo despues del despliegue. Comparando los datos de la `0014` con los
-que el generador produce del Access nuevo (`tblProyectos` paso de 1.626 a 1.622 filas):
-cuatro filas borradas (Id 552, 553, 606 y 1648; cada una era la unica programacion de su
-proyecto) y una que cambio de vigencia (Id 1693, MT242, de 2026 a 2027). Las
-observaciones no cambiaron.
+El Access se actualizo dos veces despues del despliegue. Comparando los datos de la `0014`
+con los que el generador produce del Access nuevo (`tblProyectos` paso de 1.626 a 1.624
+filas): cuatro filas borradas (Id 552, 553, 606 y 1648; cada una era la unica
+programacion de su proyecto), una que cambio de vigencia (Id 1693, MT242, de 2026 a
+2027) y, en la version del 1 de noviembre, dos nuevas (Id 1720 y 1721): el proyecto BPIN
+2024002700194, "Elaborar los estudios y disenos que permitan implementar una alternativa
+sostenible de provision de agua...", en MT273 y MT435 para 2027. Las observaciones no
+cambiaron.
 
-Van en `0015_ajustes_access_2026_10_29`, que reconoce cada fila por su Id de Access y no
-toca las que ya se hayan editado en la aplicacion. Quedan 1.261 proyectos, 1.605
-programaciones y 539 observaciones. Probada en la sqlite local en los dos sentidos.
+Van en `0015_ajustes_del_access`, que reconoce cada fila por su Id de Access y no toca las
+que ya se hayan editado en la aplicacion. Quedan 1.262 proyectos, 1.607 programaciones y
+539 observaciones. Probada en la sqlite local en los dos sentidos.
+
+El proyecto nuevo se parece al BPIN 2021000020074 ("Diseno de la alternativa sostenible de
+provision de agua...", Banco Territorial), que sigue en el Access con las mismas metas,
+vigencia y valor. Quedan los dos, como en el Access.
 
 El Plan Indicativo del Access difiere de SUTEC en tres metas (MT172, MT175 y MT390: la
 meta de 2026 y la de 2027 aparecen cruzadas) y trae tres codigos que SUTEC no tiene

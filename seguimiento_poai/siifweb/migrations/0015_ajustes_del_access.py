@@ -1,13 +1,17 @@
-"""Ajustes del Access "Seguimiento PDD STO" del 29/10/2026 a la programacion de proyectos.
+"""Ajustes del Access "Seguimiento PDD STO" a la programacion de proyectos, de las versiones
+del 29/10/2026 y del 01/11/2026.
 
 La 0014 ya esta aplicada, asi que los cambios del Access van aqui y no regenerandola. Salen
 de comparar los datos de la 0014 con los que el generador produce del Access nuevo
-(tblProyectos paso de 1626 a 1622 filas):
+(tblProyectos paso de 1626 a 1624 filas):
 
   - Cuatro filas se borraron en el Access. Cada una era la unica programacion de su
     proyecto, de modo que el proyecto tambien sale, salvo que en la aplicacion le hayan
     agregado otra programacion o una observacion.
   - Una fila cambio de vigencia: Id 1693, MT242, de 2026 a 2027.
+  - Dos filas nuevas (Id 1720 y 1721): un proyecto nuevo, BPIN 2024002700194, en MT273 y
+    MT435 para 2027. Si el BPIN ya existe en la aplicacion, las programaciones van a ese
+    proyecto.
 
 Cada fila se reconoce por su Id en Access (id_access). Si una ya se habia editado en la
 aplicacion y no esta como la dejo la 0014, no se toca y se avisa en la salida.
@@ -25,6 +29,13 @@ QUITADAS = [
     (553, 'MT214', 2026, None, '2021002700148', 'APOYO PARA LA AMBIENTACIÓN TURÍSTICA Y APROPIACIÓN CULTURAL DE LA OBRA Y VIDA DE GABRIEL GARCÍA MÁRQUEZ COMO PRODUCTO TURÍSTICO DEL MUNICIPIO DE SUCRE, EN EL MARCO DE LA REACTIVACIÓN ECONÓMICA DEL DEPARTAMENTO DE SUCRE (2021002700148)', None, []),
     (606, 'MT257', 2026, '1.00000', '', 'IMPLEMENTACIÓN DE UNA ESTACIÓN PISICICOLA PARA PRODUCCIÓN DE CARNE DE PESCADO Y REPOBLAMIENTO PESQUERO, FOMENTANDO LA ACUICULTURA EN EL DEPARTAMENTO DE SUCRE', None, []),
     (1648, 'MT245', 2026, '2160.00000', '202600000012343', 'APOYO LOGISTICO E INSTITUCIONAL PARA EL FORTALECIMIENTO DE LOS ESPACIOS DE PARTICIPACIÓN DE LOS PEQUEÑOS PRODUCTORES RURALES DEL DEPARTAMENTO DE SUCRE', 'Banco Territorial', ['Todo el departamento']),
+]
+
+# (id en Access, meta, vigencia, meta de la vigencia, bpin, nombre, tipo de banco, municipios):
+# las filas nuevas del Access
+AGREGADAS = [
+    (1720, 'MT273', 2027, '1.00000', '2024002700194', 'ELABORAR LOS ESTUDIOS Y DISEÑOS QUE PERMITAN IMPLEMENTAR UNA ALTERNATIVA SOSTENIBLE DE PROVISIÓN DE AGUA PARA LAS SUBREGIONES SABANA Y MONTES DE MARÍA EN EL DEPARTAMENTO DE SUCRE', 'Banco de Regalías', ['Buenavista', 'Chalán', 'Colosó', 'Corozal', 'El Roble', 'Galeras', 'Los Palmitos', 'Morroa', 'Ovejas', 'Sampués', 'San Juan de Betulia', 'San Luis de Sincé', 'San Pedro', 'Sincelejo']),
+    (1721, 'MT435', 2027, '1.00000', '2024002700194', 'ELABORAR LOS ESTUDIOS Y DISEÑOS QUE PERMITAN IMPLEMENTAR UNA ALTERNATIVA SOSTENIBLE DE PROVISIÓN DE AGUA PARA LAS SUBREGIONES SABANA Y MONTES DE MARÍA EN EL DEPARTAMENTO DE SUCRE', 'Banco de Regalías', ['Buenavista', 'Chalán', 'Colosó', 'Corozal', 'El Roble', 'Galeras', 'Los Palmitos', 'Morroa', 'Ovejas', 'Sampués', 'San Juan de Betulia', 'San Luis de Sincé', 'San Pedro', 'Sincelejo']),
 ]
 
 # (id en Access, vigencia en la 0014, vigencia en el Access nuevo)
@@ -65,6 +76,29 @@ def aplicar(apps, schema_editor):
         fila.save(update_fields=["vigencia", "fecha_actualizacion"])
         tocados.add(fila.proyecto_id)
 
+    Meta = apps.get_model(APP, "MetaIndicador")
+    TipoBanco = apps.get_model(APP, "TipoBanco")
+    Municipio = apps.get_model(APP, "Municipio")
+    for id_access, codigo, vigencia, valor, bpin, nombre, banco, municipios in AGREGADAS:
+        if Programacion.objects.filter(id_access=id_access).exists():
+            continue
+        meta = Meta.objects.filter(codigo=codigo).first()
+        if meta is None:
+            avisos.append(f"Id {id_access}: la meta {codigo} no esta en el catalogo")
+            continue
+        proyecto = Proyecto.objects.filter(bpin=bpin).first() if bpin else None
+        if proyecto is None:
+            proyecto = Proyecto.objects.create(
+                bpin=bpin, nombre=nombre,
+                tipo_banco=TipoBanco.objects.get_or_create(nombre=banco)[0] if banco else None)
+            proyecto.municipios.set(Municipio.objects.filter(nombre__in=municipios))
+        if Programacion.objects.filter(proyecto=proyecto, meta=meta, vigencia=vigencia).exists():
+            avisos.append(f"Id {id_access}: el proyecto ya estaba en {codigo} {vigencia}")
+            continue
+        Programacion.objects.create(id_access=id_access, proyecto=proyecto, meta=meta, vigencia=vigencia,
+                                    meta_vigencia=Decimal(valor) if valor is not None else None)
+        tocados.add(proyecto.pk)
+
     for proyecto in Proyecto.objects.filter(pk__in=tocados):
         if not proyecto.programaciones.exists():
             if proyecto.observaciones.exists():
@@ -86,6 +120,13 @@ def deshacer(apps, schema_editor):
     Meta = apps.get_model(APP, "MetaIndicador")
     TipoBanco = apps.get_model(APP, "TipoBanco")
     Municipio = apps.get_model(APP, "Municipio")
+
+    # Las filas nuevas salen, y su proyecto si no le queda nada
+    nuevas = Programacion.objects.filter(id_access__in=[a[0] for a in AGREGADAS])
+    proyectos_nuevos = set(nuevas.values_list("proyecto_id", flat=True))
+    nuevas.delete()
+    Proyecto.objects.filter(pk__in=proyectos_nuevos, programaciones__isnull=True,
+                            observaciones__isnull=True).delete()
 
     for id_access, antes, despues in VIGENCIAS:
         Programacion.objects.filter(id_access=id_access, vigencia=despues).update(vigencia=antes)
