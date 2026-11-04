@@ -16,7 +16,7 @@ from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.formats import number_format
-from django.utils.html import format_html
+from django.utils.html import format_html, strip_tags
 from django.utils.http import url_has_allowed_host_and_scheme
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import (ChoicesDropdownFilter, RangeDateFilter,
@@ -1636,12 +1636,36 @@ class MetaIndicadorAdmin(ModelAdmin):
         if not self.has_view_permission(request):
             raise PermissionDenied
         meta = (MetaIndicador.objects
-                .select_related("indicador_mga__producto_mga", "programa_pdd__sector_pdd__linea_estrategica"
-                                "__plan_desarrollo")
+                .select_related("programa_pdd__sector_pdd__linea_estrategica__plan_desarrollo",
+                                "indicador_mga__producto_mga__programa_mga__sector_mga",
+                                "indicador_mga__producto_mga__medido_a_traves_de",
+                                "indicador_mga__unidad_medida")
                 .prefetch_related("dependencias_responsables", "ods")
                 .filter(pk=object_id).first())
         if meta is None:
             raise Http404("No hay meta con ese id.")
+
+        # La linea jerarquica de la meta: el plan y la cadena MGA, con el codigo delante
+        def nombre(objeto):
+            if objeto is None:
+                return ""
+            texto = strip_tags(getattr(objeto, "descripcion", None) or getattr(objeto, "nombre", ""))
+            return f"{objeto.codigo} - {texto}" if getattr(objeto, "codigo", None) else texto
+        indicador = meta.indicador_mga
+        producto = indicador.producto_mga
+        programa_mga = producto.programa_mga if producto else None
+        jerarquia = [
+            ("Plan de desarrollo", nombre(meta.plan_desarrollo)),
+            ("Línea estratégica", nombre(meta.linea_estrategica)),
+            ("Sector PDD", nombre(meta.sector_pdd)),
+            ("Programa PDD", nombre(meta.programa_pdd)),
+            ("Sector MGA", nombre(programa_mga.sector_mga if programa_mga else None)),
+            ("Programa MGA", nombre(programa_mga)),
+            ("Producto MGA", nombre(producto)),
+            ("Medido a través de", nombre(producto.medido_a_traves_de if producto else None)),
+            ("Indicador MGA", nombre(indicador)),
+            ("Unidad de medida", nombre(indicador.unidad_medida)),
+        ]
 
         programaciones = list(
             meta.programaciones_de_proyectos
@@ -1739,6 +1763,7 @@ class MetaIndicadorAdmin(ModelAdmin):
             **self.admin_site.each_context(request),
             "title": f"Ficha de la meta {meta.codigo}",
             "meta": meta,
+            "jerarquia": jerarquia,
             "tarjetas": tarjetas,
             "filas": filas,
             "volver": reverse("admin:siifweb_metaindicador_change", args=(meta.pk,)),

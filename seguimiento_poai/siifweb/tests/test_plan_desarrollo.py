@@ -237,5 +237,33 @@ class ElCatalogoDeProductosMGA(Base):
             indicador_mga__producto_mga__descripcion_producto="").first()
         respuesta = self.client.get(reverse("admin:siifweb_metaindicador_ficha", args=(meta.pk,)))
         producto = meta.indicador_mga.producto_mga
-        self.assertContains(respuesta, f"Producto MGA {producto.codigo}")
         self.assertContains(respuesta, producto.descripcion_producto[:40])
+
+    def test_la_ficha_muestra_la_linea_jerarquica_en_orden(self):
+        meta = MetaIndicador.objects.get(codigo="MT323")
+        respuesta = self.client.get(reverse("admin:siifweb_metaindicador_ficha", args=(meta.pk,)))
+        etiquetas = [e for e, _ in respuesta.context["jerarquia"]]
+        self.assertEqual(etiquetas, ["Plan de desarrollo", "Línea estratégica", "Sector PDD", "Programa PDD",
+                                     "Sector MGA", "Programa MGA", "Producto MGA", "Medido a través de",
+                                     "Indicador MGA", "Unidad de medida"])
+        valores = dict(respuesta.context["jerarquia"])
+        self.assertTrue(valores["Indicador MGA"].startswith("240211400 - "))
+        self.assertTrue(valores["Producto MGA"].startswith("2402114 - "))
+        self.assertTrue(all(valores.values()), valores)
+        # Despues de la linea: descripcion, dependencias y ODS, en ese orden
+        html = respuesta.content.decode()
+        inicio = html.index('<dl class="jerarquia')
+        posiciones = [html.index(x, inicio) for x in ("Unidad de medida</dt>", "Descripción del producto",
+                                                      ">Dependencia", ">ODS<")]
+        self.assertEqual(posiciones, sorted(posiciones))
+
+
+class LasPlantillas(TestCase):
+    def test_ningun_comentario_de_plantilla_ocupa_dos_lineas(self):
+        """Django solo reconoce {# ... #} en una linea: partido en dos, sale como texto."""
+        from pathlib import Path
+        carpeta = Path(__file__).resolve().parent.parent / "templates"
+        for plantilla in carpeta.rglob("*.html"):
+            for n, linea in enumerate(plantilla.read_text(encoding="utf-8").splitlines(), start=1):
+                if "{#" in linea:
+                    self.assertIn("#}", linea.split("{#", 1)[1], f"{plantilla.name}:{n}")

@@ -485,8 +485,10 @@ e indicador MGA; dependencia responsable y estado.
 Desde el icono de carpeta del listado o el boton del detalle. Una vista propia
 (`MetaIndicadorAdmin.ficha_meta`, plantilla `ficha_meta.html`), como la del proyecto:
 
-- Encabezado: codigo, indicador MGA, descripcion, la ruta en el plan (plan › linea ›
-  sector › programa), dependencias responsables y ODS.
+- Encabezado: codigo e indicador MGA; la linea jerarquica completa (plan de desarrollo,
+  linea estrategica, sector y programa PDD, sector y programa MGA, producto MGA, medido a
+  traves de, indicador MGA y unidad de medida), armada en la vista en una sola consulta;
+  la descripcion del producto; las dependencias responsables y los ODS.
 - Tarjetas: meta del cuatrienio, meta en las vigencias, programado por los proyectos y
   numero de proyectos.
 - **Meta y programacion por vigencia**: la meta del plan, lo programado por los
@@ -760,7 +762,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-312 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+314 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

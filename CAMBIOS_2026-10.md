@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-312 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+314 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -286,5 +286,11 @@ producto y del indicador. Migraciones `0016_catalogo_mga` y `0017_datos_catalogo
 (generada con `modelos-metas/generar_migracion_catalogo_mga.py`). Cruzan 375 de los 376
 productos y de los 376 indicadores: el 4101093 y el 410109300 no estan en el catalogo de
 2025, porque el plan se formulo con el de 2024. Los listados de productos e indicadores MGA
-muestran los campos nuevos y filtran por ellos, y la ficha de la meta muestra la
-descripcion del producto.
+muestran los campos nuevos y filtran por ellos.
+
+El encabezado de la ficha de la meta pasa a mostrar la linea jerarquica completa, en este
+orden: plan de desarrollo, linea estrategica, sector PDD, programa PDD, sector MGA,
+programa MGA, producto MGA, medido a traves de, indicador MGA y unidad de medida; debajo,
+la descripcion del producto, las dependencias y los ODS. Una prueba nueva revisa que
+ningun comentario `{# #}` de las plantillas ocupe dos lineas: Django lo mostraria como
+texto, y ya habia pasado dos veces en la ficha.
