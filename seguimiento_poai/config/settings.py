@@ -370,16 +370,13 @@ UNFOLD = {
                     {"title": "Programación de proyectos", "icon": "assignment",
                      "link": reverse_lazy("admin:siifweb_programacionproyectos_changelist"),
                      "permission": _con_permiso("siifweb.view_programacionproyectos")},
-                    {"title": "Seguimiento de metas", "icon": "monitoring",
-                     "link": reverse_lazy("admin:siifweb_seguimientometa_changelist"),
-                     "permission": _con_permiso("siifweb.view_seguimientometa")},
                 ],
             },
             {
                 # El catalogo de metas traido de SUTEC, en el orden de su jerarquia: el
                 # plan y su cadena (linea, sector, programa, indicador), las vigencias de las
-                # metas, la cadena MGA del DNP y los ODS. Las metas y la programacion de
-                # proyectos van en Seguimiento
+                # metas, la cadena MGA del DNP y los ODS, y al final el seguimiento de las
+                # metas. Las metas y la programacion de proyectos van en Seguimiento
                 "title": "Plan de Desarrollo",
                 "collapsible": True,
                 "separator": True,
@@ -426,6 +423,9 @@ UNFOLD = {
                     {"title": "Metas ODS", "icon": "eco",
                      "link": reverse_lazy("admin:siifweb_metaods_changelist"),
                      "permission": _administra_los_datos},
+                    {"title": "Seguimiento de metas", "icon": "monitoring",
+                     "link": reverse_lazy("admin:siifweb_seguimientometa_changelist"),
+                     "permission": _con_permiso("siifweb.view_seguimientometa")},
                 ],
             },
             {

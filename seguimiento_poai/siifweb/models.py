@@ -1176,15 +1176,17 @@ class PeriodoReporte(Fechas):
 
 
 class SeguimientoMeta(Fechas):
-    """Lo que un proyecto reporta en una meta, por vigencia y mes."""
+    """Lo que un proyecto reporta en una meta, por vigencia y mes: lo del mes, no el acumulado."""
     meta = models.ForeignKey(MetaIndicador, on_delete=models.PROTECT, related_name="seguimientos",
                              verbose_name="Meta")
     proyecto = models.ForeignKey(ProgramacionProyectos, on_delete=models.CASCADE, related_name="seguimientos",
                                  verbose_name="Proyecto")
     vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
     mes = models.PositiveSmallIntegerField(choices=MESES, verbose_name="Mes")
-    # Cinco decimales, como la meta de la vigencia del proyecto (ProgramacionMeta)
-    valor = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="Valor")
+    # Cinco decimales, como la meta de la vigencia del proyecto (ProgramacionMeta). Es lo del
+    # mes, no el acumulado: lo de la vigencia es la suma de sus meses
+    valor = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="Valor",
+                                help_text="Lo logrado en el mes, no el acumulado.")
     observacion = models.TextField(blank=True, default="", verbose_name="Observación")
     reportado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
                                       blank=True, editable=False, related_name="seguimientos_reportados",
@@ -1213,8 +1215,13 @@ class SeguimientoMeta(Fechas):
             elif not periodo.esta_abierto():
                 errores["vigencia"] = (f"El reporte de la vigencia {self.vigencia} está cerrado: se reporta "
                                        f"del {periodo.fecha_inicio:%d/%m/%Y} al {periodo.fecha_fin:%d/%m/%Y}.")
-        if self.meta_id and self.proyecto_id and not ProgramacionMeta.objects.filter(
-                meta_id=self.meta_id, proyecto_id=self.proyecto_id).exists():
-            errores["proyecto"] = "El proyecto no está programado en esta meta."
+        if self.meta_id and self.proyecto_id:
+            programadas = set(ProgramacionMeta.objects.filter(meta_id=self.meta_id, proyecto_id=self.proyecto_id)
+                              .values_list("vigencia", flat=True))
+            if not programadas:
+                errores["proyecto"] = "El proyecto no está programado en esta meta."
+            elif self.vigencia and self.vigencia not in programadas and "vigencia" not in errores:
+                errores["vigencia"] = (f"El proyecto no está programado en esta meta para la vigencia "
+                                       f"{self.vigencia}.")
         if errores:
             raise ValidationError(errores)

@@ -17,7 +17,7 @@ from siifweb.models import IndicadorPDD, MetaIndicador, ProgramaPDD
 # Las metas no: van en Seguimiento, con la programacion de proyectos
 ORDEN = ["plandesarrollo", "lineaestrategica", "sectorpdd", "programapdd", "indicadorpdd",
          "vigenciameta", "sectormga", "programamga", "productomga",
-         "indicadormga", "medidoatravesde", "unidadmedida", "ods", "metaods"]
+         "indicadormga", "medidoatravesde", "unidadmedida", "ods", "metaods", "seguimientometa"]
 
 
 def datos_del_formulario(meta, **cambios):

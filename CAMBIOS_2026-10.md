@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-330 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+332 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -307,6 +307,9 @@ meta (boton **Agregar seguimiento**), que solo ofrece las vigencias abiertas; ta
 el admin. Migracion `0018_seguimiento_de_metas`. En la sqlite local quedaron configurados
 2025 (01/01/2025 a 15/02/2026, cerrado) y 2026 (01/01/2026 a 15/02/2027).
 
-Queda por decidir como se suman los meses para comparar con la meta de la vigencia (si cada
-mes es lo del mes o lo acumulado), que depende del tipo de acumulacion de la meta, y que
-roles reportan.
+Ajustes del 4 de noviembre: el valor es lo del mes, no el acumulado (texto de ayuda en la
+`0019_valor_del_mes`, y el formulario dice "Valor del mes (no el acumulado)"); la vigencia
+tiene que ser una en la que el proyecto este programado en la meta, y el modal solo ofrece
+esas; el listado **Seguimiento de metas** paso de Seguimiento al final de Plan de Desarrollo.
+
+Queda por decidir que roles reportan.

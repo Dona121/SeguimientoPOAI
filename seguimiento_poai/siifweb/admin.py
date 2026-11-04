@@ -1729,6 +1729,9 @@ class MetaIndicadorAdmin(ModelAdmin):
                                    for q in p.proyecto.programaciones.all()],
             }) if puede_editar else "",
             "seguimientos": json.dumps(seguimientos.get(p.proyecto_id, [])),
+            # Las vigencias abiertas en las que el proyecto esta programado en esta meta
+            "reportables": json.dumps([v for v in abiertas if v in {
+                q.vigencia for q in p.proyecto.programaciones.all() if q.meta_id == meta.pk}]),
         } for p in programaciones]
 
         # Una fila por vigencia: las del plan y las que traigan los proyectos. Cada una

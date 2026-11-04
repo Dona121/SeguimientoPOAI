@@ -341,7 +341,7 @@
           </select>
         </div>
         <div>
-          <label class="lbl" for="seguimiento-valor">Valor</label>
+          <label class="lbl" for="seguimiento-valor">Valor del mes (no el acumulado)</label>
           <input type="text" name="valor" id="seguimiento-valor" class="in" inputmode="decimal" required
                  placeholder="Ej. 1,5">
         </div>
@@ -620,7 +620,7 @@
       formulario.classList.toggle("hidden", !d.observacionUrl);
       pie.classList.remove("hidden");
       botonEditar.classList.toggle("hidden", !(d.editarUrl && plantillaEditar));
-      botonSeguimiento.classList.toggle("hidden", !plantillaSeguimiento);
+      botonSeguimiento.classList.toggle("hidden", !(plantillaSeguimiento && JSON.parse(d.reportables || "[]").length));
       modal.classList.remove("hidden");
       modal.classList.add("flex");
     }
@@ -714,6 +714,11 @@
     function reportar() {
       var form = plantillaSeguimiento.content.firstElementChild.cloneNode(true);
       form.querySelector('[name="proyecto"]').value = actual.dataset.proyecto;
+      // Solo las vigencias abiertas en las que el proyecto esta programado en la meta
+      var reportables = JSON.parse(actual.dataset.reportables || "[]").map(String);
+      Array.prototype.slice.call(form.querySelectorAll('[name="vigencia"] option')).forEach(function (o) {
+        if (reportables.indexOf(o.value) < 0) { o.remove(); }
+      });
       form.querySelector("[data-cancelar-edicion]").addEventListener("click", function () { abrir(actual); });
       form.addEventListener("submit", guardar);
       cuerpo.innerHTML = "";
