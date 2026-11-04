@@ -146,6 +146,8 @@ class GuardarEnElAdmin(Base):
             "programaciones-1-vigencia": "2027", "programaciones-1-meta_vigencia": "11.187",
             "observaciones-TOTAL_FORMS": "0", "observaciones-INITIAL_FORMS": "0",
             "observaciones-MIN_NUM_FORMS": "0", "observaciones-MAX_NUM_FORMS": "1000",
+            "seguimientos-TOTAL_FORMS": "0", "seguimientos-INITIAL_FORMS": "0",
+            "seguimientos-MIN_NUM_FORMS": "0", "seguimientos-MAX_NUM_FORMS": "1000",
         }
         respuesta = self.client.post(
             reverse("admin:siifweb_programacionproyectos_change", args=(proyecto.pk,)), datos)
@@ -385,6 +387,8 @@ class NuevoProyectoDesdeLaFicha(Base):
             "programaciones-0-meta_vigencia": "2.5",
             "observaciones-TOTAL_FORMS": "0", "observaciones-INITIAL_FORMS": "0",
             "observaciones-MIN_NUM_FORMS": "0", "observaciones-MAX_NUM_FORMS": "1000",
+            "seguimientos-TOTAL_FORMS": "0", "seguimientos-INITIAL_FORMS": "0",
+            "seguimientos-MIN_NUM_FORMS": "0", "seguimientos-MAX_NUM_FORMS": "1000",
         }
         datos.update(cambios)
         return datos

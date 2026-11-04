@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Sum
@@ -1131,3 +1132,89 @@ class ObservacionProyecto(Fechas):
 
     def __str__(self):
         return f"{self.fecha or 'sin fecha'}: {self.texto[:60]}"
+
+
+# 8 - Seguimiento de las metas: lo que reportan los proyectos, mes a mes
+
+MESES = [(1, "Enero"), (2, "Febrero"), (3, "Marzo"), (4, "Abril"), (5, "Mayo"), (6, "Junio"),
+         (7, "Julio"), (8, "Agosto"), (9, "Septiembre"), (10, "Octubre"), (11, "Noviembre"),
+         (12, "Diciembre")]
+
+
+class PeriodoReporte(Fechas):
+    """Entre que fechas se puede reportar el seguimiento de una vigencia.
+
+    Cubre el cierre: la vigencia 2026 puede ir del 1 de enero de 2026 al 15 de febrero de
+    2027, y en esas semanas de 2027 quedan abiertas dos vigencias a la vez.
+    """
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, unique=True, verbose_name="Vigencia")
+    fecha_inicio = models.DateField(verbose_name="Fecha de inicio del reporte")
+    fecha_fin = models.DateField(verbose_name="Fecha de fin del reporte")
+
+    class Meta:
+        verbose_name = "Periodo de reporte"
+        verbose_name_plural = "Periodos de reporte"
+        ordering = ("-vigencia",)
+
+    def __str__(self):
+        return f"{self.vigencia}: {self.fecha_inicio:%d/%m/%Y} a {self.fecha_fin:%d/%m/%Y}"
+
+    def clean(self):
+        if self.fecha_inicio and self.fecha_fin and self.fecha_fin < self.fecha_inicio:
+            raise ValidationError({"fecha_fin": "La fecha de fin no puede ser anterior a la de inicio."})
+
+    def esta_abierto(self, fecha=None):
+        fecha = fecha or timezone.localdate()
+        return self.fecha_inicio <= fecha <= self.fecha_fin
+
+    @classmethod
+    def vigencias_abiertas(cls, fecha=None):
+        """Las vigencias que se pueden reportar en esa fecha (hoy, si no se dice)."""
+        fecha = fecha or timezone.localdate()
+        return list(cls.objects.filter(fecha_inicio__lte=fecha, fecha_fin__gte=fecha)
+                    .order_by("vigencia").values_list("vigencia", flat=True))
+
+
+class SeguimientoMeta(Fechas):
+    """Lo que un proyecto reporta en una meta, por vigencia y mes."""
+    meta = models.ForeignKey(MetaIndicador, on_delete=models.PROTECT, related_name="seguimientos",
+                             verbose_name="Meta")
+    proyecto = models.ForeignKey(ProgramacionProyectos, on_delete=models.CASCADE, related_name="seguimientos",
+                                 verbose_name="Proyecto")
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
+    mes = models.PositiveSmallIntegerField(choices=MESES, verbose_name="Mes")
+    # Cinco decimales, como la meta de la vigencia del proyecto (ProgramacionMeta)
+    valor = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="Valor")
+    observacion = models.TextField(blank=True, default="", verbose_name="Observación")
+    reportado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                      blank=True, editable=False, related_name="seguimientos_reportados",
+                                      verbose_name="Reportado por")
+
+    class Meta:
+        verbose_name = "Seguimiento de meta"
+        verbose_name_plural = "Seguimiento de metas"
+        ordering = ("-vigencia", "-mes", "meta__codigo")
+        constraints = [models.UniqueConstraint(fields=["meta", "proyecto", "vigencia", "mes"],
+                                               name="seguimiento_unico_por_mes",
+                                               violation_error_message="Ya hay un seguimiento de esa meta "
+                                               "y ese proyecto para esa vigencia y mes.")]
+
+    def __str__(self):
+        return f"{self.meta.codigo} - {self.get_mes_display()} {self.vigencia}: {self.valor}"
+
+    def clean(self):
+        errores = {}
+        if self.valor is not None and self.valor < 0:
+            errores["valor"] = "El valor no puede ser negativo."
+        if self.vigencia:
+            periodo = PeriodoReporte.objects.filter(vigencia=self.vigencia).first()
+            if periodo is None:
+                errores["vigencia"] = f"La vigencia {self.vigencia} no tiene periodo de reporte configurado."
+            elif not periodo.esta_abierto():
+                errores["vigencia"] = (f"El reporte de la vigencia {self.vigencia} está cerrado: se reporta "
+                                       f"del {periodo.fecha_inicio:%d/%m/%Y} al {periodo.fecha_fin:%d/%m/%Y}.")
+        if self.meta_id and self.proyecto_id and not ProgramacionMeta.objects.filter(
+                meta_id=self.meta_id, proyecto_id=self.proyecto_id).exists():
+            errores["proyecto"] = "El proyecto no está programado en esta meta."
+        if errores:
+            raise ValidationError(errores)

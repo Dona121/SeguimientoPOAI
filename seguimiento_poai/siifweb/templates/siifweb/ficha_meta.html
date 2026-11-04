@@ -232,7 +232,7 @@
                                       border-radius: 6px; font-size: .8125rem; font-weight: 600;
                                       background: var(--color-primary-600); color: #fff; }
     .form-modal .btn-programar:disabled { opacity: .6; }
-    #programar-aviso.error, #editar-aviso.error { color: #b91c1c; }
+    #programar-aviso.error, #editar-aviso.error, #seguimiento-aviso.error { color: #b91c1c; }
     .form-modal fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
     .form-modal .municipios { display: grid; gap: .25rem .75rem; font-size: .8125rem;
                                    grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); }
@@ -285,6 +285,10 @@
                 text-white bg-primary-600">
           <i class="material-symbols-outlined" style="font-size:1.05rem;line-height:1;vertical-align:-3px">edit</i>
           Editar</button>
+        <button type="button" id="modal-detalle-seguimiento" class="hidden font-medium px-3 py-2 rounded-default
+                text-sm border text-primary-600 border-primary-600">
+          <i class="material-symbols-outlined" style="font-size:1.05rem;line-height:1;vertical-align:-3px">add_chart</i>
+          Agregar seguimiento</button>
         <a id="modal-detalle-ficha" href="#" class="hidden font-medium px-3 py-2 rounded-default text-sm border
            text-primary-600 border-primary-600">Abrir la ficha de ejecución</a>
         <a id="modal-detalle-enlace" href="#" class="font-medium px-3 py-2 rounded-default text-sm border
@@ -313,6 +317,45 @@
       <button type="button" class="quitar" aria-label="Quitar esta meta" data-quitar-fila>
         <i class="material-symbols-outlined">close</i></button>
     </div>
+  </template>
+  {% endif %}
+
+  {% if seguimiento %}
+  {# El seguimiento de esta meta para el proyecto del modal; solo las vigencias con el reporte abierto #}
+  <template id="seguimiento-plantilla">
+    <form class="form-modal flex flex-col" style="gap:1rem" data-url="{{ seguimiento.url }}">
+      {% csrf_token %}
+      <input type="hidden" name="proyecto" value="">
+      <div class="text-sm text-base-500">Meta {{ meta.codigo }}</div>
+      <div class="campos-programar">
+        <div>
+          <label class="lbl" for="seguimiento-vigencia">Vigencia</label>
+          <select name="vigencia" id="seguimiento-vigencia" class="in">
+            {% for v in seguimiento.vigencias %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="lbl" for="seguimiento-mes">Mes</label>
+          <select name="mes" id="seguimiento-mes" class="in">
+            {% for n, nombre in seguimiento.meses %}<option value="{{ n }}"{% if n == seguimiento.mes_actual %} selected{% endif %}>{{ nombre }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="lbl" for="seguimiento-valor">Valor</label>
+          <input type="text" name="valor" id="seguimiento-valor" class="in" inputmode="decimal" required
+                 placeholder="Ej. 1,5">
+        </div>
+        <div style="grid-column:1/-1">
+          <label class="lbl" for="seguimiento-observacion">Observación (opcional)</label>
+          <textarea name="observacion" id="seguimiento-observacion" class="in" rows="2"></textarea>
+        </div>
+      </div>
+      <div id="seguimiento-aviso" class="text-sm" role="alert"></div>
+      <div class="flex flex-wrap items-center" style="gap:.75rem">
+        <button type="submit" class="btn-programar">Guardar seguimiento</button>
+        <button type="button" class="text-sm font-medium text-base-500" data-cancelar-edicion>Cancelar</button>
+      </div>
+    </form>
   </template>
   {% endif %}
 
@@ -474,6 +517,8 @@
     var VACIO = "—";
     var pie = document.getElementById("modal-detalle-pie");
     var botonEditar = document.getElementById("modal-detalle-editar");
+    var botonSeguimiento = document.getElementById("modal-detalle-seguimiento");
+    var plantillaSeguimiento = document.getElementById("seguimiento-plantilla");
     var plantillaEditar = document.getElementById("editar-plantilla");
     var plantillaFila = document.getElementById("programar-plantilla");
     var META_FICHA = "{{ meta.pk }}";
@@ -537,6 +582,27 @@
         bloque.appendChild(tabla);
         cuerpo.appendChild(bloque);
       }
+      // El seguimiento ya reportado en esta meta
+      var reportes = JSON.parse(d.seguimientos || "[]");
+      if (reportes.length) {
+        var bloqueSeg = nodo("div", "celda");
+        bloqueSeg.appendChild(nodo("div", "etiqueta text-base-500", "Seguimiento en esta meta (" + reportes.length + ")"));
+        var tablaSeg = nodo("table", "w-full text-sm dato metas-del-proyecto");
+        var cabeza = nodo("tr", "text-xs uppercase tracking-wider text-base-500");
+        [["Vigencia", "text-left"], ["Mes", "text-left"], ["Valor", "text-right"], ["Observación", "text-left"]]
+          .forEach(function (c) { cabeza.appendChild(nodo("th", "py-1 pr-4 " + c[1], c[0])); });
+        tablaSeg.appendChild(cabeza);
+        reportes.forEach(function (r) {
+          var filaSeg = nodo("tr", "");
+          filaSeg.appendChild(nodo("td", "py-1 pr-4", String(r.vigencia)));
+          filaSeg.appendChild(nodo("td", "py-1 pr-4", r.mes));
+          filaSeg.appendChild(nodo("td", "py-1 pr-4 text-right font-mono", r.valor));
+          filaSeg.appendChild(nodo("td", "py-1 break-words", r.observacion || ""));
+          tablaSeg.appendChild(filaSeg);
+        });
+        bloqueSeg.appendChild(tablaSeg);
+        cuerpo.appendChild(bloqueSeg);
+      }
       var notas = (d.observaciones || "").split("\n").filter(function (n) { return n.trim(); });
       var caja = nodo("div", "celda");
       caja.id = "modal-observaciones";
@@ -554,6 +620,7 @@
       formulario.classList.toggle("hidden", !d.observacionUrl);
       pie.classList.remove("hidden");
       botonEditar.classList.toggle("hidden", !(d.editarUrl && plantillaEditar));
+      botonSeguimiento.classList.toggle("hidden", !plantillaSeguimiento);
       modal.classList.remove("hidden");
       modal.classList.add("flex");
     }
@@ -616,12 +683,13 @@
     function guardar(evento) {
       evento.preventDefault();
       var form = evento.target;
-      var avisoEditar = form.querySelector("#editar-aviso");
+      var avisoEditar = form.querySelector('[role="alert"]');
       var boton = form.querySelector('[type="submit"]');
       boton.disabled = true;
       avisoEditar.className = "text-sm";
       avisoEditar.textContent = "Guardando...";
-      fetch(actual.dataset.editarUrl, {method: "POST", body: new FormData(form), credentials: "same-origin"})
+      fetch(form.dataset.url || actual.dataset.editarUrl,
+            {method: "POST", body: new FormData(form), credentials: "same-origin"})
         .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
         .then(function (res) {
           if (!res.ok) {
@@ -642,6 +710,20 @@
     }
 
     botonEditar.addEventListener("click", function () { if (actual) { editar(); } });
+
+    function reportar() {
+      var form = plantillaSeguimiento.content.firstElementChild.cloneNode(true);
+      form.querySelector('[name="proyecto"]').value = actual.dataset.proyecto;
+      form.querySelector("[data-cancelar-edicion]").addEventListener("click", function () { abrir(actual); });
+      form.addEventListener("submit", guardar);
+      cuerpo.innerHTML = "";
+      cuerpo.appendChild(form);
+      formulario.classList.add("hidden");
+      pie.classList.add("hidden");
+      form.querySelector('[name="valor"]').focus();
+    }
+
+    botonSeguimiento.addEventListener("click", function () { if (actual && plantillaSeguimiento) { reportar(); } });
 
     // Guarda la observacion y la pone al comienzo de la lista, sin recargar la pagina
     formulario.addEventListener("submit", function (evento) {

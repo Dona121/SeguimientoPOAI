@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 from django import forms
 from django.contrib import admin, messages
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import (Case, Count, DateField, DecimalField, F, IntegerField, OuterRef,
                               Prefetch, Q, Subquery, Sum, Value, When)
@@ -32,8 +32,8 @@ from .models import (BpinProceso, CargaReporte, Cdp, CdpImputacion, CentroCosto,
 from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MedidoATravesDe, MetaIndicador, MetaODS,
                      ODS, PlanDesarrollo, ProductoMGA, ProgramaMGA, ProgramaPDD, SectorMGA, SectorPDD,
                      UnidadMedida, VigenciaMeta, indicadores_fuera_del_programa)
-from .models import (Municipio, ObservacionProyecto, ProgramacionMeta, ProgramacionProyectos,
-                     TipoBanco, listado_vigencias_metas)
+from .models import (MESES, Municipio, ObservacionProyecto, PeriodoReporte, ProgramacionMeta,
+                     ProgramacionProyectos, SeguimientoMeta, TipoBanco, listado_vigencias_metas)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import User, Group
@@ -1692,6 +1692,13 @@ class MetaIndicadorAdmin(ModelAdmin):
         puede_anotar = request.user.has_perm("siifweb.add_observacionproyecto")
         puede_programar = request.user.has_perm("siifweb.add_programacionmeta")
         puede_editar = request.user.has_perm("siifweb.change_programacionproyectos")
+        # El seguimiento de cada proyecto en esta meta, del mas reciente al mas viejo
+        seguimientos = {}
+        for x in meta.seguimientos.order_by("-vigencia", "-mes"):
+            seguimientos.setdefault(x.proyecto_id, []).append(
+                {"vigencia": x.vigencia, "mes": x.get_mes_display(), "valor": cifra(x.valor),
+                 "observacion": x.observacion})
+        abiertas = PeriodoReporte.vigencias_abiertas()
 
         detalle = [{
             "programacion": p,
@@ -1721,6 +1728,7 @@ class MetaIndicadorAdmin(ModelAdmin):
                                     "valor": valor_editable(q.meta_vigencia)}
                                    for q in p.proyecto.programaciones.all()],
             }) if puede_editar else "",
+            "seguimientos": json.dumps(seguimientos.get(p.proyecto_id, [])),
         } for p in programaciones]
 
         # Una fila por vigencia: las del plan y las que traigan los proyectos. Cada una
@@ -1790,6 +1798,14 @@ class MetaIndicadorAdmin(ModelAdmin):
             # Editar desde el modal del proyecto; las programaciones, con los tres permisos
             "editar": ({**catalogos, "programaciones": puede_reprogramar(request.user)}
                        if puede_editar else None),
+            # Reportar seguimiento desde el modal: solo con permiso y con alguna vigencia
+            # abierta en los periodos de reporte
+            "seguimiento": ({
+                "url": reverse("admin:siifweb_metaindicador_seguimiento", args=(meta.pk,)),
+                "vigencias": abiertas,
+                "meses": MESES,
+                "mes_actual": timezone.localdate().month,
+            } if abiertas and request.user.has_perm("siifweb.add_seguimientometa") else None),
             # La vigencia que se acaba de programar llega desplegada, y el proyecto que se
             # acaba de editar, abierto
             "abrir": request.GET.get("abrir", ""),
@@ -1921,6 +1937,47 @@ class MetaIndicadorAdmin(ModelAdmin):
         return JsonResponse({"proyecto": proyecto.pk, "programaciones": len(filas),
                              "volver": volver + (f"?abrir={abrir}" if abrir else "")}, status=201)
 
+    def registrar_seguimiento(self, request, object_id):
+        """POST desde el modal del proyecto: el seguimiento de la meta para una vigencia y mes.
+
+        La meta es la de la ficha; el proyecto, el del modal. Las reglas (periodo de reporte
+        abierto, proyecto programado en la meta, un reporte por mes) estan en el modelo y se
+        aplican con full_clean.
+        """
+        if request.method != "POST":
+            return JsonResponse({"error": "Solo POST"}, status=405)
+        if not request.user.has_perm("siifweb.add_seguimientometa"):
+            raise PermissionDenied
+        meta = MetaIndicador.objects.filter(pk=object_id).first()
+        proyecto = ProgramacionProyectos.objects.filter(pk=request.POST.get("proyecto") or 0).first()
+        if meta is None or proyecto is None:
+            raise Http404("No hay meta o proyecto con ese id.")
+
+        def error(mensaje):
+            return JsonResponse({"error": mensaje}, status=400)
+
+        vigencia, mes = request.POST.get("vigencia", ""), request.POST.get("mes", "")
+        if not vigencia.isdigit():
+            return error("Elija la vigencia.")
+        if not mes.isdigit() or not 1 <= int(mes) <= 12:
+            return error("Elija el mes.")
+        valor = (request.POST.get("valor") or "").strip().replace(",", ".")
+        try:
+            valor = Decimal(valor)
+        except InvalidOperation:
+            return error("El valor tiene que ser un número.")
+        if valor.as_tuple().exponent < -5:
+            return error("El valor admite hasta cinco decimales.")
+        seguimiento = SeguimientoMeta(meta=meta, proyecto=proyecto, vigencia=int(vigencia), mes=int(mes),
+                                      valor=valor, observacion=(request.POST.get("observacion") or "").strip()[:5000],
+                                      reportado_por=request.user)
+        try:
+            seguimiento.full_clean()
+        except ValidationError as e:
+            return error(" ".join(m for mensajes in e.message_dict.values() for m in mensajes))
+        seguimiento.save()
+        return JsonResponse({"proyecto": proyecto.pk, "vigencia": seguimiento.vigencia}, status=201)
+
     def get_urls(self):
         # Antes de las del admin: '<path:object_id>/' la capturaria
         propia = [path("<path:object_id>/ficha/", self.admin_site.admin_view(self.ficha_meta),
@@ -1928,7 +1985,9 @@ class MetaIndicadorAdmin(ModelAdmin):
                   path("<path:object_id>/programar/", self.admin_site.admin_view(self.programar_proyecto),
                        name="siifweb_metaindicador_programar"),
                   path("<path:object_id>/buscar-proyectos/", self.admin_site.admin_view(self.buscar_proyectos),
-                       name="siifweb_metaindicador_buscar_proyectos")]
+                       name="siifweb_metaindicador_buscar_proyectos"),
+                  path("<path:object_id>/seguimiento/", self.admin_site.admin_view(self.registrar_seguimiento),
+                       name="siifweb_metaindicador_seguimiento")]
         return propia + super().get_urls()
 
     def get_queryset(self, request):
@@ -2099,11 +2158,20 @@ class ObservacionProyectoInline(TabularInline):
     verbose_name_plural = "Observaciones"
 
 
+class SeguimientoMetaInline(TabularInline):
+    model = SeguimientoMeta
+    extra = 0
+    fields = ("meta", "vigencia", "mes", "valor", "observacion")
+    autocomplete_fields = ("meta",)
+    tab = True
+    verbose_name_plural = "Seguimiento"
+
+
 @admin.register(ProgramacionProyectos)
 class ProgramacionProyectosAdmin(ModelAdmin):
     compressed_fields = True
     list_fullwidth = True
-    inlines = (ProgramacionMetaInline, ObservacionProyectoInline)
+    inlines = (ProgramacionMetaInline, ObservacionProyectoInline, SeguimientoMetaInline)
     list_display = ("bpin", "nombre_corto", "tipo_banco", "vigencias", "n_metas")
     list_filter = (("tipo_banco", RelatedDropdownFilter), ("municipios", RelatedDropdownFilter),
                    ("programaciones__vigencia", ChoicesDropdownFilter),
@@ -2136,6 +2204,19 @@ class ProgramacionProyectosAdmin(ModelAdmin):
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         form.instance.actualizar_vigencias()
+
+    def save_formset(self, request, form, formset, change):
+        # Quien reporta un seguimiento nuevo desde el detalle del proyecto
+        if formset.model is SeguimientoMeta:
+            for objeto in formset.save(commit=False):
+                if objeto.pk is None:
+                    objeto.reportado_por = request.user
+                objeto.save()
+            for objeto in formset.deleted_objects:
+                objeto.delete()
+            formset.save_m2m()
+            return
+        super().save_formset(request, form, formset, change)
 
     def get_formset_kwargs(self, request, obj, inline, prefix):
         kwargs = super().get_formset_kwargs(request, obj, inline, prefix)
@@ -2244,3 +2325,42 @@ class ProgramacionProyectosAdmin(ModelAdmin):
                   path("<path:object_id>/editar-desde-ficha/", self.admin_site.admin_view(self.editar_desde_ficha),
                        name="siifweb_programacionproyectos_editar_desde_ficha")]
         return propia + super().get_urls()
+
+
+@admin.register(PeriodoReporte)
+class PeriodoReporteAdmin(ModelAdmin):
+    compressed_fields = True
+    list_display = ("vigencia", "fecha_inicio", "fecha_fin", "abierto_hoy")
+
+    @display(description="Abierto hoy", boolean=True)
+    def abierto_hoy(self, obj):
+        return obj.esta_abierto()
+
+
+@admin.register(SeguimientoMeta)
+class SeguimientoMetaAdmin(ModelAdmin):
+    compressed_fields = True
+    list_fullwidth = True
+    list_display = ("meta", "proyecto_corto", "vigencia", "mes", "valor_reportado", "reportado_por",
+                    "fecha_creacion")
+    list_filter = (("vigencia", ChoicesDropdownFilter), ("mes", ChoicesDropdownFilter),
+                   ("meta__dependencias_responsables", RelatedDropdownFilter))
+    list_filter_submit = True
+    search_fields = ("meta__codigo", "proyecto__bpin", "proyecto__nombre")
+    list_select_related = ("meta", "proyecto", "reportado_por")
+    autocomplete_fields = ("meta", "proyecto")
+    readonly_fields = ("reportado_por",)
+    fields = ("meta", "proyecto", "vigencia", "mes", "valor", "observacion", "reportado_por")
+
+    @display(description="Proyecto", ordering="proyecto__nombre")
+    def proyecto_corto(self, obj):
+        return corto(str(obj.proyecto), 90)
+
+    @display(description="Valor", ordering="valor")
+    def valor_reportado(self, obj):
+        return cifra(obj.valor)
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.reportado_por = request.user
+        super().save_model(request, obj, form, change)

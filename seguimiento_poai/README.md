@@ -574,6 +574,27 @@ observaciones**, sin diferencias de meta, vigencia ni valor. Las 17 filas sin pr
 son las 12 vacias, 3 repetidas y las 2 de metas fuera del catalogo. La meta de la vigencia
 lleva 5 decimales porque hay metas viales con cuatro (3,0976 km): entran exactas.
 
+### Seguimiento de las metas
+
+Lo que cada proyecto reporta en una meta, por vigencia y mes (`SeguimientoMeta`: meta,
+proyecto, vigencia, mes, valor con 5 decimales, observacion y quien lo reporto). Un solo
+reporte por meta, proyecto, vigencia y mes. Migracion `0018_seguimiento_de_metas`.
+
+- **Periodos de reporte** (`PeriodoReporte`, en Configuracion y parametrizacion): para cada
+  vigencia, la fecha de inicio y de fin del reporte. El modelo rechaza con un
+  `ValidationError` un seguimiento creado fuera del periodo de su vigencia, o de una
+  vigencia sin periodo. Asi se cubre el cierre: 2026 puede ir del 01/01/2026 al 15/02/2027,
+  y en esas semanas de 2027 quedan abiertas dos vigencias.
+- **Desde la ficha de la meta**: el modal de cada proyecto lleva el boton **Agregar
+  seguimiento** y la tabla de lo ya reportado en esa meta. El formulario toma la meta de la
+  ficha y el proyecto del modal; el desplegable de vigencia trae solo las que tienen el
+  reporte abierto hoy, y el mes llega con el actual. Ruta `seguimiento/` del admin de la
+  meta; las reglas se aplican con `full_clean`, asi que el servidor las cumple aunque se
+  salte el formulario.
+- El proyecto tiene que estar programado en la meta, en cualquier vigencia.
+- En el admin: el listado **Seguimiento de metas** (menu de Seguimiento) y una pestana de
+  seguimiento en el detalle del proyecto programado. Los dos anotan quien reporta.
+
 ### Cambios posteriores del Access
 
 La `0014` se desplego el 29/10/2026, asi que no se regenera: lo que cambie despues en el
@@ -763,7 +784,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-314 pruebas en trece modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+330 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
@@ -779,6 +800,7 @@ datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 | `test_roles.py` | Los roles Seguimiento y Consulta: que ven, que editan y el menu lateral de cada uno |
 | `test_plan_desarrollo.py` | La seccion del menu y su orden, que cada enlace abra, que los roles no la vean, el detalle y el autocompletado de la meta, que el listado no haga una consulta por fila, cada filtro del listado con un valor real (MT, linea, indicador PDD y la cadena MGA, sin filas repetidas), y la regla de los indicadores del programa (rechazo en el campo y sin error falso al cambiar programa e indicadores a la vez) |
 | `test_programacion_proyectos.py` | Las cifras de la `0014` y la `0015`, sus reglas (BPIN solo codigos, municipios, observaciones sin fecha, cinco decimales exactos), el menu, el recalculo de vigencias al guardar, el desplegable del listado de metas, el orden ascendente y la ficha de la meta (cifras por vigencia, desplegables, modal con todas las metas del proyecto, la ejecucion de SIIFWEB por BPIN y vigencia con reservas, las observaciones desde el modal, 404 y permisos) |
+| `test_seguimiento.py` | El periodo de reporte (fechas, una por vigencia, vigencias abiertas en el cierre), las reglas del seguimiento (dentro y fuera del periodo, sin periodo, uno por mes, proyecto en la meta, decimales), el formulario del modal (vigencias abiertas, errores con su mensaje, permisos) y las paginas del admin |
 | `test_reportes.py` | El indice y la pagina de cada reporte, los permisos (los roles solo ven el financiero), el Excel del Plan indicativo y de Proyectos programados contra la base (filas, encabezados, datos de una meta, filtros, la meta del proyecto exacta), que no haga una consulta por fila y que las vigencias del filtro no se repitan |
 | `test_admin_y_sistema.py` | Las paginas nuevas y **todas** las que ya existian, el menu lateral, `check`, que no queden migraciones sin crear, que las pruebas no toquen produccion ni `media/`, y el formulario de carga (vigencia obligatoria salvo en historial y SECOP II; el cruce POAI ya no se ofrece) |
 

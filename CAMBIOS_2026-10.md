@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-314 pruebas en trece modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+330 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -294,3 +294,19 @@ programa MGA, producto MGA, medido a traves de, indicador MGA y unidad de medida
 la descripcion del producto, las dependencias y los ODS. Una prueba nueva revisa que
 ningun comentario `{# #}` de las plantillas ocupe dos lineas: Django lo mostraria como
 texto, y ya habia pasado dos veces en la ficha.
+
+---
+
+## 14. Seguimiento de las metas (3 de noviembre)
+
+Modelo `SeguimientoMeta`: lo que un proyecto reporta en una meta por vigencia y mes, con
+valor de 5 decimales y observacion; uno por meta, proyecto, vigencia y mes. Y
+`PeriodoReporte`: la fecha de inicio y de fin del reporte de cada vigencia, contra la que
+el modelo valida la fecha del dia. Se reporta desde el modal del proyecto en la ficha de la
+meta (boton **Agregar seguimiento**), que solo ofrece las vigencias abiertas; tambien desde
+el admin. Migracion `0018_seguimiento_de_metas`. En la sqlite local quedaron configurados
+2025 (01/01/2025 a 15/02/2026, cerrado) y 2026 (01/01/2026 a 15/02/2027).
+
+Queda por decidir como se suman los meses para comparar con la meta de la vigencia (si cada
+mes es lo del mes o lo acumulado), que depende del tipo de acumulacion de la meta, y que
+roles reportan.
