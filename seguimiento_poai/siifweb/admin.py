@@ -1583,7 +1583,7 @@ class MetaIndicadorAdmin(ModelAdmin):
     list_fullwidth = True
     inlines = (VigenciaMetaInline,)
     list_sections = (ProyectosDeLaMeta,)
-    list_display = ("codigo", "ficha_link", "indicador", "programa_pdd", "meta_del_cuatrienio",
+    list_display = ("codigo", "ficha_link", "programa_pdd", "producto", "indicador", "meta_del_cuatrienio",
                     "meta_2024", "meta_2025", "meta_2026", "meta_2027")
     # De menor a mayor (MT001, MT002...). Va aqui y no en el Meta del modelo para no
     # tocar la migracion 0011, que se genero con el orden de SUTEC
@@ -1603,10 +1603,15 @@ class MetaIndicadorAdmin(ModelAdmin):
                    ("dependencias_responsables", RelatedDropdownFilter), "estado")
     list_filter_submit = True
     search_fields = ("codigo", "descripcion", "indicador_mga__codigo", "indicador_mga__descripcion")
-    list_select_related = ("indicador_mga", "programa_pdd", "programa_pdd__sector_pdd")
+    list_select_related = ("indicador_mga__producto_mga", "programa_pdd", "programa_pdd__sector_pdd")
     autocomplete_fields = ("indicador_mga", "programa_pdd", "indicadores_pdd",
                            "dependencias_responsables")
     filter_horizontal = ("ods",)
+
+    @display(description="Producto MGA", ordering="indicador_mga__producto_mga__codigo")
+    def producto(self, obj):
+        producto = obj.indicador_mga.producto_mga
+        return corto(f"{producto.codigo} - {producto.descripcion}", 80) if producto else "-"
 
     @display(description="Indicador MGA", ordering="indicador_mga__codigo")
     def indicador(self, obj):

@@ -468,7 +468,8 @@ programa, producto e indicador); los ODS; y las **436 metas** con sus **1.744 vi
   estan en el de 2025 y quedan sin estos datos. Seis productos no traen descripcion en el
   propio catalogo.
 
-**El listado de Metas** va de menor a mayor (MT001, MT002...), con la meta del cuatrienio
+**El listado de Metas** va de menor a mayor (MT001, MT002...), con el programa PDD, el
+producto y el indicador MGA, la meta del cuatrienio
 y la de cada vigencia (2024 a 2027, anotadas en la consulta y ordenables) en el formato de
 la ficha (1.500, no 1500,000). El estado ya no es columna; sigue como filtro. El orden esta en el admin
 y no en el `Meta` del modelo, para no tocar la `0011`. Cada meta tiene a la izquierda una

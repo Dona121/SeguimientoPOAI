@@ -110,6 +110,9 @@ class LasPaginas(Base):
         from django.contrib.admin.templatetags.admin_list import result_headers
         encabezados = [str(h["text"]) for h in result_headers(respuesta.context["cl"])]
         self.assertEqual(encabezados[-4:], ["Meta 2024", "Meta 2025", "Meta 2026", "Meta 2027"])
+        self.assertLess(encabezados.index("Programa PDD"), encabezados.index("Producto MGA"))
+        self.assertLess(encabezados.index("Producto MGA"), encabezados.index("Indicador MGA"))
+        self.assertContains(respuesta, "3301090 - ")      # el producto de MT175
         self.assertNotIn("Estado", encabezados)
         fila = respuesta.context["cl"].result_list.get(pk=meta.pk)
         self.assertEqual([fila.valor_2024, fila.valor_2025, fila.valor_2026, fila.valor_2027],
