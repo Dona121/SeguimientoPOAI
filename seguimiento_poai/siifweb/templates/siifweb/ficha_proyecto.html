@@ -543,9 +543,9 @@
                       data-siifweb-valor="${{ c.valor_contrato|default:0|floatformat:0|intcomma }}"
                       data-siifweb-pagado="${{ c.pagado|default:0|floatformat:0|intcomma }}"
                       data-siifweb-actas="{{ c.n_actas }}"
-                      data-siifweb-firma="{{ c.fecha_firma|date:'Y-m-d'|default:'—' }}"
-                      data-siifweb-inicio="{{ c.fecha_inicio|date:'Y-m-d'|default:'—' }}"
-                      data-siifweb-fin="{{ c.fecha_final|date:'Y-m-d'|default:'—' }}"
+                      data-siifweb-firma="{{ c.fecha_firma|date:'DATE_FORMAT'|default:'—' }}"
+                      data-siifweb-inicio="{{ c.fecha_inicio|date:'DATE_FORMAT'|default:'—' }}"
+                      data-siifweb-fin="{{ c.fecha_final|date:'DATE_FORMAT'|default:'—' }}"
                       data-siifweb-interventor="{{ c.interventor|default:'—' }}"
                       data-siifweb-dependencia="{{ c.dependencia.nombre|default:'—' }}"
                       data-siifweb-descripcion="{{ c.descripcion|default:'—' }}"
@@ -553,7 +553,7 @@
                 {{ c.tipo_contrato }} {{ c.nro_contrato }}</button>
             </td>
             <td class="px-4 py-2">{{ c.tercero.nombre|truncatechars:42 }}</td>
-            <td class="px-4 py-2 whitespace-nowrap">{{ c.fecha_firma|date:"Y-m-d" }}</td>
+            <td class="px-4 py-2">{{ c.fecha_firma|date:"DATE_FORMAT"|default:"—" }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ c.valor_contrato|default:0|floatformat:0|intcomma }}</td>
             <td class="px-4 py-2 text-right">{{ c.n_actas }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ c.pagado|default:0|floatformat:0|intcomma }}</td>

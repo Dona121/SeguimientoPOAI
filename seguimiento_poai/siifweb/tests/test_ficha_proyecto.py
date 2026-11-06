@@ -486,3 +486,14 @@ class FormatoDeFechas(FichaBase):
         self.assertIn(date_format(date(2025, 2, 1)), rps)
         self.assertIn(date_format(date(2025, 3, 1)), obligaciones)
         self.assertNotIn("2025-03-01", obligaciones)
+
+    def test_la_firma_del_contrato_de_siifweb_va_en_el_mismo_formato(self):
+        from datetime import date
+        from django.utils.formats import date_format
+        proy = proyecto()
+        _, rp, _ = cadena(proy)
+        contrato_siifweb(proy, compromiso=rp)   # firmado el 31/10/2025
+        html = self.html(self.client.get(self.url(proy, "siifweb")))
+        contratos = html[html.index("Contratos ("):html.index("Calendario de pagos")]
+        self.assertIn(date_format(date(2025, 10, 31)), contratos)
+        self.assertNotIn("2025-10-31", contratos)

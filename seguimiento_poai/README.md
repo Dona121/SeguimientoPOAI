@@ -322,7 +322,8 @@ Panel **SIIFWEB**:
   el que se causo, resuelto por subconsulta para no multiplicar filas. Saldo y pagado son
   `SALDO_OBLI` y `PAGOS` del mismo consolidado (valor = saldo + pagado en todas las filas);
   suman sobre la misma relacion que el valor, asi que comparten el join y no se multiplican.
-- Las fechas de CDPs, RPs y obligaciones van en el formato regional (`4 de Julio de 2025`).
+- Las fechas de CDPs, RPs, obligaciones y la firma de los contratos de SIIFWEB (en la tabla
+  y en su modal, con el inicio y el fin) van en el formato regional (`4 de Julio de 2025`).
 - **PDF y Excel por tabla**: cada titulo (CDPs, RPs, Obligaciones) tiene a la derecha un
   "Descargar Excel" y un "Descargar PDF" que bajan solo esa tabla, con el filtro de fechas
   que este aplicado. Ver la seccion siguiente.
@@ -802,7 +803,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-348 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+349 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
