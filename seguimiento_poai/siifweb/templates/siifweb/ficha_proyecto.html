@@ -308,7 +308,7 @@
           <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
       </div>
     </div>
-    <div class="overflow-auto" style="max-height:34rem">
+    <div class="overflow-auto" style="max-height:30rem">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
@@ -360,7 +360,7 @@
           <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
       </div>
     </div>
-    <div class="overflow-auto" style="max-height:34rem">
+    <div class="overflow-auto" style="max-height:30rem">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
@@ -415,7 +415,7 @@
           <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
       </div>
     </div>
-    <div class="overflow-auto" style="max-height:34rem">
+    <div class="overflow-auto" style="max-height:30rem">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
@@ -624,7 +624,24 @@
           {% for r in reservas %}
           <tr class="border-b dark:border-base-800">
             <td class="px-4 py-2 font-medium">{{ r.vigencia }}</td>
-            <td class="px-4 py-2 text-right font-mono">{{ r.nro_reserva }}</td>
+            <td class="px-4 py-2 text-right font-mono">
+              <button type="button" class="ver-detalle text-primary-600 font-medium"
+                      title="Ver CDP de origen, rubro y fuente"
+                      data-detalle
+                      data-tipo="reserva"
+                      data-titulo="Reserva {{ r.nro_reserva }}/{{ r.vigencia }}"
+                      data-reserva-beneficiario="{% if r.beneficiario %}{{ r.beneficiario.nombre|default:r.beneficiario.codigo }} ({{ r.beneficiario.codigo }}){% endif %}"
+                      data-reserva-fecha="{{ r.fecha_reserva|date:'DATE_FORMAT'|default:'—' }}"
+                      data-reserva-objeto="{{ r.objeto_reserva|default:'—' }}"
+                      data-reserva-acto="{{ r.acto_admon|default:'—' }}"
+                      data-reserva-definitivo="${{ r.definitivo|default:0|floatformat:0|intcomma }}"
+                      data-reserva-obligado="${{ r.obligado|default:0|floatformat:0|intcomma }}"
+                      data-reserva-pagado="${{ r.pagado|default:0|floatformat:0|intcomma }}"
+                      data-reserva-saldo="${{ r.saldo|default:0|floatformat:0|intcomma }}"
+                      data-reserva-lineas="{{ r.lineas_json }}"
+                      data-url-admin="{% url 'admin:siifweb_reserva_change' r.pk %}">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>{{ r.nro_reserva }}</button>
+            </td>
             <td class="px-4 py-2 text-right font-mono">{{ r.fecha_reserva }}</td>
             <td class="px-4 py-2">{{ r.beneficiario.nombre|default:"—"|truncatechars:38 }}</td>
             <td class="px-4 py-2">{{ r.objeto_reserva|default:"—"|truncatechars:90 }}</td>
@@ -682,6 +699,27 @@
       opacity: .75;
     }
     #modal-detalle .celda .dato { margin-top: .25rem; }
+    /* El boton de la reserva lleva un ojo: que se note que abre el detalle */
+    .ver-detalle { display: inline-flex; align-items: center; gap: .25rem; }
+    .ver-detalle .material-symbols-outlined { font-size: 1rem; line-height: 1; }
+    /* Las lineas de la reserva: encabezado sombreado, filas alternas y total al pie */
+    #modal-detalle .lineas { border: 1px solid rgba(0, 0, 0, .16); border-radius: .5rem; overflow-x: auto; }
+    .dark #modal-detalle .lineas { border-color: rgba(255, 255, 255, .14); }
+    #modal-detalle .lineas table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+    #modal-detalle .lineas th { background: rgba(0, 0, 0, .04); font-size: .6875rem; font-weight: 600;
+                                text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+                                padding: .5rem .75rem; text-align: left; }
+    #modal-detalle .lineas td { padding: .5rem .75rem; vertical-align: top;
+                                border-top: 1px solid rgba(0, 0, 0, .08); }
+    #modal-detalle .lineas tbody tr:nth-child(even) td { background: rgba(0, 0, 0, .02); }
+    #modal-detalle .lineas .num { text-align: right; white-space: nowrap;
+                                  font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
+    #modal-detalle .lineas .codigo { font-family: ui-monospace, monospace; white-space: nowrap; }
+    #modal-detalle .lineas .nombre { font-size: .75rem; opacity: .7; margin-top: .125rem; }
+    #modal-detalle .lineas tfoot td { font-weight: 600; border-top: 2px solid rgba(0, 0, 0, .16); }
+    .dark #modal-detalle .lineas th, .dark #modal-detalle .lineas tbody tr:nth-child(even) td {
+      background: rgba(255, 255, 255, .04); }
+    .dark #modal-detalle .lineas td { border-top-color: rgba(255, 255, 255, .08); }
 
     /* Ayuda al lado del titulo: se abre al pasar el mouse o al llegar con el tabulador.
        Solo lleva posicion y tamano; el fondo y el borde son las clases de la tarjeta,
@@ -741,7 +779,7 @@
   <div id="modal-detalle" class="fixed inset-0 z-50 hidden items-center justify-center p-4"
        role="dialog" aria-modal="true" aria-labelledby="modal-detalle-titulo">
     <div class="absolute inset-0" style="background:rgba(0,0,0,.5)" data-cerrar-detalle></div>
-    <div class="relative w-full bg-white border rounded-default shadow-lg overflow-y-auto
+    <div id="modal-detalle-panel" class="relative w-full bg-white border rounded-default shadow-lg overflow-y-auto
                 dark:bg-base-900 dark:border-base-800" style="max-width:52rem;max-height:85vh">
       <div class="flex items-start justify-between gap-4 border-b px-6 py-5 dark:border-base-800">
         <div style="min-width:0">
@@ -939,25 +977,83 @@
       ];
     }
 
+    // La reserva, con el CDP de origen, el rubro y la fuente de cada una de sus lineas
+    function detalleReserva(d) {
+      var lineas = JSON.parse(d.reservaLineas || "[]");
+      var caja = seccion("CDP de origen, rubro y fuente (" + lineas.length + ")");
+      var envoltura = nodo("div", "lineas");
+      var tabla = nodo("table", "");
+      var cabeza = nodo("tr", "");
+      [["CDP de origen", ""], ["Rubro", ""], ["Fuente", ""], ["Valor definitivo", "num"],
+       ["Obligaciones", "num"], ["Pagos", "num"], ["Saldo", "num"]].forEach(function (c) {
+        cabeza.appendChild(nodo("th", c[1], c[0]));
+      });
+      tabla.appendChild(nodo("thead", "")).appendChild(cabeza);
+      var cuerpoTabla = tabla.appendChild(nodo("tbody", ""));
+      lineas.forEach(function (l) {
+        var fila = nodo("tr", "");
+        fila.appendChild(nodo("td", "codigo", l.cdp));
+        // El codigo del rubro arriba y su nombre debajo, en pequeno
+        var rubro = nodo("td", "");
+        rubro.appendChild(nodo("div", "codigo", l.rubro));
+        rubro.appendChild(nodo("div", "nombre", l.rubro_nombre));
+        fila.appendChild(rubro);
+        fila.appendChild(nodo("td", "", l.fuente));
+        [l.definitivo, l.obligado, l.pagado, l.saldo].forEach(function (v) {
+          fila.appendChild(nodo("td", "num", v));
+        });
+        cuerpoTabla.appendChild(fila);
+      });
+      // Con varias lineas, su total: es lo mismo que muestra la cabecera del modal
+      if (lineas.length > 1) {
+        var total = nodo("tr", "");
+        total.appendChild(nodo("td", "", "Total"));
+        total.appendChild(nodo("td", "", ""));
+        total.appendChild(nodo("td", "", ""));
+        [d.reservaDefinitivo, d.reservaObligado, d.reservaPagado, d.reservaSaldo].forEach(function (v) {
+          total.appendChild(nodo("td", "num", (v || "").replace("$", "")));
+        });
+        tabla.appendChild(nodo("tfoot", "")).appendChild(total);
+      }
+      envoltura.appendChild(tabla);
+      caja.appendChild(envoltura);
+      return [
+        cabecera(["Valor reserva definitivo", d.reservaDefinitivo],
+                 [["Obligaciones", d.reservaObligado], ["Pagos", d.reservaPagado],
+                  ["Saldo reserva", d.reservaSaldo]],
+                 [["Fecha de la reserva", d.reservaFecha]]),
+        parrafo("Objeto", d.reservaObjeto),
+        campos([["Acto administrativo", d.reservaActo]]),
+        separador(),
+        caja,
+      ];
+    }
+
+    var ORIGEN = {siifweb: "Contrato de SIIFWEB", reserva: "Reserva"};
+
     function abrir(boton) {
       var d = boton.dataset;
       var esSiifweb = d.tipo === "siifweb";
+      var esReserva = d.tipo === "reserva";
 
-      fuente.textContent = esSiifweb ? "Contrato de SIIFWEB" : "Contratacion SECOP II";
+      fuente.textContent = ORIGEN[d.tipo] || "Contratacion SECOP II";
       titulo.textContent = d.titulo || "";
-      subtitulo.textContent = (esSiifweb ? d.siifwebContratista : d.contratoProveedor) || "";
+      subtitulo.textContent = (esReserva ? d.reservaBeneficiario
+                               : esSiifweb ? d.siifwebContratista : d.contratoProveedor) || "";
       chip.innerHTML = "";
-      var marca = insignia(esSiifweb ? "" : (hay(d.contratoId) ? d.contratoEstado : d.procesoEstado));
+      var marca = insignia(esSiifweb || esReserva ? "" : (hay(d.contratoId) ? d.contratoEstado : d.procesoEstado));
       if (marca) { chip.appendChild(marca); }
 
+      // La reserva trae una tabla de siete columnas: el panel se abre mas ancho
+      document.getElementById("modal-detalle-panel").style.maxWidth = esReserva ? "68rem" : "52rem";
       cuerpo.innerHTML = "";
       acciones.innerHTML = "";
-      (esSiifweb ? detalleSiifweb(d) : detalleSecop(d)).forEach(function (parte) {
+      (esReserva ? detalleReserva(d) : esSiifweb ? detalleSiifweb(d) : detalleSecop(d)).forEach(function (parte) {
         if (parte) { cuerpo.appendChild(parte); }
       });
 
       if (hay(d.urlSecop)) { acciones.appendChild(enlace("Ver el proceso en SECOP II", d.urlSecop, true)); }
-      if (hay(d.urlAdmin)) { acciones.appendChild(enlace("Abrir el contrato", d.urlAdmin)); }
+      if (hay(d.urlAdmin)) { acciones.appendChild(enlace(esReserva ? "Abrir la reserva" : "Abrir el contrato", d.urlAdmin)); }
       if (hay(d.urlProcesoAdmin)) { acciones.appendChild(enlace("Abrir el proceso", d.urlProcesoAdmin)); }
 
       modal.classList.remove("hidden");

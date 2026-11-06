@@ -312,8 +312,8 @@ Panel **SIIFWEB**:
   ofrece los centros que tienen CDPs, RPs u obligaciones del proyecto; un centro ajeno o
   un valor invalido no filtra. Las descargas lo respetan y el PDF y el Excel lo anotan en
   su encabezado.
-- Las tablas de CDPs, RPs, obligaciones y reservas llegan a 34rem de alto antes de hacer
-  scroll; las demas, a 26rem.
+- Las tablas de CDPs, RPs y obligaciones llegan a 30rem de alto antes de hacer scroll, la
+  de reservas a 34rem y las demas a 26rem.
 - CDPs y RPs del proyecto, con su **centro de costo**, su objeto y su valor.
 - **Obligaciones**: vigencia, numero, fecha, centro de costo, beneficiario, NIT, objeto, tipo de orden de
   gasto, valor definitivo, **saldo** y **pagado**. El objeto sale de `OBJETO_OBLIG` (el
@@ -333,7 +333,9 @@ Panel **SIIFWEB**:
 - **Reservas**, en una tabla a todo el ancho: vigencia, numero, fecha, beneficiario, objeto,
   acto administrativo, y el valor definitivo, las obligaciones, los pagos y el saldo de la
   reserva sumados por reserva (solo lo de este proyecto), con fila de total. El calendario
-  de pagos, que compartia la fila con ellas, queda a todo el ancho.
+  de pagos, que compartia la fila con ellas, queda a todo el ancho. El numero de cada
+  reserva (con un ojo que avisa que hay detalle) abre un modal con sus lineas: CDP de
+  origen, rubro (codigo y nombre), fuente y los cuatro valores, con su total.
 
 Panel **SECOP II**: procesos en tramite y contratos electronicos del BPIN (ver la seccion
 de SECOP II). Cada fila abre un modal con el detalle, para no sacar al usuario de la ficha.
@@ -803,7 +805,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-349 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+350 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

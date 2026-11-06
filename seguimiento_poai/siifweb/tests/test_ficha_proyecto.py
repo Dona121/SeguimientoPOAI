@@ -341,6 +341,25 @@ class TablaDeReservas(FichaBase):
             with self.subTest(texto=texto):
                 self.assertIn(texto, tabla)
 
+    def test_el_numero_abre_el_modal_con_cdp_rubro_y_fuente(self):
+        import json
+        from html import unescape
+        import re
+        respuesta = self.client.get(self.url(self.proy, "siifweb"))
+        reserva = respuesta.context["reservas"][0]
+        lineas = json.loads(reserva.lineas_json)
+        self.assertEqual(len(lineas), 2)   # la del otro proyecto no entra
+        self.assertEqual({l["cdp"] for l in lineas}, {"1/2024"})
+        self.assertEqual(sorted(l["definitivo"] for l in lineas), ["1.000.000", "400.000"])
+        self.assertTrue(all(l["rubro"] and l["rubro_nombre"] and l["fuente"] for l in lineas))
+        # El atributo va escapado en el HTML: se busca asi y se desescapa su valor
+        boton = re.search(r'<button[^>]*data-tipo="reserva"[^>]*>', self.html(respuesta), re.S).group(0)
+        self.assertIn('data-titulo="Reserva 12/2025"', boton)
+        self.assertIn('class="ver-detalle', boton)   # el ojo avisa que hay detalle
+        self.assertIn(reverse("admin:siifweb_reserva_change", args=(reserva.pk,)), boton)
+        valor = re.search(r'data-reserva-lineas="([^"]*)"', boton).group(1)
+        self.assertEqual(json.loads(unescape(valor)), lineas)
+
     def test_sin_reservas_lo_dice(self):
         html = self.html(self.client.get(self.url(proyecto(bpin="202500000000003"), "siifweb")))
         self.assertIn("Este proyecto no dejo reservas.", html)
@@ -397,9 +416,10 @@ class Plantilla(FichaBase):
         secop = self.html(self.client.get(self.url(self.proy, "secop")))
         siifweb = self.html(self.client.get(self.url(self.proy, "siifweb")))
         self.assertEqual(secop.count('style="max-height:26rem"'), 2)
-        # CDPs, RPs, obligaciones y reservas son un poco mas altas que las demas
+        # CDPs, RPs y obligaciones, y mas aun las reservas, son mas altas que las demas
         self.assertEqual(siifweb.count('style="max-height:26rem"'), 1)
-        self.assertEqual(siifweb.count('style="max-height:34rem"'), 4)
+        self.assertEqual(siifweb.count('style="max-height:30rem"'), 3)
+        self.assertEqual(siifweb.count('style="max-height:34rem"'), 1)
         self.assertEqual(secop.count("position:sticky;top:0"), 2)
         self.assertEqual(siifweb.count("position:sticky;top:0"), 5)
 
