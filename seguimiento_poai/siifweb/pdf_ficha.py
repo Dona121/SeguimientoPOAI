@@ -251,6 +251,8 @@ def generar_excel(proyecto, desde, hasta, documentos, tabla):
 
     titulo, criterio, filas_de, _, _ = TABLAS[tabla]
     grupo = f"{titulo} · BPIN {proyecto.bpin} · {periodo(desde, hasta)}, por {criterio}"
+    if documentos.get("centro_costo"):
+        grupo += f" · Centro de costo: {documentos['centro_costo'].nombre}"
     columnas = [(clave, titulo_col, tipo, grupo) for clave, titulo_col, _, tipo in COLUMNAS[tabla]]
 
     def valor(v, tipo):
@@ -285,6 +287,11 @@ def generar(proyecto, desde, hasta, documentos, tabla):
     historia += [
         Paragraph(f"<b>Dependencia responsable:</b> {_texto(responsable)}", DATO),
         Paragraph(f"<b>Periodo:</b> {periodo(desde, hasta)}, por {criterio}.", DATO),
+    ]
+    if documentos.get("centro_costo"):
+        historia.append(Paragraph(
+            f"<b>Centro de costo:</b> {_texto(documentos['centro_costo'].nombre)}", DATO))
+    historia += [
         Paragraph(f"Generado el {date_format(timezone.localtime(), 'DATETIME_FORMAT')}", DATO),
         Spacer(1, 4),
     ]

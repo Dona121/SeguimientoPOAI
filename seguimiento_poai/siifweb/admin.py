@@ -739,13 +739,23 @@ class ProyectoAdmin(ModelAdmin):
             return TemplateResponse(request, "siifweb/ficha_proyecto.html",
                                     {**comun, **self._ficha_secop(proyecto)})
 
-        # Filtro de fechas: recorta las tablas de CDPs, RPs y obligaciones, en la
-        # pantalla y en el PDF y el Excel de cada una (?descargar=pdf|xlsx&tabla=...),
-        # que salen de las mismas consultas
+        # Filtro de fechas y de centro de costo: recorta las tablas de CDPs, RPs y
+        # obligaciones, en la pantalla y en el PDF y el Excel de cada una
+        # (?descargar=pdf|xlsx&tabla=...), que salen de las mismas consultas
         from . import pdf_ficha
         desde = fecha_del_get(request, "desde")
         hasta = fecha_del_get(request, "hasta")
-        documentos = self._documentos_filtrados(proyecto, desde, hasta)
+        # Solo los centros de costo que tienen documentos del proyecto. Por subconsultas de
+        # ids: un OR sobre las tres relaciones las cruzaria y multiplicaria las filas
+        centros = CentroCosto.objects.filter(
+            Q(pk__in=Cdp.objects.filter(cdps_imputados__proyecto=proyecto).values("centro_costo"))
+            | Q(pk__in=Compromiso.objects.filter(compromisos_imputados__proyecto=proyecto)
+                .values("centro_costo"))
+            | Q(pk__in=Obligacion.objects.filter(obligaciones_imputadas__proyecto=proyecto)
+                .values("centro_costo"))).order_by("nombre")
+        valor = request.GET.get("centro", "")
+        centro = centros.filter(pk=valor).first() if valor.isdigit() else None
+        documentos = self._documentos_filtrados(proyecto, desde, hasta, centro)
         formatos = {
             "pdf": (pdf_ficha.generar, "application/pdf"),
             "xlsx": (pdf_ficha.generar_excel,
@@ -764,7 +774,8 @@ class ProyectoAdmin(ModelAdmin):
             return respuesta
 
         # Los enlaces de descarga de cada tabla llevan el filtro que esta aplicado
-        filtro = {k: v for k, v in (("desde", desde), ("hasta", hasta)) if v}
+        filtro = {k: v for k, v in (("desde", desde), ("hasta", hasta),
+                                    ("centro", centro.pk if centro else None)) if v}
         enlaces_pdf, enlaces_excel = (
             {tabla: "?" + urlencode({"panel": "siifweb", **filtro, "tabla": tabla, "descargar": formato})
              for tabla in pdf_ficha.TABLAS}
@@ -852,6 +863,8 @@ class ProyectoAdmin(ModelAdmin):
             ],
             "desde": desde.isoformat() if desde else "",
             "hasta": hasta.isoformat() if hasta else "",
+            "centros": centros,
+            "centro": centro,
             "enlaces_pdf": enlaces_pdf,
             "enlaces_excel": enlaces_excel,
             "fuentes_por_proyecto":fuentes_por_proyecto,
@@ -864,11 +877,12 @@ class ProyectoAdmin(ModelAdmin):
         }
         return TemplateResponse(request, "siifweb/ficha_proyecto.html", contexto)
 
-    def _documentos_filtrados(self, proyecto, desde, hasta):
-        """CDPs, RPs y obligaciones del proyecto, recortados por el filtro de fechas.
+    def _documentos_filtrados(self, proyecto, desde, hasta, centro=None):
+        """CDPs, RPs y obligaciones del proyecto, recortados por el filtro de fechas y,
+        si se elige, por el centro de costo del documento.
 
-        Lo usan la ficha y su PDF, para que el reporte sea exactamente lo que se ve en
-        pantalla. Cada tabla se corta por su propia fecha (disponibilidad, registro,
+        Lo usan la ficha y sus descargas, para que el reporte sea exactamente lo que se ve
+        en pantalla. Cada tabla se corta por su propia fecha (disponibilidad, registro,
         obligacion); las tarjetas y la cadena por vigencia no pasan por aqui.
         """
         def en_rango(qs, campo):
@@ -876,6 +890,11 @@ class ProyectoAdmin(ModelAdmin):
                 qs = qs.filter(**{f"{campo}__gte": desde})
             if hasta:
                 qs = qs.filter(**{f"{campo}__lte": hasta})
+            if centro:
+                # El centro de costo es del documento, igual que la fecha: "cdp__fecha_disp"
+                # da "cdp__centro_costo"
+                documento = campo.rpartition("__")[0]
+                qs = qs.filter(**{f"{documento}__centro_costo" if documento else "centro_costo": centro})
             return qs
 
         cdps_proyecto = (
@@ -933,6 +952,7 @@ class ProyectoAdmin(ModelAdmin):
                                 .aggregate(t=Sum("valor_obligacion"), s=Sum("saldo_obli"),
                                            p=Sum("pagos")))
         return {
+            "centro_costo": centro,
             "cdps_proyecto": cdps_proyecto,
             "cdps_proyecto_total": cdps_proyecto_total,
             "rps_por_proyecto": rps_por_proyecto,

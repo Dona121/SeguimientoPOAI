@@ -267,7 +267,7 @@
     </div>
     </div>
 
-    {# Recorta solo las tres tablas de abajo, cada una por su propia fecha #}
+    {# Recorta solo las tres tablas de abajo, cada una por su propia fecha y por el centro de costo del documento #}
     <form method="get" id="filtro-fechas"
           class="bg-white border rounded-default shadow-xs px-4 py-3 flex items-end gap-3 flex-wrap
                  dark:bg-base-900 dark:border-base-800">
@@ -280,10 +280,17 @@
         <label class="lbl" for="ficha-hasta">Hasta</label>
         <input type="date" name="hasta" id="ficha-hasta" class="in" value="{{ hasta }}">
       </div>
+      <div>
+        <label class="lbl" for="ficha-centro">Centro de costo</label>
+        <select name="centro" id="ficha-centro" class="in">
+          <option value="">Todos</option>
+          {% for c in centros %}<option value="{{ c.pk }}"{% if c == centro %} selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+        </select>
+      </div>
       <button type="submit" class="btn-verde">
         <span class="material-symbols-outlined">filter_alt</span> Filtrar
       </button>
-      {% if desde or hasta %}
+      {% if desde or hasta or centro %}
       <a href="?panel=siifweb" class="nota font-medium text-base-500">Limpiar</a>
       {% endif %}
       <span class="nota text-base-400">CDPs por fecha de disponibilidad, RPs por fecha de
@@ -301,7 +308,7 @@
           <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
       </div>
     </div>
-    <div class="overflow-auto" style="max-height:26rem">
+    <div class="overflow-auto" style="max-height:34rem">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
@@ -353,7 +360,7 @@
           <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
       </div>
     </div>
-    <div class="overflow-auto" style="max-height:26rem">
+    <div class="overflow-auto" style="max-height:34rem">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>
@@ -408,7 +415,7 @@
           <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
       </div>
     </div>
-    <div class="overflow-auto" style="max-height:26rem">
+    <div class="overflow-auto" style="max-height:34rem">
       <table class="w-full text-sm">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr>

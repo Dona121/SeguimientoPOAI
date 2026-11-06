@@ -307,6 +307,13 @@ Panel **SIIFWEB**:
   vigencia y las demas secciones no se filtran: siguen mostrando todo el proyecto. El
   filtro queda en la URL (`?desde=...&hasta=...`), asi que la ficha filtrada se comparte
   con el enlace.
+- **Filtro de centro de costo**, despues de las fechas: recorta las mismas tres tablas por
+  el centro de costo del documento (`?centro=<id>`), y se combina con las fechas. Solo
+  ofrece los centros que tienen CDPs, RPs u obligaciones del proyecto; un centro ajeno o
+  un valor invalido no filtra. Las descargas lo respetan y el PDF y el Excel lo anotan en
+  su encabezado.
+- Las tablas de CDPs, RPs y obligaciones llegan a 34rem de alto antes de hacer scroll; las
+  demas, a 26rem.
 - CDPs y RPs del proyecto, con su **centro de costo**, su objeto y su valor.
 - **Obligaciones**: vigencia, numero, fecha, centro de costo, beneficiario, NIT, objeto, tipo de orden de
   gasto, valor definitivo, **saldo** y **pagado**. El objeto sale de `OBJETO_OBLIG` (el
@@ -792,7 +799,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-340 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+345 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

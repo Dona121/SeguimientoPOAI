@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-340 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+345 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -324,3 +324,7 @@ PDF** de cada tabla hay un **Descargar Excel** con las mismas columnas y el mism
 fechas (`?descargar=xlsx`). Las columnas se definen una sola vez en `pdf_ficha.COLUMNAS`,
 de donde salen los dos formatos. En el PDF de obligaciones se redistribuyeron los anchos
 para dar lugar a la columna nueva.
+
+Despues, en el mismo dia: un **filtro de centro de costo** junto al de fechas (`?centro=`),
+que recorta las tres tablas y sus descargas y solo ofrece los centros con documentos del
+proyecto; y las tres tablas pasan de 26rem a 34rem de alto.

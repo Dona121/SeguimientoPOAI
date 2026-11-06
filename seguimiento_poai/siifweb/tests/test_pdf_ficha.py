@@ -162,6 +162,70 @@ class ExcelPorTabla(Base):
         self.assertEqual(self.excel("cdps").status_code, 403)
 
 
+class FiltroDeCentroDeCosto(Base):
+    """Dos cadenas del proyecto, cada una en su centro de costo."""
+
+    def setUp(self):
+        super().setUp()
+        from siifweb.models import CentroCosto, Compromiso, Obligacion
+        self.salud = CentroCosto.objects.create(codigo="3", nombre="Salud")
+        cdp, rp, obligacion = cadena(self.proy, nro="2")
+        for documento in (cdp, rp, obligacion):
+            documento.centro_costo = self.salud
+            documento.save()
+        self.infra = Cdp.objects.get(nro_cdp="1").centro_costo
+        # Un centro sin documentos del proyecto no se ofrece
+        CentroCosto.objects.create(codigo="7", nombre="Educacion")
+
+    def ficha(self, **parametros):
+        return self.client.get(self.url, {"panel": "siifweb", **parametros})
+
+    def test_ofrece_solo_los_centros_con_documentos_del_proyecto(self):
+        respuesta = self.ficha()
+        self.assertEqual(list(respuesta.context["centros"]), [self.infra, self.salud])
+        html = unescape(respuesta.content.decode())
+        inicio = html.index('id="filtro-fechas"')
+        filtro = html[inicio:html.index("</form>", inicio)]
+        self.assertLess(filtro.index('name="hasta"'), filtro.index('name="centro"'))
+        self.assertNotIn("Educacion", filtro)
+
+    def test_recorta_las_tres_tablas(self):
+        contexto = self.ficha(centro=self.salud.pk).context
+        for llave in ("cdps_proyecto", "rps_por_proyecto", "obligaciones_por_proyecto"):
+            with self.subTest(tabla=llave):
+                self.assertEqual({d.centro_costo for d in contexto[llave]}, {self.salud})
+        self.assertEqual(contexto["cdps_proyecto_total"], 10000000)
+        self.assertEqual(contexto["obligaciones_por_proyecto_pagado"], 5000000)
+        sin_filtro = self.ficha().context
+        self.assertEqual(sin_filtro["cdps_proyecto_total"], 20000000)
+
+    def test_se_combina_con_las_fechas(self):
+        contexto = self.ficha(centro=self.salud.pk, desde="2025-01-20", hasta="2025-02-15").context
+        self.assertEqual(len(contexto["cdps_proyecto"]), 0)
+        self.assertEqual([r.nro_rp for r in contexto["rps_por_proyecto"]], ["2"])
+
+    def test_un_centro_ajeno_o_invalido_no_filtra(self):
+        from siifweb.models import CentroCosto
+        ajeno = CentroCosto.objects.get(nombre="Educacion")
+        for valor in (ajeno.pk, "abc"):
+            with self.subTest(valor=valor):
+                contexto = self.ficha(centro=valor).context
+                self.assertIsNone(contexto["centro"])
+                self.assertEqual(len(contexto["cdps_proyecto"]), 2)
+
+    def test_las_descargas_llevan_el_centro(self):
+        html = unescape(self.ficha(centro=self.salud.pk).content.decode())
+        self.assertIn(f"centro={self.salud.pk}&tabla=rps&descargar=pdf", html)
+        self.assertIn(f"centro={self.salud.pk}&tabla=rps&descargar=xlsx", html)
+        texto = self.texto_del_pdf("obligaciones", centro=self.salud.pk)
+        self.assertIn("Centro de costo:", texto)
+        respuesta = self.client.get(self.url, {"panel": "siifweb", "descargar": "xlsx",
+                                               "tabla": "cdps", "centro": self.salud.pk})
+        hoja = load_workbook(BytesIO(respuesta.content)).active
+        self.assertEqual(hoja.max_row, 3)
+        self.assertIn("Centro de costo: Salud", hoja["A1"].value)
+
+
 class EnlacesEnLaFicha(Base):
     def html(self, **parametros):
         return unescape(self.client.get(self.url, {"panel": "siifweb", **parametros})

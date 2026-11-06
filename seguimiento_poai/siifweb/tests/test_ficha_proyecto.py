@@ -346,7 +346,9 @@ class Plantilla(FichaBase):
         secop = self.html(self.client.get(self.url(self.proy, "secop")))
         siifweb = self.html(self.client.get(self.url(self.proy, "siifweb")))
         self.assertEqual(secop.count('style="max-height:26rem"'), 2)
-        self.assertEqual(siifweb.count('style="max-height:26rem"'), 4)
+        # CDPs, RPs y obligaciones son un poco mas altas que las demas
+        self.assertEqual(siifweb.count('style="max-height:26rem"'), 1)
+        self.assertEqual(siifweb.count('style="max-height:34rem"'), 3)
         self.assertEqual(secop.count("position:sticky;top:0"), 2)
         self.assertEqual(siifweb.count("position:sticky;top:0"), 4)
 
