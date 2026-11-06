@@ -2,11 +2,13 @@
 """El PDF de cada tabla de la ficha (CDPs, RPs u obligaciones), con el filtro de fechas aplicado."""
 from datetime import date
 from html import unescape
+from io import BytesIO
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from openpyxl import load_workbook
 from reportlab import rl_config
 
 from siifweb import pdf_ficha
@@ -65,6 +67,13 @@ class PdfPorTabla(Base):
                 self.assertIn(esperado, obligaciones)
         self.assertNotIn("Objeto del CDP", obligaciones)
 
+    def test_cada_pdf_trae_el_centro_de_costo(self):
+        for tabla in ("cdps", "rps", "obligaciones"):
+            with self.subTest(tabla=tabla):
+                texto = self.texto_del_pdf(tabla)
+                self.assertIn("Centro de costo", texto)
+                self.assertIn("Infraestructura", texto)
+
     def test_respeta_el_filtro_de_fechas(self):
         with mock.patch.object(pdf_ficha, "generar", return_value=b"%PDF-") as generar:
             self.pdf("rps", desde="2025-01-20", hasta="2025-02-15")
@@ -101,6 +110,58 @@ class PdfPorTabla(Base):
         self.assertEqual(self.pdf("cdps").status_code, 403)
 
 
+class ExcelPorTabla(Base):
+    def excel(self, tabla, **parametros):
+        return self.client.get(self.url, {"panel": "siifweb", "descargar": "xlsx",
+                                          "tabla": tabla, **parametros})
+
+    def hoja(self, tabla, **parametros):
+        respuesta = self.excel(tabla, **parametros)
+        self.assertEqual(respuesta.status_code, 200)
+        return load_workbook(BytesIO(respuesta.content)).active
+
+    def test_cada_tabla_descarga_su_propio_excel(self):
+        for tabla in ("cdps", "rps", "obligaciones"):
+            with self.subTest(tabla=tabla):
+                respuesta = self.excel(tabla)
+                self.assertEqual(respuesta["Content-Type"],
+                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                self.assertIn(f'filename="{tabla}_{self.proy.bpin}_', respuesta["Content-Disposition"])
+                self.assertTrue(respuesta["Content-Disposition"].endswith('.xlsx"'))
+
+    def test_trae_las_mismas_columnas_que_el_pdf(self):
+        for tabla, columnas in pdf_ficha.COLUMNAS.items():
+            with self.subTest(tabla=tabla):
+                encabezado = [c.value for c in self.hoja(tabla)[2]]
+                self.assertEqual(encabezado, [titulo for _, titulo, _, _ in columnas])
+                self.assertIn("Centro de costo", encabezado)
+
+    def test_los_valores_llegan_como_numeros_y_fechas(self):
+        hoja = self.hoja("obligaciones")
+        fila = dict(zip([c.value for c in hoja[2]], [c.value for c in hoja[3]]))
+        self.assertEqual(fila["Vigencia"], 2025)
+        self.assertEqual(fila["Número"], 1)
+        self.assertEqual(fila["Fecha obligación"].date(), date(2025, 3, 1))
+        self.assertEqual(fila["Centro de costo"], "Infraestructura")
+        self.assertEqual((fila["Valor obligación definitiva"], fila["Saldo"], fila["Pagado"]),
+                         (10000000, 5000000, 5000000))
+        self.assertEqual(fila["Objeto"], "Objeto de la obligacion")
+
+    def test_respeta_el_filtro_de_fechas(self):
+        self.assertEqual(self.hoja("rps", desde="2025-01-20", hasta="2025-02-15").max_row, 3)
+        hoja = self.hoja("obligaciones", desde="2025-01-20", hasta="2025-02-15")
+        self.assertEqual(hoja.max_row, 2)
+        self.assertIn("Del 20", hoja["A1"].value)
+
+    def test_una_tabla_desconocida_da_404(self):
+        self.assertEqual(self.excel("contratos").status_code, 404)
+
+    def test_quien_no_ve_proyectos_no_descarga_el_excel(self):
+        otro = get_user_model().objects.create_user("sinrol", "s@b.co", "clave", is_staff=True)
+        self.client.force_login(otro)
+        self.assertEqual(self.excel("cdps").status_code, 403)
+
+
 class EnlacesEnLaFicha(Base):
     def html(self, **parametros):
         return unescape(self.client.get(self.url, {"panel": "siifweb", **parametros})
@@ -112,10 +173,12 @@ class EnlacesEnLaFicha(Base):
             with self.subTest(tabla=tabla):
                 cabecera = html[html.index(marca):html.index("</div>", html.index(marca))]
                 self.assertIn(f"tabla={tabla}&descargar=pdf", cabecera)
+                self.assertIn(f"tabla={tabla}&descargar=xlsx", cabecera)
 
     def test_el_enlace_lleva_el_filtro_aplicado(self):
         html = self.html(desde="2025-01-20", hasta="2025-02-15")
         self.assertIn("?panel=siifweb&desde=2025-01-20&hasta=2025-02-15&tabla=rps&descargar=pdf", html)
+        self.assertIn("?panel=siifweb&desde=2025-01-20&hasta=2025-02-15&tabla=rps&descargar=xlsx", html)
 
     def test_el_formulario_del_filtro_ya_no_descarga(self):
         html = self.html()

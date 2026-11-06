@@ -294,8 +294,12 @@
     <div class="titulo-tabla border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">CDPs ({{ cdps_proyecto|length }})
         {% include "siifweb/_ayuda.html" with etiqueta="Que es un CDP" texto="El certificado de disponibilidad presupuestal aparta el cupo antes de contratar: certifica que hay plata para ese gasto. Todavía no hay contratista ni compromiso, y lo que no se use se libera al cierre." %}</h2>
-      <a href="{{ enlaces_pdf.cdps }}" class="btn-pdf">
-        <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
+      <div class="descargas">
+        <a href="{{ enlaces_excel.cdps }}" class="btn-pdf">
+          <span class="material-symbols-outlined">table_view</span> Descargar Excel</a>
+        <a href="{{ enlaces_pdf.cdps }}" class="btn-pdf">
+          <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
+      </div>
     </div>
     <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
@@ -304,6 +308,7 @@
             <th class="px-4 py-2 text-left">Vigencia</th>
             <th class="px-4 py-2 text-right">Número CDP</th>
             <th class="px-4 py-2 text-right">Fecha disponibilidad</th>
+            <th class="px-4 py-2 text-left">Centro de costo</th>
             <th class="px-4 py-2 text-right">Objeto</th>
             <th class="px-4 py-2 text-right">Valor disponibilidad definitiva</th>
           </tr>
@@ -314,6 +319,7 @@
             <td class="px-4 py-2 font-medium">{{ f.vigencia }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.nro_cdp }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.fecha_disp }}</td>
+            <td class="px-4 py-2">{{ f.centro_costo.nombre }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.objeto_cert }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.valor_cdp|default:0|floatformat:0|intcomma }}</td>
           </tr>
@@ -327,6 +333,7 @@
             <td class="px-4 py-2 text-right font-mono"></td>
             <td class="px-4 py-2 text-right font-mono"></td>
             <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2"></td>
             <td class="px-4 py-2 text-right font-mono">{{ cdps_proyecto_total|floatformat:0|intcomma }}</td>
             <td></td>
           </tr>
@@ -339,8 +346,12 @@
     <div class="titulo-tabla border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">RPs ({{ rps_por_proyecto|length }})
         {% include "siifweb/_ayuda.html" with etiqueta="Que es un RP" texto="El registro presupuestal compromete el cupo del CDP con un contratista concreto, al momento de firmar. De ahí en adelante esa plata ya tiene dueño y solo se puede usar para ese contrato." %}</h2>
-      <a href="{{ enlaces_pdf.rps }}" class="btn-pdf">
-        <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
+      <div class="descargas">
+        <a href="{{ enlaces_excel.rps }}" class="btn-pdf">
+          <span class="material-symbols-outlined">table_view</span> Descargar Excel</a>
+        <a href="{{ enlaces_pdf.rps }}" class="btn-pdf">
+          <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
+      </div>
     </div>
     <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
@@ -349,6 +360,7 @@
             <th class="px-4 py-2 text-left">Vigencia</th>
             <th class="px-4 py-2 text-right">Número RP</th>
             <th class="px-4 py-2 text-right">Fecha registro</th>
+            <th class="px-4 py-2 text-left">Centro de costo</th>
             <th class="px-4 py-2 text-right">Acto administrativo</th>
             <th class="px-4 py-2 text-right">Objeto registro</th>
             <th class="px-4 py-2 text-right">Valor comprometido definitivo</th>
@@ -360,6 +372,7 @@
             <td class="px-4 py-2 font-medium">{{ f.vigencia }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.nro_rp }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.fecha_reg }}</td>
+            <td class="px-4 py-2">{{ f.centro_costo.nombre }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.acto_admon }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.objeto_reg }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.valor_rp|default:0|floatformat:0|intcomma }}</td>
@@ -375,6 +388,7 @@
             <td class="px-4 py-2 text-right font-mono"></td>
             <td class="px-4 py-2 text-right font-mono"></td>
             <td class="px-4 py-2 text-right font-mono"></td>
+            <td class="px-4 py-2"></td>
             <td class="px-4 py-2 text-right font-mono">{{ rps_por_proyecto_total|floatformat:0|intcomma }}</td>
             <td></td>
           </tr>
@@ -387,8 +401,12 @@
     <div class="titulo-tabla border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Obligaciones ({{ obligaciones_por_proyecto|length }})
         {% include "siifweb/_ayuda.html" with etiqueta="Que es una obligacion" texto="La obligación reconoce que lo contratado ya se recibió a satisfacción: es la cuenta por pagar del contratista, el paso previo al giro. Se causa contra un RP, y el valor definitivo es el que quedó tras las modificaciones." %}</h2>
-      <a href="{{ enlaces_pdf.obligaciones }}" class="btn-pdf">
-        <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
+      <div class="descargas">
+        <a href="{{ enlaces_excel.obligaciones }}" class="btn-pdf">
+          <span class="material-symbols-outlined">table_view</span> Descargar Excel</a>
+        <a href="{{ enlaces_pdf.obligaciones }}" class="btn-pdf">
+          <span class="material-symbols-outlined">picture_as_pdf</span> Descargar PDF</a>
+      </div>
     </div>
     <div class="overflow-auto" style="max-height:26rem">
       <table class="w-full text-sm">
@@ -397,6 +415,7 @@
             <th class="px-4 py-2 text-left">Vigencia</th>
             <th class="px-4 py-2 text-right">Número obligación</th>
             <th class="px-4 py-2 text-right">Fecha obligación</th>
+            <th class="px-4 py-2 text-left">Centro de costo</th>
             <th class="px-4 py-2 text-left">Beneficiario</th>
             <th class="px-4 py-2 text-right">NIT</th>
             <th class="px-4 py-2 text-left">Objeto</th>
@@ -412,6 +431,7 @@
             <td class="px-4 py-2 font-medium">{{ o.vigencia }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ o.nro_obligacion }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ o.fecha_obli }}</td>
+            <td class="px-4 py-2">{{ o.centro_costo.nombre }}</td>
             <td class="px-4 py-2">{{ o.beneficiario.nombre|default:"—"|truncatechars:38 }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ o.beneficiario.codigo|default:"—" }}</td>
             {# El objeto propio manda; el del RP es el respaldo de las cargas viejas #}
@@ -422,13 +442,14 @@
             <td class="px-4 py-2 text-right font-mono">{{ o.pagado_obli|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="10" class="px-4 py-5 text-center text-base-500">
+          <tr><td colspan="11" class="px-4 py-5 text-center text-base-500">
             Sin obligaciones causadas</td></tr>
           {% endfor %}
         </tbody>
         <tfoot class="font-medium">
           <tr>
             <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2"></td>
             <td class="px-4 py-2"></td>
             <td class="px-4 py-2"></td>
             <td class="px-4 py-2"></td>
@@ -668,7 +689,7 @@
                                 background: var(--color-primary-600); color: #fff; }
     #filtro-fechas .btn-verde:hover { background: var(--color-primary-700); }
     #filtro-fechas .material-symbols-outlined { font-size: 1.05rem; line-height: 1; }
-    /* Descarga en PDF de cada tabla, a la derecha de su titulo; lleva el filtro aplicado */
+    /* Descarga en Excel y PDF de cada tabla, a la derecha de su titulo; lleva el filtro aplicado */
     .titulo-tabla { display: flex; align-items: center; justify-content: space-between;
                     gap: .75rem; flex-wrap: wrap; }
     .btn-pdf { display: inline-flex; align-items: center; gap: .3rem; height: 2rem;
@@ -677,6 +698,7 @@
                color: var(--color-primary-700); white-space: nowrap; }
     .btn-pdf:hover { background: var(--color-primary-50); }
     .btn-pdf .material-symbols-outlined { font-size: 1.05rem; line-height: 1; }
+    .descargas { display: inline-flex; gap: .5rem; flex-wrap: wrap; }
     #filtro-fechas .nota { height: var(--alto); display: inline-flex; align-items: center;
                            font-size: .8125rem; }
   </style>

@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-332 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+340 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -313,3 +313,14 @@ tiene que ser una en la que el proyecto este programado en la meta, y el modal s
 esas; el listado **Seguimiento de metas** paso de Seguimiento al final de Plan de Desarrollo.
 
 Queda por decidir que roles reportan.
+
+---
+
+## 15. Centro de costo y Excel en la ficha del proyecto (5 de noviembre)
+
+Las tablas de CDPs, RPs y obligaciones de la ficha de ejecucion muestran el **centro de
+costo** de cada documento, despues de la fecha, y su PDF tambien. Junto al **Descargar
+PDF** de cada tabla hay un **Descargar Excel** con las mismas columnas y el mismo filtro de
+fechas (`?descargar=xlsx`). Las columnas se definen una sola vez en `pdf_ficha.COLUMNAS`,
+de donde salen los dos formatos. En el PDF de obligaciones se redistribuyeron los anchos
+para dar lugar a la columna nueva.

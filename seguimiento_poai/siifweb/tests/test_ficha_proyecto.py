@@ -221,6 +221,12 @@ class PanelSiifweb(FichaBase):
         html = self.html(self.client.get(self.url(self.proy, "siifweb")))
         self.assertEqual(html.count("Objeto del registro"), 2)
 
+    def test_cdps_rps_y_obligaciones_muestran_su_centro_de_costo(self):
+        html = self.html(self.client.get(self.url(self.proy, "siifweb")))
+        tablas = html[html.index("CDPs ("):html.index("Fuentes de financiación")]
+        self.assertEqual(tablas.count("Centro de costo"), 3)
+        self.assertEqual(tablas.count("Infraestructura"), 3)
+
     def test_la_seccion_de_obligaciones_se_dibuja_debajo_de_los_rps(self):
         html = self.html(self.client.get(self.url(self.proy, "siifweb")))
         self.assertIn("Obligaciones (1)", html)

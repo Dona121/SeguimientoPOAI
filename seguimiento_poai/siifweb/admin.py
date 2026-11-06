@@ -740,27 +740,35 @@ class ProyectoAdmin(ModelAdmin):
                                     {**comun, **self._ficha_secop(proyecto)})
 
         # Filtro de fechas: recorta las tablas de CDPs, RPs y obligaciones, en la
-        # pantalla y en el PDF de cada una (?descargar=pdf&tabla=...), que sale de
-        # las mismas consultas
+        # pantalla y en el PDF y el Excel de cada una (?descargar=pdf|xlsx&tabla=...),
+        # que salen de las mismas consultas
         from . import pdf_ficha
         desde = fecha_del_get(request, "desde")
         hasta = fecha_del_get(request, "hasta")
         documentos = self._documentos_filtrados(proyecto, desde, hasta)
-        if request.GET.get("descargar") == "pdf":
+        formatos = {
+            "pdf": (pdf_ficha.generar, "application/pdf"),
+            "xlsx": (pdf_ficha.generar_excel,
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        }
+        formato = request.GET.get("descargar")
+        if formato in formatos:
             tabla = request.GET.get("tabla")
             if tabla not in pdf_ficha.TABLAS:
-                raise Http404("Tabla desconocida para el PDF.")
-            respuesta = HttpResponse(pdf_ficha.generar(proyecto, desde, hasta, documentos, tabla),
-                                     content_type="application/pdf")
+                raise Http404("Tabla desconocida para la descarga.")
+            generar, tipo = formatos[formato]
+            respuesta = HttpResponse(generar(proyecto, desde, hasta, documentos, tabla),
+                                     content_type=tipo)
             respuesta["Content-Disposition"] = (
-                f'attachment; filename="{tabla}_{proyecto.bpin}_{timezone.localdate():%Y%m%d}.pdf"')
+                f'attachment; filename="{tabla}_{proyecto.bpin}_{timezone.localdate():%Y%m%d}.{formato}"')
             return respuesta
 
-        # El enlace de descarga de cada tabla lleva el filtro que esta aplicado
+        # Los enlaces de descarga de cada tabla llevan el filtro que esta aplicado
         filtro = {k: v for k, v in (("desde", desde), ("hasta", hasta)) if v}
-        enlaces_pdf = {tabla: "?" + urlencode({"panel": "siifweb", **filtro,
-                                               "tabla": tabla, "descargar": "pdf"})
-                       for tabla in pdf_ficha.TABLAS}
+        enlaces_pdf, enlaces_excel = (
+            {tabla: "?" + urlencode({"panel": "siifweb", **filtro, "tabla": tabla, "descargar": formato})
+             for tabla in pdf_ficha.TABLAS}
+            for formato in ("pdf", "xlsx"))
 
         por_vigencia = {}
 
@@ -845,6 +853,7 @@ class ProyectoAdmin(ModelAdmin):
             "desde": desde.isoformat() if desde else "",
             "hasta": hasta.isoformat() if hasta else "",
             "enlaces_pdf": enlaces_pdf,
+            "enlaces_excel": enlaces_excel,
             "fuentes_por_proyecto":fuentes_por_proyecto,
             "fuentes_por_proyecto_total":fuentes_por_proyecto_total,
             "contratos": contratos,
@@ -873,6 +882,7 @@ class ProyectoAdmin(ModelAdmin):
             en_rango(Cdp.objects, "fecha_disp")
             .filter(cdps_imputados__proyecto=proyecto)
             .annotate(valor_cdp=Sum("cdps_imputados__valor_disponibilidad_def"))
+            .select_related("centro_costo")
             .order_by("fecha_disp")
         )
 
@@ -888,6 +898,7 @@ class ProyectoAdmin(ModelAdmin):
             en_rango(Compromiso.objects, "fecha_reg")
             .filter(compromisos_imputados__proyecto = proyecto)
             .annotate(valor_rp=Sum("compromisos_imputados__valor_compromiso_def"))
+            .select_related("centro_costo")
             .order_by("fecha_reg")
         )
 
@@ -913,7 +924,7 @@ class ProyectoAdmin(ModelAdmin):
                       objeto_rp=Subquery(ObligacionImputacion.objects
                                          .filter(obligacion=OuterRef("pk"), proyecto=proyecto)
                                          .values("compromiso__objeto_reg")[:1]))
-            .select_related("tipo_orden_gasto", "beneficiario")
+            .select_related("tipo_orden_gasto", "beneficiario", "centro_costo")
             .order_by("vigencia", "fecha_obli", "nro_obligacion")
         )
 

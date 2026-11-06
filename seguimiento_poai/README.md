@@ -307,8 +307,8 @@ Panel **SIIFWEB**:
   vigencia y las demas secciones no se filtran: siguen mostrando todo el proyecto. El
   filtro queda en la URL (`?desde=...&hasta=...`), asi que la ficha filtrada se comparte
   con el enlace.
-- CDPs y RPs del proyecto, con su objeto y su valor.
-- **Obligaciones**: vigencia, numero, fecha, beneficiario, NIT, objeto, tipo de orden de
+- CDPs y RPs del proyecto, con su **centro de costo**, su objeto y su valor.
+- **Obligaciones**: vigencia, numero, fecha, centro de costo, beneficiario, NIT, objeto, tipo de orden de
   gasto, valor definitivo, **saldo** y **pagado**. El objeto sale de `OBJETO_OBLIG` (el
   consolidado paso de 25 a 27 columnas y ahora trae objeto, NIT y beneficiario); si una
   obligacion se cargo antes de que ese campo existiera, se muestra el objeto del RP contra
@@ -316,9 +316,9 @@ Panel **SIIFWEB**:
   `SALDO_OBLI` y `PAGOS` del mismo consolidado (valor = saldo + pagado en todas las filas);
   suman sobre la misma relacion que el valor, asi que comparten el join y no se multiplican.
 - Las fechas de CDPs, RPs y obligaciones van en el formato regional (`4 de Julio de 2025`).
-- **PDF por tabla**: cada titulo (CDPs, RPs, Obligaciones) tiene a la derecha un
-  "Descargar PDF" que baja solo esa tabla, con el filtro de fechas que este aplicado. Ver
-  la seccion siguiente.
+- **PDF y Excel por tabla**: cada titulo (CDPs, RPs, Obligaciones) tiene a la derecha un
+  "Descargar Excel" y un "Descargar PDF" que bajan solo esa tabla, con el filtro de fechas
+  que este aplicado. Ver la seccion siguiente.
 - Fuentes de financiacion, con lo comprometido por cada una.
 - Contratos del proyecto con contratista, valor, numero de actas y pagado real.
 - **Calendario de pagos**: cada acta del contrato con su fecha, tipo, numero y contratista.
@@ -338,10 +338,10 @@ salian al doble porque el contrato tenia 2 imputaciones para ese proyecto y el j
 cruzaba con sus actas. Se resuelve con `Subquery` (helper `suma_de`) o filtrando por una
 subconsulta de ids. Es el mismo problema del grano que cuidamos al cruzar los reportes.
 
-### PDF de cada tabla
+### PDF y Excel de cada tabla
 
-`?panel=siifweb&tabla=cdps|rps|obligaciones&descargar=pdf` (mas `desde`/`hasta` si hay
-filtro) devuelve el PDF de esa tabla; otra `tabla` da 404. Lo arma `siifweb/pdf_ficha.py`
+`?panel=siifweb&tabla=cdps|rps|obligaciones&descargar=pdf|xlsx` (mas `desde`/`hasta` si hay
+filtro) devuelve el PDF o el Excel de esa tabla; otra `tabla` da 404. Lo arma `siifweb/pdf_ficha.py`
 con ReportLab, a partir de **las mismas consultas** que dibuja la pantalla
 (`ProyectoAdmin._documentos_filtrados`), asi que el reporte y la ficha no pueden diferir.
 
@@ -356,6 +356,11 @@ con ReportLab, a partir de **las mismas consultas** que dibuja la pantalla
 - ReportLab y no una conversion de HTML: es Python puro y no pide librerias del sistema.
 - Medido sobre el proyecto con mas documentos (1.880 obligaciones): el PDF completo sale
   en unos 3 segundos; con un mes de filtro, en menos de uno.
+- **Las columnas se definen una sola vez** (`pdf_ficha.COLUMNAS`: clave, titulo, ancho en
+  el PDF y tipo), y de ahi salen el PDF y el Excel, asi que no pueden diferir. El Excel
+  (`generar_excel`, con `reportes.a_excel`) trae en la primera fila la tabla, el BPIN y el
+  periodo; los valores, vigencias y numeros de documento van como numeros y las fechas
+  como fechas, dentro de una Tabla de Excel con filtros.
 
 ## Avance financiero
 
@@ -787,7 +792,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-332 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+340 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
@@ -796,7 +801,7 @@ datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 | `test_cargar_secop.py` | El cargador: grano, deduplicacion, procesos sin contrato, BPIN fuera del catalogo, normalizacion, idempotencia, atomicidad y el mensaje de resultado. Al final, las cifras del archivo real |
 | `test_modelos_secop.py` | Llaves unicas, la restriccion de la fila BPIN, los `PROTECT` y el tipo de reporte nuevo |
 | `test_ficha_proyecto.py` | Los dos paneles: que cada uno consulte solo lo suyo, el orden del tramite, el modal, las ayudas, las tablas con alto limitado y que ninguna suma se multiplique. El saldo y el pagado de las obligaciones, el filtro de fechas (cada tabla por su fecha, limites incluidos, tarjetas sin filtrar, fechas invalidas) y el formato de fecha |
-| `test_pdf_ficha.py` | El PDF de cada tabla: que traiga solo la tabla pedida, que respete el filtro, el 404 de una tabla desconocida, los textos con `<`, `>` y `&`, las tablas de varias paginas, los permisos, el encabezado con la dependencia responsable y los enlaces junto a cada titulo |
+| `test_pdf_ficha.py` | El PDF y el Excel de cada tabla: que traigan solo la tabla pedida y las mismas columnas (con el centro de costo), que respeten el filtro, el 404 de una tabla desconocida, los textos con `<`, `>` y `&`, las tablas de varias paginas, los permisos, el encabezado con la dependencia responsable y los enlaces junto a cada titulo |
 | `test_regresion_cargadores.py` | Que los cargadores de siempre sigan funcionando, ya que comparten `leer_filas` con el de SECOP. Los valores monetarios: separador de miles y que un valor ilegible aborte la carga |
 | `test_validar.py` | La seccion 8 del comando `validar` y que las siete anteriores sigan saliendo |
 | `test_tablero.py` | El Avance financiero: solo proyectos con dependencia responsable, el grano (nada se cuenta dos veces), cada etapa cortada por su fecha y contrastada con la consulta directa, lo cancelado de SECOP fuera, atajos de periodo con la fecha de Bogota y filtros que no revientan |

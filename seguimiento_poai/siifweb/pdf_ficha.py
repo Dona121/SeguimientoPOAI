@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PDF de una tabla de la ficha del proyecto (CDPs, RPs u obligaciones), con el filtro de fechas.
+"""PDF y Excel de una tabla de la ficha del proyecto (CDPs, RPs u obligaciones), con el filtro de fechas.
 
 Recibe las mismas consultas que dibuja la ficha (`ProyectoAdmin._documentos_filtrados`),
 asi que el reporte es exactamente lo que el usuario tiene en pantalla: cada tabla
@@ -157,58 +157,115 @@ class _CanvasNumerado(canvas.Canvas):
         super().save()
 
 
-# Anchos en cm: la hoja carta horizontal deja 25,5 cm utiles con margenes de 1,2
-
-def _cdps(d):
-    filas = list(d["cdps_proyecto"])
-    return len(filas), _tabla(
-        [("Vigencia", 1.6, False), ("Número CDP", 2.2, True), ("Fecha disponibilidad", 3.6, False),
-         ("Objeto", 14.1, False), ("Valor disponibilidad definitiva", 4.0, True)],
-        [[c.vigencia, c.nro_cdp, _fecha(c.fecha_disp), c.objeto_cert, _pesos(c.valor_cdp)]
-         for c in filas],
-        [None, None, None, None, _pesos(d["cdps_proyecto_total"])],
-        "Sin CDPs en el periodo")
-
-
-def _rps(d):
-    filas = list(d["rps_por_proyecto"])
-    return len(filas), _tabla(
-        [("Vigencia", 1.6, False), ("Número RP", 2.0, True), ("Fecha registro", 3.6, False),
-         ("Acto administrativo", 4.6, False), ("Objeto registro", 9.7, False),
-         ("Valor comprometido definitivo", 4.0, True)],
-        [[r.vigencia, r.nro_rp, _fecha(r.fecha_reg), r.acto_admon, r.objeto_reg, _pesos(r.valor_rp)]
-         for r in filas],
-        [None, None, None, None, None, _pesos(d["rps_por_proyecto_total"])],
-        "Sin RPs en el periodo")
-
-
-def _obligaciones(d):
-    filas = list(d["obligaciones_por_proyecto"])
-    return len(filas), _tabla(
-        [("Vigencia", 1.3, False), ("Número", 1.5, True), ("Fecha obligación", 2.9, False),
-         ("Beneficiario", 3.1, False), ("NIT", 1.9, True), ("Objeto", 4.9, False),
-         ("Tipo de orden de gasto", 2.7, False), ("Valor obligación definitiva", 2.4, True),
-         ("Saldo", 2.4, True), ("Pagado", 2.4, True)],
-        [[o.vigencia, o.nro_obligacion, _fecha(o.fecha_obli),
-          o.beneficiario.nombre if o.beneficiario else None,
-          o.beneficiario.codigo if o.beneficiario else None,
-          o.objeto_oblig or o.objeto_rp,
-          o.tipo_orden_gasto.nombre if o.tipo_orden_gasto_id else None,
-          _pesos(o.valor_obli), _pesos(o.saldo_oblig), _pesos(o.pagado_obli)]
-         for o in filas],
-        [None, None, None, None, None, None, None,
-         _pesos(d["obligaciones_por_proyecto_total"]),
-         _pesos(d["obligaciones_por_proyecto_saldo"]),
-         _pesos(d["obligaciones_por_proyecto_pagado"])],
-        "Sin obligaciones en el periodo")
-
-
-# Cada tabla de la ficha se descarga por separado: (titulo, fecha que la recorta, armado)
-TABLAS = {
-    "cdps": ("CDPs", "fecha de disponibilidad", _cdps),
-    "rps": ("RPs", "fecha de registro", _rps),
-    "obligaciones": ("Obligaciones", "fecha de obligación", _obligaciones),
+# Las columnas de cada tabla, una sola vez para el PDF y el Excel: (clave, titulo, ancho en
+# el PDF en cm, tipo). La hoja carta horizontal deja 25,5 cm utiles con margenes de 1,2.
+# Tipos: "numero" (vigencia y numeros de documento, sin separador de miles), "fecha",
+# "money" y "texto".
+COLUMNAS = {
+    "cdps": [
+        ("vigencia", "Vigencia", 1.6, "numero"), ("numero", "Número CDP", 2.2, "numero"),
+        ("fecha", "Fecha disponibilidad", 3.6, "fecha"), ("centro", "Centro de costo", 3.6, "texto"),
+        ("objeto", "Objeto", 10.5, "texto"), ("valor", "Valor disponibilidad definitiva", 4.0, "money"),
+    ],
+    "rps": [
+        ("vigencia", "Vigencia", 1.6, "numero"), ("numero", "Número RP", 2.0, "numero"),
+        ("fecha", "Fecha registro", 3.6, "fecha"), ("centro", "Centro de costo", 3.2, "texto"),
+        ("acto", "Acto administrativo", 3.6, "texto"), ("objeto", "Objeto registro", 7.5, "texto"),
+        ("valor", "Valor comprometido definitivo", 4.0, "money"),
+    ],
+    "obligaciones": [
+        ("vigencia", "Vigencia", 1.3, "numero"), ("numero", "Número", 1.5, "numero"),
+        ("fecha", "Fecha obligación", 2.2, "fecha"), ("centro", "Centro de costo", 2.2, "texto"),
+        ("beneficiario", "Beneficiario", 2.9, "texto"), ("nit", "NIT", 1.8, "numero"),
+        ("objeto", "Objeto", 3.8, "texto"), ("orden", "Tipo de orden de gasto", 2.6, "texto"),
+        ("valor", "Valor obligación definitiva", 2.4, "money"), ("saldo", "Saldo", 2.4, "money"),
+        ("pagado", "Pagado", 2.4, "money"),
+    ],
 }
+
+
+def _filas_cdps(d):
+    return [{"vigencia": c.vigencia, "numero": c.nro_cdp, "fecha": c.fecha_disp,
+             "centro": c.centro_costo.nombre, "objeto": c.objeto_cert, "valor": c.valor_cdp}
+            for c in d["cdps_proyecto"]]
+
+
+def _filas_rps(d):
+    return [{"vigencia": r.vigencia, "numero": r.nro_rp, "fecha": r.fecha_reg,
+             "centro": r.centro_costo.nombre, "acto": r.acto_admon, "objeto": r.objeto_reg,
+             "valor": r.valor_rp}
+            for r in d["rps_por_proyecto"]]
+
+
+def _filas_obligaciones(d):
+    return [{"vigencia": o.vigencia, "numero": o.nro_obligacion, "fecha": o.fecha_obli,
+             "centro": o.centro_costo.nombre,
+             "beneficiario": o.beneficiario.nombre if o.beneficiario else None,
+             "nit": o.beneficiario.codigo if o.beneficiario else None,
+             # El objeto propio manda; el del RP es el respaldo de las cargas viejas
+             "objeto": o.objeto_oblig or o.objeto_rp,
+             "orden": o.tipo_orden_gasto.nombre if o.tipo_orden_gasto_id else None,
+             "valor": o.valor_obli, "saldo": o.saldo_oblig, "pagado": o.pagado_obli}
+            for o in d["obligaciones_por_proyecto"]]
+
+
+# Cada tabla de la ficha se descarga por separado: (titulo, fecha que la recorta, filas,
+# totales: columna -> llave del dict de documentos, vacio)
+TABLAS = {
+    "cdps": ("CDPs", "fecha de disponibilidad", _filas_cdps,
+             {"valor": "cdps_proyecto_total"}, "Sin CDPs en el periodo"),
+    "rps": ("RPs", "fecha de registro", _filas_rps,
+            {"valor": "rps_por_proyecto_total"}, "Sin RPs en el periodo"),
+    "obligaciones": ("Obligaciones", "fecha de obligación", _filas_obligaciones,
+                     {"valor": "obligaciones_por_proyecto_total",
+                      "saldo": "obligaciones_por_proyecto_saldo",
+                      "pagado": "obligaciones_por_proyecto_pagado"},
+                     "Sin obligaciones en el periodo"),
+}
+
+
+def _armar_pdf(tabla, d):
+    _, _, filas_de, totales, vacio = TABLAS[tabla]
+    columnas = COLUMNAS[tabla]
+    filas = filas_de(d)
+
+    def celda(valor, tipo):
+        if tipo == "fecha":
+            return _fecha(valor)
+        if tipo == "money":
+            return _pesos(valor)
+        return valor
+
+    return len(filas), _tabla(
+        # A la derecha los numeros, menos la vigencia, que va a la izquierda como en la ficha
+        [(titulo, ancho, tipo == "money" or (tipo == "numero" and clave != "vigencia"))
+         for clave, titulo, ancho, tipo in columnas],
+        [[celda(f[clave], tipo) for clave, _, _, tipo in columnas] for f in filas],
+        [_pesos(d[totales[clave]]) if clave in totales else None for clave, _, _, _ in columnas],
+        vacio)
+
+
+def generar_excel(proyecto, desde, hasta, documentos, tabla):
+    """El libro de UNA tabla de la ficha, con las mismas columnas y filas que su PDF."""
+    from .reportes import a_excel
+
+    titulo, criterio, filas_de, _, _ = TABLAS[tabla]
+    grupo = f"{titulo} · BPIN {proyecto.bpin} · {periodo(desde, hasta)}, por {criterio}"
+    columnas = [(clave, titulo_col, tipo, grupo) for clave, titulo_col, _, tipo in COLUMNAS[tabla]]
+
+    def valor(v, tipo):
+        # Los numeros de documento llegan como texto: en Excel, como numero si lo son
+        if tipo == "numero" and isinstance(v, str) and v.isdigit():
+            return int(v)
+        return v
+
+    filas = [{clave: valor(f[clave], tipo) for clave, _, _, tipo in COLUMNAS[tabla]}
+             for f in filas_de(documentos)]
+    libro = a_excel(filas, columnas, hoja=titulo, tabla=titulo,
+                    anchos_col={"objeto": 60, "beneficiario": 34, "acto": 30, "centro": 26})
+    salida = BytesIO()
+    libro.save(salida)
+    return salida.getvalue()
 
 
 def generar(proyecto, desde, hasta, documentos, tabla):
@@ -216,7 +273,7 @@ def generar(proyecto, desde, hasta, documentos, tabla):
 
     `documentos` es el dict de `ProyectoAdmin._documentos_filtrados`.
     """
-    titulo, criterio, armar = TABLAS[tabla]
+    titulo, criterio, _, _, _ = TABLAS[tabla]
     historia = [
         Paragraph(f"Reporte de {titulo}", TITULO),
         Paragraph(f"<b>BPIN {_texto(proyecto.bpin)}</b> · {_texto(proyecto.nombre)}", SUBTITULO),
@@ -231,7 +288,7 @@ def generar(proyecto, desde, hasta, documentos, tabla):
         Paragraph(f"Generado el {date_format(timezone.localtime(), 'DATETIME_FORMAT')}", DATO),
         Spacer(1, 4),
     ]
-    cantidad, cuerpo = armar(documentos)
+    cantidad, cuerpo = _armar_pdf(tabla, documentos)
     historia.extend(_seccion(titulo, cantidad, cuerpo))
 
     salida = BytesIO()
