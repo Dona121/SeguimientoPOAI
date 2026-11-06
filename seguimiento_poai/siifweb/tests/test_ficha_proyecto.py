@@ -547,3 +547,45 @@ class FormatoDeFechas(FichaBase):
         contratos = html[html.index("Contratos ("):html.index("Reservas (")]
         self.assertIn(date_format(date(2025, 10, 31)), contratos)
         self.assertNotIn("2025-10-31", contratos)
+
+
+class FuentesDeFinanciacion(FichaBase):
+    """Cada fuente con lo comprometido, lo obligado y lo pagado del proyecto."""
+
+    def setUp(self):
+        super().setUp()
+        from siifweb.models import Obligacion, ObligacionImputacion
+        self.proy = proyecto(bpin="202500000000011")
+        _, rp, obligacion = cadena(self.proy)   # 10.000.000 obligado, 5.000.000 pagado
+        # Una segunda obligacion del mismo RP: si comprometido y obligado se sumaran en
+        # un mismo join, el comprometido saldria doble
+        imputacion = obligacion.obligaciones_imputadas.get()
+        segunda = Obligacion.objects.create(
+            centro_costo=obligacion.centro_costo, tipo_orden_gasto=obligacion.tipo_orden_gasto,
+            vigencia=2025, nro_obligacion="9", fecha_obli=obligacion.fecha_obli)
+        ObligacionImputacion.objects.create(
+            obligacion=segunda, compromiso=rp, rubro=imputacion.rubro, fuente=imputacion.fuente,
+            proyecto=self.proy, valor_obligacion=Decimal("2000000.00"),
+            saldo_obli=Decimal("0.00"), pagos=Decimal("2000000.00"))
+        # Lo de otro proyecto no entra
+        cadena(proyecto(bpin="202500000000012", nombre="Otro"), valor=Decimal("3000000.00"), nro="2")
+
+    def test_suma_comprometido_obligado_y_pagado_sin_duplicar(self):
+        contexto = self.client.get(self.url(self.proy, "siifweb")).context
+        [fuente] = contexto["fuentes_por_proyecto"]
+        self.assertEqual(fuente.valor_comprometido, Decimal("10000000.00"))
+        self.assertEqual(fuente.valor_obligado, Decimal("12000000.00"))
+        self.assertEqual(fuente.valor_pagado, Decimal("7000000.00"))
+        self.assertEqual(contexto["fuentes_por_proyecto_total"],
+                         {"comprometido": Decimal("10000000.00"), "obligado": Decimal("12000000.00"),
+                          "pagado": Decimal("7000000.00")})
+
+    def test_la_tabla_trae_las_columnas_y_el_total(self):
+        html = self.html(self.client.get(self.url(self.proy, "siifweb")))
+        tabla = html[html.index("Fuentes de financiación ("):]
+        tabla = tabla[:tabla.index("</table>")]
+        self.assertLess(tabla.index("Valor comprometido"), tabla.index("Valor obligado"))
+        self.assertLess(tabla.index("Valor obligado"), tabla.index("Valor pagado"))
+        pie = tabla[tabla.index("<tfoot"):]
+        for valor in ("10", "12", "7"):
+            self.assertRegex(pie, valor + r"[.,]000[.,]000")

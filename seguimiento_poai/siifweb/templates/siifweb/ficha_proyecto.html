@@ -476,7 +476,7 @@
     <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
     <div class="border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Fuentes de financiación ({{ fuentes_por_proyecto|length }})
-        {% include "siifweb/_ayuda.html" with etiqueta="Que son las fuentes de financiacion" texto="De dónde sale la plata comprometida: recursos propios, del balance, SGP, crédito, regalías. Un mismo proyecto puede ejecutarse con varias fuentes." %}</h2>
+        {% include "siifweb/_ayuda.html" with etiqueta="Que son las fuentes de financiacion" texto="De dónde sale la plata comprometida: recursos propios, del balance, SGP, crédito, regalías. Un mismo proyecto puede ejecutarse con varias fuentes. Para cada fuente se muestra lo comprometido en RPs, lo obligado y lo pagado." %}</h2>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
@@ -485,6 +485,8 @@
             <th class="px-4 py-2 text-left">Código</th>
             <th class="px-4 py-2 text-right">Fuente</th>
             <th class="px-4 py-2 text-right">Valor comprometido</th>
+            <th class="px-4 py-2 text-right">Valor obligado</th>
+            <th class="px-4 py-2 text-right">Valor pagado</th>
           </tr>
         </thead>
         <tbody>
@@ -493,17 +495,20 @@
             <td class="px-4 py-2 font-medium">{{ f.codigo }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.nombre }}</td>
             <td class="px-4 py-2 text-right font-mono">{{ f.valor_comprometido|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.valor_obligado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ f.valor_pagado|default:0|floatformat:0|intcomma }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="px-4 py-5 text-center text-base-500">Sin fuentes de financiación registradas</td></tr>
+          <tr><td colspan="5" class="px-4 py-5 text-center text-base-500">Sin fuentes de financiación registradas</td></tr>
           {% endfor %}
         </tbody>
         <tfoot class="font-medium">
           <tr>
             <td class="px-4 py-2">Total</td>
             <td class="px-4 py-2 text-right font-mono"></td>
-            <td class="px-4 py-2 text-right font-mono">{{ fuentes_por_proyecto_total|floatformat:0|intcomma }}</td>
-            <td></td>
+            <td class="px-4 py-2 text-right font-mono">{{ fuentes_por_proyecto_total.comprometido|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ fuentes_por_proyecto_total.obligado|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ fuentes_por_proyecto_total.pagado|floatformat:0|intcomma }}</td>
           </tr>
         </tfoot>
       </table>

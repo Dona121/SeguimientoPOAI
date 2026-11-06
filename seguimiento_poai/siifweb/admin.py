@@ -834,17 +834,25 @@ class ProyectoAdmin(ModelAdmin):
                 "valor": number_format(round(a.valor_pago or 0), force_grouping=True),
             } for a in c.actas])
         
-        fuentes_por_proyecto = (
-            Fuente.objects
-            .filter(compromisos_imputados__proyecto=proyecto)
-            .annotate(valor_comprometido=Sum("compromisos_imputados__valor_compromiso_def"))
-        )
+        # Lo comprometido, obligado y pagado de cada fuente en este proyecto. Cada etapa
+        # se suma en su propia consulta y se cruza por la fuente: sumar RPs y
+        # obligaciones en un mismo join multiplicaria las filas
+        def por_fuente(modelo, **sumas):
+            return {r["fuente"]: r for r in (modelo.objects.filter(proyecto=proyecto)
+                                             .values("fuente").annotate(**sumas))}
 
-        fuentes_por_proyecto_total = (
-            Fuente.objects
-            .filter(compromisos_imputados__proyecto=proyecto)
-            .aggregate(tcomprometido=Sum("compromisos_imputados__valor_compromiso_def"))["tcomprometido"] or 0
-        )
+        comprometido = por_fuente(CompromisoImputacion, t=Sum("valor_compromiso_def"))
+        obligado = por_fuente(ObligacionImputacion, o=Sum("valor_obligacion"), p=Sum("pagos"))
+        fuentes_por_proyecto = list(Fuente.objects.filter(pk__in=set(comprometido) | set(obligado)))
+        for f in fuentes_por_proyecto:
+            f.valor_comprometido = comprometido.get(f.pk, {}).get("t") or 0
+            f.valor_obligado = obligado.get(f.pk, {}).get("o") or 0
+            f.valor_pagado = obligado.get(f.pk, {}).get("p") or 0
+        fuentes_por_proyecto_total = {
+            "comprometido": sum(f.valor_comprometido for f in fuentes_por_proyecto),
+            "obligado": sum(f.valor_obligado for f in fuentes_por_proyecto),
+            "pagado": sum(f.valor_pagado for f in fuentes_por_proyecto),
+        }
 
         contexto = {
             **comun,

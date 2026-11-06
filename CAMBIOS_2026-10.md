@@ -343,3 +343,8 @@ numero avisa que hay detalle. CDPs, RPs y obligaciones bajan a 30rem de alto.
 El **calendario de pagos** pasa al modal de cada contrato de SIIFWEB (sus actas con fecha,
 numero, tipo, concepto y valor, y el total) y sale la seccion aparte de la ficha. En el
 encabezado, "Responsable" va debajo de "Ejecuta": en la misma linea quedaban pegados.
+
+La tabla de **fuentes de financiacion** suma, ademas de lo comprometido, lo obligado y lo
+pagado de cada fuente en el proyecto, con su total. Cada etapa se suma en su propia
+consulta y se cruza por la fuente, para que varias obligaciones de un RP no dupliquen lo
+comprometido.
