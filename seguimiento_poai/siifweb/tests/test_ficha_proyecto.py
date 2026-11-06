@@ -295,6 +295,57 @@ class PanelSiifweb(FichaBase):
         self.assertEqual(len(cuatro.captured_queries), len(una.captured_queries))
 
 
+class TablaDeReservas(FichaBase):
+    """Una reserva con dos imputaciones del proyecto y una de otro proyecto."""
+
+    def setUp(self):
+        super().setUp()
+        from datetime import date
+
+        from siifweb.models import Reserva, ReservaImputacion
+
+        from .fabricas import catalogos, tercero
+        self.proy = proyecto()
+        cdp, _, _ = cadena(self.proy, vigencia=2024)
+        rubro, fuente, _ = catalogos()
+        reserva = Reserva.objects.create(vigencia=2025, nro_reserva="12", fecha_reserva=date(2025, 1, 2),
+                                         beneficiario=tercero(), objeto_reserva="Objeto de la reserva",
+                                         acto_admon="CONTRATO 45")
+
+        def imputar(proy, definitivo, obligado, pagado):
+            ReservaImputacion.objects.create(
+                reserva=reserva, cdp_origen=cdp, rubro=rubro, fuente=fuente, proyecto=proy,
+                valor_reserva=definitivo, valor_reserva_def=definitivo, obligaciones_reserva=obligado,
+                pagos_reserva=pagado, saldo_reserva=definitivo - obligado)
+
+        imputar(self.proy, Decimal("1000000"), Decimal("600000"), Decimal("500000"))
+        imputar(self.proy, Decimal("400000"), Decimal("100000"), Decimal("100000"))
+        imputar(proyecto(bpin="202500000000002"), Decimal("9000000"), Decimal("0"), Decimal("0"))
+
+    def test_una_fila_por_reserva_con_lo_del_proyecto(self):
+        contexto = self.client.get(self.url(self.proy, "siifweb")).context
+        reservas = list(contexto["reservas"])
+        self.assertEqual(len(reservas), 1)
+        r = reservas[0]
+        self.assertEqual((r.definitivo, r.obligado, r.pagado, r.saldo),
+                         (Decimal("1400000"), Decimal("700000"), Decimal("600000"), Decimal("700000")))
+        self.assertEqual(contexto["reservas_total"]["definitivo"], Decimal("1400000"))
+
+    def test_dibuja_las_columnas_pedidas(self):
+        html = self.html(self.client.get(self.url(self.proy, "siifweb")))
+        tabla = html[html.index("Reservas (1)"):]
+        for texto in ("Vigencia", "Número reserva", "Fecha reserva", "Beneficiario", "Objeto",
+                      "Acto administrativo", "Valor reserva definitivo", "Obligaciones", "Pagos",
+                      "Saldo reserva", "Contratista de prueba", "Objeto de la reserva", "CONTRATO 45",
+                      "1.400.000", "700.000", "600.000"):
+            with self.subTest(texto=texto):
+                self.assertIn(texto, tabla)
+
+    def test_sin_reservas_lo_dice(self):
+        html = self.html(self.client.get(self.url(proyecto(bpin="202500000000003"), "siifweb")))
+        self.assertIn("Este proyecto no dejo reservas.", html)
+
+
 class Plantilla(FichaBase):
     """Detalles de la plantilla que ya fallaron una vez."""
 
@@ -346,11 +397,11 @@ class Plantilla(FichaBase):
         secop = self.html(self.client.get(self.url(self.proy, "secop")))
         siifweb = self.html(self.client.get(self.url(self.proy, "siifweb")))
         self.assertEqual(secop.count('style="max-height:26rem"'), 2)
-        # CDPs, RPs y obligaciones son un poco mas altas que las demas
+        # CDPs, RPs, obligaciones y reservas son un poco mas altas que las demas
         self.assertEqual(siifweb.count('style="max-height:26rem"'), 1)
-        self.assertEqual(siifweb.count('style="max-height:34rem"'), 3)
+        self.assertEqual(siifweb.count('style="max-height:34rem"'), 4)
         self.assertEqual(secop.count("position:sticky;top:0"), 2)
-        self.assertEqual(siifweb.count("position:sticky;top:0"), 4)
+        self.assertEqual(siifweb.count("position:sticky;top:0"), 5)
 
     def test_el_texto_del_cruce_por_bpin(self):
         html = self.html(self.client.get(self.url(self.proy, "secop")))

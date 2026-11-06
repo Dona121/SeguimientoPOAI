@@ -567,63 +567,92 @@
     </div>
   </div>
 
-  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-      <div class="border-b px-4 py-3 dark:border-base-800">
-        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Calendario de pagos
-          {% include "siifweb/_ayuda.html" with etiqueta="Que es el calendario de pagos" texto="Cada acta de pago de los contratos del proyecto, en orden de fecha y con el largo de la barra según el valor." %}</h2>
-        <p class="text-sm text-base-500 mt-1">Cada acta de pago del contrato, con su fecha.
-          Total ${{ total_pagado_bitacora|floatformat:0|intcomma }}</p>
-      </div>
-      <div class="max-h-96 overflow-y-auto">
-        <table class="w-full text-sm">
-          <tbody>
-            {% for p in calendario %}
-            <tr class="border-b dark:border-base-800">
-              <td class="px-4 py-2 whitespace-nowrap align-top">
-                {{ p.fecha_pago|date:"Y-m-d" }}
-                <div class="text-xs text-base-500">acta {{ p.nrodoc_acta|default:"-" }} · {{ p.tipo_orden }}</div>
-              </td>
-              <td class="px-4 py-2 w-full align-top">
-                <div style="height:8px;border-radius:3px;background:#3987e5;width:{{ p.ancho|floatformat:0 }}%;min-width:2px"></div>
-                <div class="text-xs text-base-500 mt-1">{{ p.tercero|truncatechars:34 }}</div>
-              </td>
-              <td class="px-4 py-2 text-right font-mono whitespace-nowrap align-top">{{ p.t|floatformat:0|intcomma }}</td>
-            </tr>
-            {% empty %}
-            <tr><td class="px-4 py-5 text-center text-base-500">Sin actas de pago registradas</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Calendario de pagos
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es el calendario de pagos" texto="Cada acta de pago de los contratos del proyecto, en orden de fecha y con el largo de la barra según el valor." %}</h2>
+      <p class="text-sm text-base-500 mt-1">Cada acta de pago del contrato, con su fecha.
+        Total ${{ total_pagado_bitacora|floatformat:0|intcomma }}</p>
     </div>
+    <div class="max-h-96 overflow-y-auto">
+      <table class="w-full text-sm">
+        <tbody>
+          {% for p in calendario %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-4 py-2 whitespace-nowrap align-top">
+              {{ p.fecha_pago|date:"Y-m-d" }}
+              <div class="text-xs text-base-500">acta {{ p.nrodoc_acta|default:"-" }} · {{ p.tipo_orden }}</div>
+            </td>
+            <td class="px-4 py-2 w-full align-top">
+              <div style="height:8px;border-radius:3px;background:#3987e5;width:{{ p.ancho|floatformat:0 }}%;min-width:2px"></div>
+              <div class="text-xs text-base-500 mt-1">{{ p.tercero|truncatechars:34 }}</div>
+            </td>
+            <td class="px-4 py-2 text-right font-mono whitespace-nowrap align-top">{{ p.t|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td class="px-4 py-5 text-center text-base-500">Sin actas de pago registradas</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-    <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
-      <div class="border-b px-4 py-3 dark:border-base-800">
-        <h2 class="font-semibold text-base text-base-900 dark:text-base-100">
-          Reservas ({{ reservas|length }})
-          {% include "siifweb/_ayuda.html" with etiqueta="Que es una reserva" texto="Lo que quedó comprometido con un RP pero sin obligar al cerrar la vigencia pasa como reserva a la vigencia siguiente, con cargo al CDP del año anterior. Lo que no se reserva ni se anula queda en riesgo de pasivo exigible." %}</h2>
-        <p class="text-sm text-base-500 mt-1">Lo que quedo comprometido al cierre y sigue
-          ejecutando en la vigencia siguiente.</p>
-      </div>
-      <div class="p-4 flex flex-col gap-2">
-        {% for r in reservas %}
-        <div class="border-b pb-2 dark:border-base-800">
-          <div class="flex justify-between text-sm">
-            <span>Reserva {{ r.reserva.nro_reserva }}/{{ r.reserva.vigencia }}
-              <span class="text-base-500">&larr; CDP {{ r.cdp_origen.nro_cdp }}/{{ r.cdp_origen.vigencia }}</span></span>
-            <span class="font-mono">{{ r.valor_reserva|floatformat:0|intcomma }}</span>
-          </div>
-          <div class="flex justify-between text-xs text-base-500 mt-1">
-            <span>{{ r.reserva.beneficiario.nombre|truncatechars:38 }}</span>
-            <span>obligado {{ r.obligaciones_reserva|floatformat:0|intcomma }} ·
-              saldo {{ r.saldo_reserva|floatformat:0|intcomma }}</span>
-          </div>
-        </div>
-        {% empty %}
-        <div class="text-sm text-base-500">Este proyecto no dejo reservas.</div>
-        {% endfor %}
-      </div>
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Reservas ({{ reservas|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Que es una reserva" texto="Lo que quedó comprometido con un RP pero sin obligar al cerrar la vigencia pasa como reserva a la vigencia siguiente, con cargo al CDP del año anterior. Lo que no se reserva ni se anula queda en riesgo de pasivo exigible." %}</h2>
+      <p class="text-sm text-base-500 mt-1">Lo que quedo comprometido al cierre y sigue
+        ejecutando en la vigencia siguiente. Los valores son solo los de este proyecto, sumados por reserva.</p>
+    </div>
+    <div class="overflow-auto" style="max-height:34rem">
+      <table class="w-full text-sm">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr>
+            <th class="px-4 py-2 text-left">Vigencia</th>
+            <th class="px-4 py-2 text-right">Número reserva</th>
+            <th class="px-4 py-2 text-right">Fecha reserva</th>
+            <th class="px-4 py-2 text-left">Beneficiario</th>
+            <th class="px-4 py-2 text-left">Objeto</th>
+            <th class="px-4 py-2 text-left">Acto administrativo</th>
+            <th class="px-4 py-2 text-right">Valor reserva definitivo</th>
+            <th class="px-4 py-2 text-right">Obligaciones</th>
+            <th class="px-4 py-2 text-right">Pagos</th>
+            <th class="px-4 py-2 text-right">Saldo reserva</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in reservas %}
+          <tr class="border-b dark:border-base-800">
+            <td class="px-4 py-2 font-medium">{{ r.vigencia }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ r.nro_reserva }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ r.fecha_reserva }}</td>
+            <td class="px-4 py-2">{{ r.beneficiario.nombre|default:"—"|truncatechars:38 }}</td>
+            <td class="px-4 py-2">{{ r.objeto_reserva|default:"—"|truncatechars:90 }}</td>
+            <td class="px-4 py-2">{{ r.acto_admon|default:"—" }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ r.definitivo|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ r.obligado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ r.pagado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ r.saldo|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="10" class="px-4 py-5 text-center text-base-500">Este proyecto no dejo reservas.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="font-medium">
+          <tr>
+            <td class="px-4 py-2">Total</td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2"></td>
+            <td class="px-4 py-2 text-right font-mono">{{ reservas_total.definitivo|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ reservas_total.obligado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ reservas_total.pagado|default:0|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2 text-right font-mono">{{ reservas_total.saldo|default:0|floatformat:0|intcomma }}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   </div>
 

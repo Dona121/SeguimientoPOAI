@@ -872,8 +872,18 @@ class ProyectoAdmin(ModelAdmin):
             "contratos": contratos,
             "calendario": calendario,
             "total_pagado_bitacora": sum(p["t"] for p in pagos),
-            "reservas": ReservaImputacion.objects.filter(proyecto=proyecto)
-                        .select_related("reserva", "cdp_origen", "rubro"),
+            # Una fila por reserva, con lo de sus imputaciones de este proyecto. Filtro y
+            # sumas van sobre la misma relacion, asi que comparten el join y no se multiplican
+            "reservas": (Reserva.objects.filter(reservas_imputadas__proyecto=proyecto)
+                         .annotate(definitivo=Sum("reservas_imputadas__valor_reserva_def"),
+                                   obligado=Sum("reservas_imputadas__obligaciones_reserva"),
+                                   pagado=Sum("reservas_imputadas__pagos_reserva"),
+                                   saldo=Sum("reservas_imputadas__saldo_reserva"))
+                         .select_related("beneficiario")
+                         .order_by("vigencia", "fecha_reserva", "nro_reserva")),
+            "reservas_total": ReservaImputacion.objects.filter(proyecto=proyecto).aggregate(
+                definitivo=Sum("valor_reserva_def"), obligado=Sum("obligaciones_reserva"),
+                pagado=Sum("pagos_reserva"), saldo=Sum("saldo_reserva")),
         }
         return TemplateResponse(request, "siifweb/ficha_proyecto.html", contexto)
 

@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-345 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+348 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -328,3 +328,7 @@ para dar lugar a la columna nueva.
 Despues, en el mismo dia: un **filtro de centro de costo** junto al de fechas (`?centro=`),
 que recorta las tres tablas y sus descargas y solo ofrece los centros con documentos del
 proyecto; y las tres tablas pasan de 26rem a 34rem de alto.
+
+Las **reservas** pasan de tarjetas a una tabla: vigencia, numero, fecha, beneficiario, objeto,
+acto administrativo y, sumados por reserva con lo de este proyecto, el valor definitivo, las
+obligaciones, los pagos y el saldo, con fila de total.
