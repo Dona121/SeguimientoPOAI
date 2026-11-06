@@ -153,6 +153,25 @@ class PanelSiifweb(FichaBase):
         self.proy = proyecto()
         _, self.rp, _ = cadena(self.proy)
 
+    def test_el_modal_del_contrato_trae_su_calendario_de_pagos(self):
+        """Las actas de cada contrato, una vez cada una aunque tenga dos imputaciones."""
+        import json
+        import re
+        from datetime import date
+        from html import unescape
+        from django.utils.formats import date_format
+        contrato_siifweb(self.proy, imputaciones=2, actas=2, compromiso=self.rp)
+        contrato_siifweb(self.proy, imputaciones=1, actas=1, nro="77", valor_acta=Decimal("250000.00"))
+        respuesta = self.client.get(self.url(self.proy, "siifweb"))
+        por_numero = {c.nro_contrato: json.loads(c.actas_json) for c in respuesta.context["contratos"]}
+        self.assertEqual(len(por_numero["2666"]), 2)
+        self.assertEqual(len(por_numero["77"]), 1)
+        primera = por_numero["2666"][0]
+        self.assertEqual((primera["fecha"], primera["acta"], primera["valor"]),
+                         (date_format(date(2025, 12, 1)), "1", "500.000"))
+        botones = re.findall(r'data-siifweb-actas-detalle="([^"]*)"', self.html(respuesta))
+        self.assertEqual(sorted(len(json.loads(unescape(b))) for b in botones), [1, 2])
+
     def test_el_pagado_del_contrato_no_se_duplica(self):
         """Dos imputaciones del proyecto por dos actas: el pagado son 1.000.000, no 2.000.000."""
         contrato_siifweb(self.proy, imputaciones=2, actas=2,
@@ -162,12 +181,13 @@ class PanelSiifweb(FichaBase):
         self.assertEqual(contratos[0].pagado, Decimal("1000000.00"))
         self.assertEqual(contratos[0].n_actas, 2)
 
-    def test_el_calendario_tampoco_se_duplica(self):
-        contrato_siifweb(self.proy, imputaciones=2, actas=2,
-                         valor_acta=Decimal("500000.00"), compromiso=self.rp)
-        contexto = self.client.get(self.url(self.proy, "siifweb")).context
-        self.assertEqual(contexto["total_pagado_bitacora"], Decimal("1000000.00"))
-        self.assertEqual(len(contexto["calendario"]), 2)
+    def test_ya_no_hay_seccion_de_calendario_de_pagos(self):
+        """El calendario va en el modal de cada contrato."""
+        contrato_siifweb(self.proy, compromiso=self.rp)
+        respuesta = self.client.get(self.url(self.proy, "siifweb"))
+        self.assertNotIn("calendario", respuesta.context)
+        # Solo queda el titulo de la seccion del modal, que arma el JavaScript
+        self.assertNotIn('">Calendario de pagos', self.html(respuesta))
 
     def test_la_cadena_por_vigencia(self):
         contexto = self.client.get(self.url(self.proy, "siifweb")).context
@@ -368,6 +388,16 @@ class TablaDeReservas(FichaBase):
 class Plantilla(FichaBase):
     """Detalles de la plantilla que ya fallaron una vez."""
 
+    def test_responsable_va_debajo_de_ejecuta(self):
+        """Iban en la misma linea y quedaban pegados: gap-x-4 no existe en la hoja de unfold."""
+        from siifweb.models import DependenciaResponsable
+        proy = proyecto(bpin="202500000000009",
+                        dependencia_responsable=DependenciaResponsable.objects.create(nombre="Hacienda"))
+        html = self.html(self.client.get(self.url(proy, "siifweb")))
+        self.assertIn("<div>Ejecuta: ", html)
+        self.assertIn("<div>Responsable: Hacienda</div>", html)
+        self.assertLess(html.index("Ejecuta: "), html.index("Responsable: "))
+
     def setUp(self):
         super().setUp()
         self.proy = proyecto()
@@ -406,9 +436,9 @@ class Plantilla(FichaBase):
         secop = self.html(self.client.get(self.url(self.proy, "secop")))
         siifweb = self.html(self.client.get(self.url(self.proy, "siifweb")))
         self.assertEqual(secop.count('class="ayuda'), 2)
-        self.assertEqual(siifweb.count('class="ayuda'), 8)
+        self.assertEqual(siifweb.count('class="ayuda'), 7)
         self.assertEqual(secop.count('class="globo'), 2)
-        self.assertEqual(siifweb.count('class="globo'), 8)
+        self.assertEqual(siifweb.count('class="globo'), 7)
         self.assertIn("se reciben las ofertas y se adjudica", secop)
         self.assertIn("aparta el cupo antes de contratar", siifweb)
 
@@ -514,6 +544,6 @@ class FormatoDeFechas(FichaBase):
         _, rp, _ = cadena(proy)
         contrato_siifweb(proy, compromiso=rp)   # firmado el 31/10/2025
         html = self.html(self.client.get(self.url(proy, "siifweb")))
-        contratos = html[html.index("Contratos ("):html.index("Calendario de pagos")]
+        contratos = html[html.index("Contratos ("):html.index("Reservas (")]
         self.assertIn(date_format(date(2025, 10, 31)), contratos)
         self.assertNotIn("2025-10-31", contratos)

@@ -108,7 +108,7 @@ sincronizo con el de produccion (22, con los nombres completos).
 
 ## 4. Pruebas
 
-350 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
+352 pruebas en catorce modulos (antes 186). Nuevos `test_pdf_ficha.py`, `test_plan_desarrollo.py`,
 `test_programacion_proyectos.py` y `test_reportes.py`. Las de cada
 correccion se verificaron contra el codigo anterior: fallan con el y pasan con el nuevo.
 
@@ -339,3 +339,7 @@ modal) pasa al formato regional de CDPs, RPs y obligaciones.
 El numero de cada reserva abre un **modal** con sus lineas de este proyecto: CDP de origen,
 rubro, fuente, valor definitivo, obligaciones, pagos y saldo, con su total. Un ojo junto al
 numero avisa que hay detalle. CDPs, RPs y obligaciones bajan a 30rem de alto.
+
+El **calendario de pagos** pasa al modal de cada contrato de SIIFWEB (sus actas con fecha,
+numero, tipo, concepto y valor, y el total) y sale la seccion aparte de la ficha. En el
+encabezado, "Responsable" va debajo de "Ejecuta": en la misma linea quedaban pegados.

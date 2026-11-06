@@ -328,12 +328,12 @@ Panel **SIIFWEB**:
   "Descargar Excel" y un "Descargar PDF" que bajan solo esa tabla, con el filtro de fechas
   que este aplicado. Ver la seccion siguiente.
 - Fuentes de financiacion, con lo comprometido por cada una.
-- Contratos del proyecto con contratista, valor, numero de actas y pagado real.
-- **Calendario de pagos**: cada acta del contrato con su fecha, tipo, numero y contratista.
+- Contratos del proyecto con contratista, valor, numero de actas y pagado real. El modal de
+  cada contrato trae su **calendario de pagos**: cada acta con su fecha, numero, tipo,
+  concepto y valor, y el total. Ya no hay una seccion aparte de calendario.
 - **Reservas**, en una tabla a todo el ancho: vigencia, numero, fecha, beneficiario, objeto,
   acto administrativo, y el valor definitivo, las obligaciones, los pagos y el saldo de la
-  reserva sumados por reserva (solo lo de este proyecto), con fila de total. El calendario
-  de pagos, que compartia la fila con ellas, queda a todo el ancho. El numero de cada
+  reserva sumados por reserva (solo lo de este proyecto), con fila de total. El numero de cada
   reserva (con un ojo que avisa que hay detalle) abre un modal con sus lineas: CDP de
   origen, rubro (codigo y nombre), fuente y los cuatro valores, con su total.
 
@@ -805,7 +805,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-350 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+352 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

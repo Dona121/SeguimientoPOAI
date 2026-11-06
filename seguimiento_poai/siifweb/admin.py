@@ -15,7 +15,7 @@ from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.utils.formats import number_format
+from django.utils.formats import date_format, number_format
 from django.utils.html import format_html, strip_tags
 from django.utils.http import url_has_allowed_host_and_scheme
 from unfold.admin import ModelAdmin, TabularInline
@@ -604,7 +604,7 @@ class ProyectoAdmin(ModelAdmin):
     fieldsets = (
         ("Proyecto", {"fields": ("bpin", "nombre"),
                       "description": "Aqui solo se editan los datos del proyecto. La cadena de "
-                                     "gasto, los contratos y el calendario de pagos se revisan "
+                                     "gasto, los contratos y sus pagos se revisan "
                                      "en la ficha de ejecucion, con el boton de arriba."}),
         ("Responsables y clasificacion", {
             "fields": ("dependencia", "dependencia_responsable", "clasificaciones"),
@@ -814,29 +814,25 @@ class ProyectoAdmin(ModelAdmin):
 
         # El pagado va por subconsulta: sumarlo junto al filtro por imputacion
         # multiplicaria las actas por el numero de imputaciones del contrato
-        contratos = (Contrato.objects
-                     .filter(imputaciones_del_contrato__proyecto=proyecto).distinct()
-                     .select_related("tercero", "dependencia")
-                     .annotate(n_actas=Count("actas_del_contrato", distinct=True),
-                               pagado=suma_de(ContratoActa, "valor_pago", "contrato"))
-                    .order_by("-valor_contrato"))
-
-        # El calendario sale de las actas del contrato: fecha y valor de cada pago,
-        # con el contratista. La bitacora quedo fuera del alcance (proceso financiero).
-        # Los contratos se resuelven en una subconsulta: filtrar las actas por
-        # contrato__imputaciones_del_contrato__proyecto duplicaria cada acta por el
-        # numero de imputaciones que el contrato tiene en el proyecto.
-        contratos_del_proyecto = ContratoImputacion.objects.filter(
-            proyecto=proyecto).values("contrato_id")
-        pagos = (ContratoActa.objects
-                 .filter(contrato_id__in=contratos_del_proyecto)
-                 .values("fecha_pago", "nrodoc_acta", "tipo_orden", "valor_pago",
-                         tercero=F("contrato__tercero__nombre"),
-                         contrato_nro=F("contrato__nro_contrato"))
-                 .annotate(t=Sum("valor_pago")).order_by("fecha_pago"))
-        max_pago = max((p["t"] for p in pagos), default=0)
-        calendario = [{**p, "ancho": float(p["t"]) / float(max_pago) * 100 if max_pago else 0}
-                      for p in pagos]
+        contratos = list(Contrato.objects
+                         .filter(imputaciones_del_contrato__proyecto=proyecto).distinct()
+                         .select_related("tercero", "dependencia")
+                         .annotate(n_actas=Count("actas_del_contrato", distinct=True),
+                                   pagado=suma_de(ContratoActa, "valor_pago", "contrato"))
+                         .prefetch_related(Prefetch("actas_del_contrato", to_attr="actas",
+                                                    queryset=ContratoActa.objects.order_by(
+                                                        F("fecha_pago").asc(nulls_last=True), "pk")))
+                         .order_by("-valor_contrato"))
+        # El calendario de pagos de cada contrato, para su modal: sus actas en orden de
+        # fecha. Las actas llegan por contrato, asi que no se duplican aunque el contrato
+        # tenga varias imputaciones en el proyecto
+        for c in contratos:
+            c.actas_json = json.dumps([{
+                "fecha": date_format(a.fecha_pago) if a.fecha_pago else "—",
+                "acta": a.nrodoc_acta or "—", "orden": a.nro_orden or "—",
+                "tipo": a.tipo_orden or "—", "concepto": a.concepto or "",
+                "valor": number_format(round(a.valor_pago or 0), force_grouping=True),
+            } for a in c.actas])
         
         fuentes_por_proyecto = (
             Fuente.objects
@@ -870,8 +866,6 @@ class ProyectoAdmin(ModelAdmin):
             "fuentes_por_proyecto":fuentes_por_proyecto,
             "fuentes_por_proyecto_total":fuentes_por_proyecto_total,
             "contratos": contratos,
-            "calendario": calendario,
-            "total_pagado_bitacora": sum(p["t"] for p in pagos),
             "reservas": self._reservas(proyecto),
             "reservas_total": ReservaImputacion.objects.filter(proyecto=proyecto).aggregate(
                 definitivo=Sum("valor_reserva_def"), obligado=Sum("obligaciones_reserva"),
