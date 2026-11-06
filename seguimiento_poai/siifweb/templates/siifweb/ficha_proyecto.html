@@ -1065,6 +1065,13 @@
       // y el contrato de SIIFWEB, la de su calendario de pagos
       document.getElementById("modal-detalle-panel").style.maxWidth =
         esReserva || esSiifweb ? "68rem" : "52rem";
+      // El panel se centra en el area de contenido, no en toda la ventana: centrado en
+      // la ventana, el de 68rem queda pegado al menu lateral. Con el menu oculto
+      // (pantalla angosta o menu plegado) el margen es el de siempre
+      var menu = document.getElementById("nav-sidebar");
+      var borde = menu ? menu.getBoundingClientRect() : null;
+      modal.style.paddingLeft = borde && borde.width > 0 && borde.right > 0
+        ? (borde.right + 16) + "px" : "";
       cuerpo.innerHTML = "";
       acciones.innerHTML = "";
       (esReserva ? detalleReserva(d) : esSiifweb ? detalleSiifweb(d) : detalleSecop(d)).forEach(function (parte) {
