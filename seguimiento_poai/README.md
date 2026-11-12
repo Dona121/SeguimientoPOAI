@@ -638,6 +638,11 @@ En Railway el `preDeployCommand` corre `migrate`, asi que **llevar a `main` una 
 es aplicarla en Supabase**. Con el `.env` presente, cualquier `migrate` local sin
 `DATABASE_URL` explicita tambien va contra Supabase.
 
+Los estaticos se recolectan en el `buildCommand`, no en el `preDeployCommand`: este
+corre en un contenedor aparte y lo que escribe en disco no llega al que atiende. Con
+`DEBUG=False` el manifiesto de WhiteNoise tiene que estar en la imagen; si falta, toda
+pagina cae con `Missing staticfiles manifest entry`.
+
 ## Reportes
 
 `Seguimiento -> Reportes` abre un indice con tres reportes. Cada uno tiene su pagina, con

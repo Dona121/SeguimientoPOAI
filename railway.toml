@@ -5,11 +5,16 @@
 
 [build]
 builder = "nixpacks"
+# Los estaticos se recolectan en el build: lo que queda en la imagen es lo que ve el
+# contenedor que atiende. El preDeployCommand corre en un contenedor aparte y lo que
+# escribe en disco se pierde; recolectados ahi, con DEBUG=False faltaba el manifiesto de
+# WhiteNoise y toda pagina caia con "Missing staticfiles manifest entry". No necesita
+# SECRET_KEY ni base de datos.
+buildCommand = "uv run --directory seguimiento_poai python manage.py collectstatic --noinput"
 
 [deploy]
-# Antes de exponer la version nueva: aplica migraciones y recolecta estaticos
-# (WhiteNoise los sirve comprimidos y versionados desde STATIC_ROOT).
-preDeployCommand = "uv run --directory seguimiento_poai python manage.py migrate --noinput && uv run --directory seguimiento_poai python manage.py collectstatic --noinput"
+# Antes de exponer la version nueva: aplica las migraciones en Supabase.
+preDeployCommand = "uv run --directory seguimiento_poai python manage.py migrate --noinput"
 
 # Servidor de produccion. Railway inyecta $PORT.
 startCommand = "uv run --directory seguimiento_poai gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
