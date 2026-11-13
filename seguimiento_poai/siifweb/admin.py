@@ -2563,14 +2563,49 @@ class Homologado(admin.SimpleListFilter):
         return queryset
 
 
+class HomologacionInline(TabularInline):
+    """Los indicadores del plan con los que cuenta este indicador del catalogo."""
+    model = HomologacionIndicador
+    extra = 0
+    fields = ("indicador_pdd", "observacion", "por_codigo")
+    readonly_fields = ("por_codigo",)
+    autocomplete_fields = ("indicador_pdd",)
+    verbose_name = "Indicador del plan de desarrollo"
+    verbose_name_plural = "Homologación con el plan de desarrollo"
+
+    def get_extra(self, request, obj=None, **kwargs):
+        # Sin homologar, la fila para elegir el indicador del plan ya esta abierta
+        return 1 if obj is not None and not obj.homologaciones.exists() else 0
+
+
 @admin.register(IndicadorCatalogo)
-class IndicadorCatalogoAdmin(CatalogoTerritorial):
+class IndicadorCatalogoAdmin(ModelAdmin):
     """Solo los indicadores de los proyectos formulados en PIIP. Con "Sin homologar"
-    quedan los que el equipo debe homologar a mano con un indicador del plan."""
+    quedan los que el equipo debe homologar a mano con un indicador del plan.
+
+    Los datos del catalogo no se editan: lo unico que se cambia aqui es la homologacion.
+    """
+    compressed_fields = True
+    list_fullwidth = True
+    list_filter_submit = True
+    search_fields = ("codigo", "nombre")
     list_display = ("codigo", "nombre_corto", "producto", "unidad_medida", "es_territorial",
                     "homologado", "plan", "n_proyectos")
     list_filter = (UsadoEnProyectos, Homologado, "es_territorial", ("producto__programa__sector", RelatedDropdownFilter))
     list_select_related = ("producto", "unidad_medida")
+    fields = ("codigo", "nombre", "producto", "unidad_medida", "es_principal", "es_nacional", "es_territorial")
+    readonly_fields = fields
+    inlines = (HomologacionInline,)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @display(description="Nombre", ordering="nombre")
+    def nombre_corto(self, obj):
+        return corto(obj.nombre)
 
     def get_queryset(self, request):
         return (super().get_queryset(request)

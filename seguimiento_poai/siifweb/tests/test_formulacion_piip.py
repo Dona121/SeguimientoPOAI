@@ -228,3 +228,43 @@ class SeccionDelMenu(TestCase):
             peticion = type("Peticion", (), {"user": usuario})()
             with self.subTest(rol=rol):
                 self.assertFalse(any(item["permission"](peticion) for item in self.seccion()["items"]))
+
+
+class HomologarDesdeElIndicador(TestCase):
+    """La ficha del indicador del catalogo: sus datos de lectura y la homologacion editable."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser("admin", "a@b.co", "clave"))
+        # Uno de los que no estan en el plan: no tiene homologacion por codigo
+        self.indicador = IndicadorCatalogo.objects.get(codigo="170201200")
+        self.del_plan = IndicadorMGA.objects.exclude(codigo="").first()
+        self.url = reverse("admin:siifweb_indicadorcatalogo_change", args=(self.indicador.pk,))
+
+    def datos(self, **cambios):
+        datos = {"homologaciones-TOTAL_FORMS": "1", "homologaciones-INITIAL_FORMS": "0",
+                 "homologaciones-MIN_NUM_FORMS": "0", "homologaciones-MAX_NUM_FORMS": "1000",
+                 "homologaciones-0-indicador_pdd": str(self.del_plan.pk),
+                 "homologaciones-0-observacion": "Mide lo mismo", "_save": "Guardar"}
+        datos.update(cambios)
+        return datos
+
+    def test_sin_homologar_abre_con_la_fila_para_elegir(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('name="homologaciones-0-indicador_pdd"', html)
+
+    def test_guardar_crea_la_homologacion_manual(self):
+        respuesta = self.client.post(self.url, self.datos())
+        self.assertEqual(respuesta.status_code, 302)
+        h = HomologacionIndicador.objects.get(indicador=self.indicador)
+        self.assertEqual((h.indicador_pdd, h.observacion, h.por_codigo), (self.del_plan, "Mide lo mismo", False))
+
+    def test_los_datos_del_catalogo_no_se_cambian(self):
+        nombre = self.indicador.nombre
+        self.client.post(self.url, self.datos(nombre="Otro nombre", codigo="000"))
+        self.indicador.refresh_from_db()
+        self.assertEqual((self.indicador.nombre, self.indicador.codigo), (nombre, "170201200"))
+
+    def test_no_se_agregan_ni_se_borran_indicadores(self):
+        self.assertEqual(self.client.get(reverse("admin:siifweb_indicadorcatalogo_add")).status_code, 403)
+        borrar = reverse("admin:siifweb_indicadorcatalogo_delete", args=(self.indicador.pk,))
+        self.assertEqual(self.client.get(borrar).status_code, 403)
