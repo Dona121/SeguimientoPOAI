@@ -270,4 +270,7 @@ class ProductosPIIPEnLasFilas(TestCase):
         html = self.client.get(url, {"corte__id__exact": corte.pk}).content.decode()
         self.assertIn("Productos PIIP", html)
         self.assertIn("No aplica", html)
+        self.assertIn("$20", html)                     # formato de moneda
+        orden = self.client.get(url, {"corte__id__exact": corte.pk, "o": "9"})   # por RP
+        self.assertEqual(orden.status_code, 200)
 

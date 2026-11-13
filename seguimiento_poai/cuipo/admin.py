@@ -281,11 +281,33 @@ class ConProductosPIIP(admin.SimpleListFilter):
 @admin.register(FilaEjecucionGastos)
 class FilaEjecucionGastosAdmin(SoloLectura):
     list_display = ("rubro", "nombre_rubro_corto", "recurso", "centro_costo", "proyecto", "productos_piip",
-                    "apropiacion_definitiva", "cdp", "rp", "obligacion", "pago", "de_otra_vigencia")
+                    "apropiacion_definitiva_pesos", "cdp_pesos", "rp_pesos", "obligacion_pesos", "pago_pesos",
+                    "de_otra_vigencia")
     list_filter = (("corte", RelatedDropdownFilter), "corte__vigencia", ConProductosPIIP, "de_otra_vigencia")
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(tiene_productos=productos_piip())
+
+    # Los valores en el formato de moneda de las demas listas del aplicativo
+    @display(description="Apropiación definitiva", ordering="apropiacion_definitiva")
+    def apropiacion_definitiva_pesos(self, obj):
+        return pesos(obj.apropiacion_definitiva)
+
+    @display(description="CDP", ordering="cdp")
+    def cdp_pesos(self, obj):
+        return pesos(obj.cdp)
+
+    @display(description="RP", ordering="rp")
+    def rp_pesos(self, obj):
+        return pesos(obj.rp)
+
+    @display(description="Obligación", ordering="obligacion")
+    def obligacion_pesos(self, obj):
+        return pesos(obj.obligacion)
+
+    @display(description="Pago", ordering="pago")
+    def pago_pesos(self, obj):
+        return pesos(obj.pago)
 
     @display(description="Productos PIIP", label={"si": "success", "no": "danger", "na": "info"},
              ordering="tiene_productos")
