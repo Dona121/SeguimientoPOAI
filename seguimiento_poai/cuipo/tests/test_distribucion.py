@@ -253,7 +253,7 @@ class AdminDeLaDistribucion(TestCase):
         self.assertNotContains(self.client.get(cambio), reverse("admin:cuipo_corteejecuciongastos_delete",
                                                                 args=(self.corte.pk,)))
 
-    def test_digitar_una_linea_la_marca_manual_y_validar_registra_quien(self):
+    def test_digitar_lineas_las_marca_manuales_y_no_valida_con_errores(self):
         distribucion.precargar(self.corte)
         d = DistribucionBPIN.objects.get(bpin="202500000039332")
         url = reverse("admin:cuipo_distribucionbpin_change", args=(d.pk,))
@@ -269,10 +269,10 @@ class AdminDeLaDistribucion(TestCase):
                           f"lineas-{i}-vigencia_gasto": VigenciaGasto.objects.get(codigo="1").pk,
                           f"lineas-{i}-compromisos": valor, f"lineas-{i}-obligaciones": "0", f"lineas-{i}-pagos": "0",
                           f"lineas-{i}-cpc": CPC.objects.get(codigo="0").pk})
-        respuesta = self.client.post(url, datos)
-        self.assertEqual(respuesta.status_code, 302, respuesta.content.decode()[:2000])
+        respuesta = self.client.post(url, datos, follow=True)
+        self.assertContains(respuesta, "No se puede validar")       # faltan obligaciones, pagos y cualitativos
         d.refresh_from_db()
-        self.assertEqual((d.estado, d.validado_por), ("validado", self.usuario))
+        self.assertEqual((d.estado, d.validado_por), ("borrador", None))
         self.assertEqual(set(d.lineas.values_list("origen_valores", "origen_cpc")), {("manual", "manual")})
         self.assertEqual(distribucion.cuadre(d)[0]["diferencia"][0], Decimal("0"))
 

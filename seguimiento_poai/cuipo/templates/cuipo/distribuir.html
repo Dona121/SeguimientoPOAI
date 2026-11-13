@@ -74,7 +74,16 @@ actualizan fuera de banda. Vistas en DistribucionBPINAdmin; logica en cuipo/dist
       <span class="dato">Corte <b>{{ dist.corte.vigencia }} al {{ dist.corte.fecha_fin|date:"d/m/Y" }}</b></span>
       <span class="dato">Periodo <b>{{ dist.periodo }}</b></span>
       <span class="dato">Regla <b>{{ dist.get_regla_display }}</b></span>
-      <span class="dato">Estado <b>{{ dist.get_estado_display }}</b> · <a class="ok" href="{% url 'admin:cuipo_distribucionbpin_change' dist.pk %}">cambiar estado</a></span>
+      <span class="dato">Estado <b>{{ dist.get_estado_display }}</b>{% if dist.validado_por %} · validada por {{ dist.validado_por }} el {{ dist.fecha_validacion|date:"d/m/Y H:i" }}{% endif %}</span>
+      {% if puede_cambiar_estado %}
+      <form method="post" action="{% url 'admin:cuipo_distribuir_estado' dist.pk %}" style="display:flex;gap:.5rem;margin-left:auto">{% csrf_token %}
+        {% if dist.estado == "borrador" %}<button class="boton" name="estado" value="validado">Validar</button>{% endif %}
+        {% if dist.estado == "validado" %}
+        <button class="boton gris" name="estado" value="borrador">Volver a borrador</button>
+        <button class="boton" name="estado" value="enviado">Marcar enviada</button>
+        {% endif %}
+      </form>
+      {% endif %}
     </div>
     <p class="nota">Productos del BPIN:
       {% for p in productos %}<b>{{ p.codigo }}</b> {{ p.descripcion|truncatechars:70 }}{% if not forloop.last %} · {% endif %}{% empty %}ninguno en la lista CHIP{% endfor %}
@@ -96,6 +105,7 @@ actualizan fuera de banda. Vistas en DistribucionBPINAdmin; logica en cuipo/dist
   {% endif %}
 
   {% include "cuipo/_totales.html" %}
+  {% include "cuipo/_validacion.html" %}
 
   {% if editable and productos %}
   <section class="caja" style="padding:.8rem 1.25rem;display:flex;flex-wrap:wrap;gap:1rem;align-items:center">

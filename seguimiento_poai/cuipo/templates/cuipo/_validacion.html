@@ -1,0 +1,17 @@
+<section class="caja" id="validacion"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if validacion.valida and not validacion.advertencias %}
+  <p class="nota ok">Validación: sin errores.{% if dist.estado == "borrador" %} Se puede validar.{% endif %}</p>
+  {% else %}
+  <details{% if validacion.errores|length <= 8 %} open{% endif %} style="padding:.6rem 1.25rem">
+    <summary style="cursor:pointer;font-size:.85rem">
+      Validación: <b class="{% if validacion.errores %}mal{% else %}ok{% endif %}">{{ validacion.errores|length }} errores</b>
+      y {{ validacion.advertencias|length }} advertencias
+    </summary>
+    <ul style="margin:.5rem 0 0 1rem;font-size:.8rem;list-style:disc">
+      {% for p in validacion.errores|slice:":40" %}<li class="mal">{{ p.mensaje }}</li>{% endfor %}
+      {% if validacion.errores|length > 40 %}<li class="mal">… y {{ validacion.errores|length|add:"-40" }} más</li>{% endif %}
+      {% for p in validacion.advertencias|slice:":20" %}<li style="color:#8a5300">{{ p.mensaje }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</section>

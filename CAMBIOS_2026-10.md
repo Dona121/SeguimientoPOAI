@@ -560,3 +560,18 @@ Rama `cuipo-fase4-pantalla`, sobre `cuipo-fase3-distribucion`. Sin migraciones.
 - La lista de distribuciones vacia explica que se crean con la precarga del corte.
 
 **Pruebas.** 496, todas pasan (`cuipo/tests/test_pantalla.py`, 19 nuevas).
+
+## 24. CUIPO, fase 5: validaciones y estados de la distribucion (13 de noviembre)
+
+Rama `cuipo-fase5-validaciones`, sobre `cuipo-fase4-pantalla`. Sin migraciones.
+
+- `cuipo/validacion.py`: errores que bloquean (fila que no cuadra al centavo, O > C o P > O en
+  una linea, negativos, producto que no es del BPIN, cualitativos vacios o inactivos, lo que
+  no deriva) y advertencias (CPC 0 en un concepto que exige CPC).
+- Estados borrador -> validado -> enviado: solo se valida sin errores; una validada vuelve a
+  borrador; una enviada no cambia. Lineas editables solo en borrador.
+- Pantalla: panel de validacion en vivo y botones de estado. Admin: accion para validar varias.
+- En la pantalla, CPC, detalle sectorial, tercero y politica publica pasan a listas
+  desplegables con descripcion (CPC y tercero se buscan al escribir).
+
+**Pruebas.** 518, todas pasan (`cuipo/tests/test_validacion.py`, 22 nuevas).

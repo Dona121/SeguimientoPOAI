@@ -1,0 +1,206 @@
+"""Validaciones de la distribucion y cambio de estado (fase 5 del CUIPO)."""
+from datetime import date
+from decimal import Decimal
+
+from django.contrib.auth.models import User
+from django.test import TestCase
+from django.urls import reverse
+
+from cuipo import distribucion, validacion
+from cuipo.models import (CPC, ConceptoCUIPO, DetalleSectorial, DistribucionBPIN, LineaCUIPO, ProductoCUIPO,
+                          TerceroCUIPO, VigenciaGasto)
+
+from .test_derivacion import corte_con, homologar
+from .test_distribucion import formular, listas_distribucion
+from .test_ejecucion_gastos import fila
+
+BPIN = "202500000039332"
+
+
+class Base(TestCase):
+    """Un BPIN de un producto, con todo homologado: la precarga lo deja valido."""
+
+    def setUp(self):
+        listas_distribucion()
+        formular(BPIN, "2201048")
+        homologar("3", "1.2.4.1.01")
+        self.corte = corte_con([fila(101, "2.3.2.02.02.009", Decimal("1000"), "3", "2", BPIN,
+                                     obligacion=Decimal("800"), pago=Decimal("600"))], fecha_fin=date(2026, 9, 30))
+        distribucion.precargar(self.corte)
+        self.d = DistribucionBPIN.objects.get(bpin=BPIN)
+        self.linea = self.d.lineas.get()
+        self.usuario = User.objects.create_superuser("admin", "admin@example.com", "clave")
+
+    def errores(self):
+        return [p.mensaje for p in validacion.validar_distribucion(self.d).errores]
+
+
+class Validar(Base):
+    def test_la_precarga_completa_es_valida(self):
+        r = validacion.validar_distribucion(self.d)
+        self.assertTrue(r.valida, [p.mensaje for p in r.errores])
+        self.assertEqual(r.advertencias, [])
+
+    def test_la_fila_debe_cuadrar_en_c_o_y_p(self):
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(compromisos=999)
+        self.assertIn("2.3.2.02.02.009 · recurso 3 · CC 2: compromisos distribuidos 999,00 y en SIIFWEB 1.000,00 "
+                      "(diferencia 1,00)", self.errores())
+
+    def test_obligaciones_mayores_que_compromisos_en_una_celda(self):
+        """Repartida en dos vigencias, una celda puede tener O > C aunque la fila cuadre."""
+        v4 = VigenciaGasto.objects.get(codigo="4")
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(compromisos=900, obligaciones=200, pagos=100)
+        LineaCUIPO.objects.create(distribucion=self.d, fila=self.linea.fila, producto=self.linea.producto,
+                                  vigencia_gasto=v4, compromisos=100, obligaciones=600, pagos=500,
+                                  cpc=self.linea.cpc, detalle_sectorial=self.linea.detalle_sectorial,
+                                  tercero=self.linea.tercero, politica_publica=self.linea.politica_publica)
+        errores = self.errores()
+        self.assertTrue(any("vigencia 4: obligaciones (600,00) mayores que compromisos (100,00)" in e for e in errores))
+        self.assertFalse(any("distribuidos" in e for e in errores))      # la fila si cuadra
+
+    def test_pagos_mayores_que_obligaciones_y_negativos(self):
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(pagos=900)
+        self.assertTrue(any("pagos (900,00) mayores que obligaciones (800,00)" in e for e in self.errores()))
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(pagos=-1)
+        self.assertTrue(any("negativos" in e for e in self.errores()))
+
+    def test_el_producto_debe_ser_del_bpin(self):
+        otro = ProductoCUIPO.objects.get(codigo="2201006")
+        self.d.productos.add(otro)
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(producto=otro)
+        self.assertTrue(any("el producto no es del BPIN según la formulación PIIP" in e for e in self.errores()))
+
+    def test_cualitativos_vacios_e_inactivos(self):
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(cpc=None, tercero=None)
+        errores = self.errores()
+        self.assertTrue(any("falta el CPC" in e for e in errores))
+        self.assertTrue(any("falta el tercero" in e for e in errores))
+        DetalleSectorial.objects.filter(codigo="0").update(activo=False)
+        self.assertTrue(any("el detalle sectorial 0 está inactivo" in e for e in self.errores()))
+
+    def test_cpc_cero_en_concepto_que_lo_exige_es_advertencia(self):
+        ConceptoCUIPO.objects.filter(codigo="2.3.2.02.02.009").update(requiere_cpc=True)
+        r = validacion.validar_distribucion(self.d)
+        self.assertTrue(r.valida)
+        self.assertEqual(len(r.advertencias), 1)
+        self.assertIn("CPC 0 (no aplica) en un concepto que exige CPC", r.advertencias[0].mensaje)
+
+    def test_lo_que_no_deriva_bloquea(self):
+        from cuipo.models import HomologacionFuente
+        HomologacionFuente.objects.all().delete()
+        self.assertIn("Recurso 3: sin homologación de fuente para 2026", self.errores())
+
+    def test_sin_productos_no_se_valida(self):
+        DistribucionBPIN.objects.filter(pk=self.d.pk).update(regla=DistribucionBPIN.Regla.SIN_PRODUCTOS)
+        self.d.refresh_from_db()
+        self.assertTrue(any("no tiene productos en la lista CHIP" in e for e in self.errores()))
+
+    def test_todo_el_corte(self):
+        [(d, r)] = validacion.validar_corte(self.corte)
+        self.assertEqual(d, self.d)
+        self.assertTrue(r.valida)
+
+
+class Estados(Base):
+    def test_borrador_validado_enviado(self):
+        validacion.cambiar_estado(self.d, "validado", self.usuario)
+        self.d.refresh_from_db()
+        self.assertEqual((self.d.estado, self.d.validado_por), ("validado", self.usuario))
+        with self.assertRaisesMessage(ValueError, "no está en borrador"):
+            distribucion.guardar_valor(self.d, self.linea.fila_id, self.linea.producto_id,
+                                       self.linea.vigencia_gasto_id, "compromisos", "1")
+        validacion.cambiar_estado(self.d, "enviado", self.usuario)
+        with self.assertRaisesMessage(ValueError, "De enviado no se pasa a borrador"):
+            validacion.cambiar_estado(self.d, "borrador")
+
+    def test_volver_a_borrador_limpia_la_validacion(self):
+        validacion.cambiar_estado(self.d, "validado", self.usuario)
+        validacion.cambiar_estado(self.d, "borrador")
+        self.d.refresh_from_db()
+        self.assertEqual((self.d.estado, self.d.validado_por, self.d.fecha_validacion), ("borrador", None, None))
+
+    def test_con_errores_no_se_valida(self):
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(compromisos=1)
+        with self.assertRaisesMessage(ValueError, "No se puede validar: 2 errores"):   # no cuadra y O > C
+            validacion.cambiar_estado(self.d, "validado", self.usuario)
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.estado, "borrador")
+
+    def test_de_borrador_no_se_pasa_a_enviado(self):
+        with self.assertRaisesMessage(ValueError, "De borrador no se pasa a enviado"):
+            validacion.cambiar_estado(self.d, "enviado")
+
+
+class EnLaPantallaYElAdmin(Base):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.usuario)
+        self.pantalla = reverse("admin:cuipo_distribuir", args=(self.d.pk,))
+        self.estado = reverse("admin:cuipo_distribuir_estado", args=(self.d.pk,))
+
+    def test_validar_desde_la_pantalla(self):
+        self.assertContains(self.client.get(self.pantalla), "Validación: sin errores.")
+        respuesta = self.client.post(self.estado, {"estado": "validado"}, follow=True)
+        self.assertContains(respuesta, "La distribución quedó validado")
+        self.assertContains(respuesta, "Marcar enviada")
+        self.assertContains(respuesta, "Solo lectura")
+
+    def test_con_errores_la_pantalla_lo_dice_y_no_valida(self):
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(tercero=None)
+        self.assertContains(self.client.get(self.pantalla), "1 errores")
+        respuesta = self.client.post(self.estado, {"estado": "validado"}, follow=True)
+        self.assertContains(respuesta, "No se puede validar")
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.estado, "borrador")
+
+    def test_una_edicion_actualiza_la_validacion_fuera_de_banda(self):
+        respuesta = self.client.post(reverse("admin:cuipo_distribuir_celda", args=(self.d.pk,)), {
+            "fila": self.linea.fila_id, "producto": self.linea.producto_id, "vigencia": self.linea.vigencia_gasto_id,
+            "campo": "compromisos", "valor": "10"})
+        html = respuesta.content.decode()
+        self.assertIn('id="validacion" hx-swap-oob="true"', html)
+        self.assertIn("compromisos distribuidos 10,00", html)
+
+    def test_accion_validar_las_seleccionadas(self):
+        respuesta = self.client.post(reverse("admin:cuipo_distribucionbpin_changelist"),
+                                     {"action": "validar_seleccionadas", "_selected_action": [self.d.pk]}, follow=True)
+        self.assertContains(respuesta, "Validadas: 1.")
+        self.d.refresh_from_db()
+        self.assertEqual(self.d.estado, "validado")
+
+    def test_el_estado_en_el_formulario_solo_ofrece_lo_permitido(self):
+        url = reverse("admin:cuipo_distribucionbpin_change", args=(self.d.pk,))
+        html = self.client.get(url).content.decode()
+        self.assertIn('value="validado"', html)
+        self.assertNotIn('value="enviado"', html)
+        self.assertIn("Sin errores.", html)
+
+
+class Desplegables(Base):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.usuario)
+
+    def test_detalle_y_politica_son_listas_con_descripcion(self):
+        html = self.client.get(reverse("admin:cuipo_distribuir", args=(self.d.pk,))).content.decode()
+        self.assertIn('<option value="0" selected>0 - NO APLICA</option>', html)
+        self.assertIn('list="op-cpc-', html)
+        self.assertIn('list="op-tercero-', html)
+
+    def test_cpc_y_tercero_se_buscan_por_codigo_o_descripcion(self):
+        url = reverse("admin:cuipo_distribuir_opciones", args=(self.d.pk,))
+        self.assertContains(self.client.get(url, {"campo": "cpc", "codigo": "otros serv"}),
+                            '<option value="85999">85999 - Otros servicios</option>')
+        respuesta = self.client.get(url, {"campo": "tercero", "codigo": "2201"}).content.decode()
+        self.assertIn('value="220170001"', respuesta)
+        self.assertNotIn('value="23900000"', respuesta)
+        TerceroCUIPO.objects.filter(codigo="220170001").update(activo=False)
+        self.assertNotContains(self.client.get(url, {"campo": "tercero", "codigo": "2201"}), "220170001")
+        self.assertEqual(self.client.get(url, {"campo": "otro"}).status_code, 400)
+
+    def test_elegir_de_la_lista_guarda_el_codigo(self):
+        respuesta = self.client.post(reverse("admin:cuipo_distribuir_cualitativo", args=(self.d.pk,)),
+                                     {"linea": self.linea.pk, "campo": "cpc", "codigo": "85999"})
+        self.assertEqual(respuesta.status_code, 200)
+        self.linea.refresh_from_db()
+        self.assertEqual((self.linea.cpc, self.linea.origen_cpc), (CPC.objects.get(codigo="85999"), "manual"))

@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
@@ -18,7 +18,7 @@ from unfold.decorators import action, display
 from siifweb import cargas
 from siifweb.admin import SoloLectura, hash_archivo, pesos
 
-from . import derivacion, distribucion, ejecucion, listas, semillas
+from . import derivacion, distribucion, ejecucion, listas, semillas, validacion
 from .models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, DistribucionBPIN,
                      FilaEjecucionGastos, FuenteCUIPO, HomologacionFuente, LineaCUIPO, HomologacionRubro, PoliticaPublica, ProductoCUIPO, ReglaSeccion,
                      ReglaSituacionFondos, ReglaTercero, SeccionPresupuestal, SituacionFondos, TerceroCUIPO,
@@ -460,6 +460,18 @@ class LineaCUIPOInline(TabularInline):
     autocomplete_fields = ("producto", "vigencia_gasto", "cpc", "detalle_sectorial", "tercero", "politica_publica")
     tab = True
 
+    def _borrador(self, obj):
+        return obj is None or obj.estado == DistribucionBPIN.Estado.BORRADOR
+
+    def has_add_permission(self, request, obj=None):
+        return self._borrador(obj) and super().has_add_permission(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return self._borrador(obj) and super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return self._borrador(obj) and super().has_delete_permission(request, obj)
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "fila":
             pk = request.resolver_match.kwargs.get("object_id") if request.resolver_match else None
@@ -479,14 +491,16 @@ class DistribucionBPINAdmin(ModelAdmin):
     search_fields = ("bpin",)
     list_select_related = ("corte",)
     readonly_fields = ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion", "validado_por",
-                       "fecha_validacion", "cuadre_por_fila", "pantalla")
+                       "fecha_validacion", "cuadre_por_fila", "pantalla", "resultado_validacion")
     fieldsets = (
         (None, {"fields": ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion", "pantalla")}),
-        ("Estado", {"fields": ("estado", "validado_por", "fecha_validacion")}),
+        ("Estado", {"fields": ("estado", "validado_por", "fecha_validacion", "resultado_validacion"),
+                    "description": "Borrador → validado (sin errores) → enviado. Una validada puede volver a borrador; "
+                                   "una enviada ya no cambia."}),
         ("Cuadre con SIIFWEB", {"fields": ("cuadre_por_fila",)}),
     )
     inlines = (LineaCUIPOInline,)
-    actions = ("volver_a_precargar",)
+    actions = ("volver_a_precargar", "validar_seleccionadas")
 
     def has_add_permission(self, request):
         return False
@@ -499,10 +513,30 @@ class DistribucionBPINAdmin(ModelAdmin):
                               messages.INFO)
         return super().changelist_view(request, extra_context)
 
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        if db_field.name == "estado" and request.resolver_match:
+            pk = request.resolver_match.kwargs.get("object_id")
+            actual = DistribucionBPIN.objects.filter(pk=pk).values_list("estado", flat=True).first() if pk else None
+            if actual:
+                permitidos = {actual} | validacion.TRANSICIONES[actual]
+                kwargs["choices"] = [(v, t) for v, t in DistribucionBPIN.Estado.choices if v in permitidos]
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
+
     def save_model(self, request, obj, form, change):
-        if "estado" in form.changed_data and obj.estado == DistribucionBPIN.Estado.VALIDADO:
-            obj.validado_por, obj.fecha_validacion = request.user, timezone.now()
+        # El estado se cambia despues de guardar las lineas (save_related), para validar lo ultimo
+        if "estado" in form.changed_data:
+            request._estado_pedido = obj.estado
+            obj.estado = form.initial.get("estado", obj.estado)
         super().save_model(request, obj, form, change)
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        nuevo = getattr(request, "_estado_pedido", None)
+        if nuevo:
+            try:
+                validacion.cambiar_estado(form.instance, nuevo, request.user)
+            except ValueError as error:
+                self.message_user(request, str(error), messages.ERROR)
 
     def save_formset(self, request, form, formset, change):
         """Lo que se cambia a mano queda con origen manual."""
@@ -532,6 +566,8 @@ class DistribucionBPINAdmin(ModelAdmin):
             ruta("cualitativo/", self.d_cualitativo, "_cualitativo"),
             ruta("proporcional/", self.d_proporcional, "_proporcional"),
             ruta("todo/", self.d_todo, "_todo"),
+            ruta("estado/", self.d_estado, "_estado"),
+            ruta("opciones/", self.d_opciones, "_opciones"),
         ]
         return propias + super().get_urls()
 
@@ -548,7 +584,10 @@ class DistribucionBPINAdmin(ModelAdmin):
         return {"dist": dist, "editable": self._puede_editar(request, dist),
                 "vigencias": list(VigenciaGasto.objects.filter(activo=True).order_by("codigo")),
                 "vigencia_1": VigenciaGasto.objects.filter(codigo="1").first(),
-                "totales": distribucion.totales(dist), **extra}
+                "totales": distribucion.totales(dist), "validacion": validacion.validar_distribucion(dist),
+                "puede_cambiar_estado": request.user.has_perm("cuipo.change_distribucionbpin"),
+                "detalles": DetalleSectorial.objects.filter(activo=True).order_by("codigo"),
+                "politicas": PoliticaPublica.objects.filter(activo=True).order_by("codigo"), **extra}
 
     def _parcial(self, request, dist, fila=None, mensaje="", error=""):
         """La fila (o toda la matriz) y, fuera de banda, los totales."""
@@ -559,6 +598,7 @@ class DistribucionBPINAdmin(ModelAdmin):
             contexto = self._contexto(request, dist, filas=distribucion.matriz(dist), mensaje=mensaje, error=error)
             html = render_to_string("cuipo/_matriz.html", contexto, request=request)
         html += render_to_string("cuipo/_totales.html", {**contexto, "oob": True}, request=request)
+        html += render_to_string("cuipo/_validacion.html", {**contexto, "oob": True}, request=request)
         return HttpResponse(html)
 
     def _editar(self, request, pk, accion, fila_de_respuesta=True):
@@ -594,6 +634,35 @@ class DistribucionBPINAdmin(ModelAdmin):
             "anterior": anterior, "antecedente": antecedente,
         }
         return TemplateResponse(request, "cuipo/distribuir.html", contexto)
+
+    def d_opciones(self, request, pk):
+        """Las opciones de CPC o tercero que coinciden con lo escrito (codigo o descripcion), para
+        la lista desplegable de la celda. Son miles: se buscan, no se cargan todas."""
+        self._distribucion(request, pk)
+        modelo = {"cpc": CPC, "tercero": TerceroCUIPO}.get(request.GET.get("campo"))
+        if modelo is None:
+            return HttpResponseBadRequest("Campo desconocido")
+        texto = (request.GET.get("codigo") or "").strip()
+        opciones = modelo.objects.filter(activo=True)
+        if texto:
+            opciones = opciones.filter(Q(codigo__startswith=texto) | Q(descripcion__icontains=texto))
+        html = format_html_join("", '<option value="{}">{} - {}</option>',
+                                ((o.codigo, o.codigo, o.descripcion[:90]) for o in opciones.order_by("codigo")[:30]))
+        return HttpResponse(html)
+
+    def d_estado(self, request, pk):
+        """Validar, volver a borrador o marcar enviada, desde la pantalla."""
+        dist = self._distribucion(request, pk)
+        if request.method != "POST":
+            return HttpResponseBadRequest("Solo POST")
+        if not request.user.has_perm("cuipo.change_distribucionbpin"):
+            raise PermissionDenied
+        try:
+            validacion.cambiar_estado(dist, request.POST.get("estado"), request.user)
+            self.message_user(request, f"La distribución quedó {dist.get_estado_display().lower()}.", messages.SUCCESS)
+        except ValueError as error:
+            self.message_user(request, str(error), messages.ERROR)
+        return redirect("admin:cuipo_distribuir", pk=dist.pk)
 
     def d_asociar(self, request, pk):
         return self._editar(request, pk, lambda d: distribucion.asociar(
@@ -634,6 +703,30 @@ class DistribucionBPINAdmin(ModelAdmin):
     @display(description="Pantalla de distribución")
     def pantalla(self, obj):
         return self.distribuir_enlace(obj)
+
+    @action(description="Validar las distribuciones seleccionadas", icon="task_alt")
+    def validar_seleccionadas(self, request, queryset):
+        validadas, con_errores = 0, []
+        for dist in queryset.filter(estado=DistribucionBPIN.Estado.BORRADOR).select_related("corte"):
+            try:
+                validacion.cambiar_estado(dist, DistribucionBPIN.Estado.VALIDADO, request.user)
+                validadas += 1
+            except ValueError as error:
+                con_errores.append(f"{dist.bpin}: {error}")
+        self.message_user(request, f"Validadas: {validadas}.", messages.SUCCESS if validadas else messages.INFO)
+        for texto in con_errores[:20]:
+            self.message_user(request, texto, messages.ERROR)
+        if len(con_errores) > 20:
+            self.message_user(request, f"... y {len(con_errores) - 20} más con errores.", messages.ERROR)
+
+    @display(description="Validación")
+    def resultado_validacion(self, obj):
+        r = validacion.validar_distribucion(obj)
+        if r.valida and not r.advertencias:
+            return "Sin errores."
+        partes = [("Error", p.mensaje) for p in r.errores[:30]] + [("Advertencia", p.mensaje) for p in r.advertencias[:10]]
+        resumen = f"{len(r.errores)} errores y {len(r.advertencias)} advertencias."
+        return format_html("{}<br>{}", resumen, format_html_join(mark_safe("<br>"), "{}: {}", partes))
 
     @action(description="Volver a precargar (solo borradores; borra lo digitado)", icon="restart_alt")
     def volver_a_precargar(self, request, queryset):

@@ -70,7 +70,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 496.
+  disco temporal). Hoy son 518.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -582,8 +582,11 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   los demás casos; "Todo a un producto" deja origen SIIFWEB.
 - Solo se edita una distribución en borrador y con permisos de agregar, cambiar y borrar
   líneas; sin permiso de ver distribuciones, 403.
-- Los cualitativos se digitan por código (con su descripción al lado) en vez de un
-  autocompletar: el CPC tiene 7.659 códigos y el código es lo que se conoce.
+- Cualitativos como listas desplegables con su descripción (pedido del 13/11): detalle
+  sectorial (167) y política pública (87) en una lista completa; CPC (7.659) y tercero (5.736)
+  en una lista que se llena con las 30 coincidencias de lo que se escribe, por código o por
+  descripción (`distribuir/opciones/`), porque cargarlas completas en cada línea haría la
+  página muy pesada. Solo ofrece códigos activos.
 - La lista de distribuciones vacía explica cómo se crean (con la precarga del corte).
 - No se probó en el navegador con datos locales: el corte local va al 11/11 y no tiene
   periodo. Las pruebas cubren la pantalla y cada acción.
@@ -598,7 +601,26 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   - Si el BPIN se distribuyó en un periodo anterior de la vigencia, se ve esa distribución
     (valor y participación por producto) en solo lectura.
 
-**Fase 5 — Validaciones**
+**Fase 5 — Validaciones** — **hecha el 13/11** (rama `cuipo-fase5-validaciones`, sin migraciones,
+22 pruebas en `cuipo/tests/test_validacion.py`).
+- `cuipo/validacion.py`: `validar_distribucion()` (errores y advertencias, cada uno con su
+  fila y línea) y `validar_corte()`. Errores: lo que no deriva (fuente sin homologar...), fila
+  que no cuadra al centavo en C, O o P, valores negativos, O > C o P > O en una línea, producto
+  que no es del BPIN según el PIIP (en la inversión sin BPIN, solo el 0), CPC, detalle
+  sectorial, tercero o política pública vacíos, códigos inactivos (producto, vigencia del
+  gasto, cualitativos) y distribución sin productos. Advertencia: CPC 0 en un concepto que
+  exige CPC.
+- Ajuste frente al plan: además del CPC, también bloquean el detalle sectorial, el tercero y
+  la política pública vacíos, porque son campos obligatorios de la línea del plano.
+- Estados: borrador → validado (solo sin errores; registra quién y cuándo) → enviado; una
+  validada puede volver a borrador (se borra quién la validó); una enviada ya no cambia
+  (`TRANSICIONES`, `cambiar_estado`). Solo en borrador se editan las líneas, también en el
+  admin.
+- Pantalla: panel de validación que se actualiza con cada cambio (fuera de banda) y botones
+  Validar / Volver a borrador / Marcar enviada. Admin: acción "Validar las distribuciones
+  seleccionadas", el resultado de la validación en cada distribución y el estado con solo
+  las opciones permitidas.
+
 - Archivo: `cuipo/validacion.py` con `validar_distribucion()`.
 - Aceptación: cada regla de la sección 4.3 tiene su prueba; en 202500000029628, recurso 35,
   ninguna celda deja O > C.
