@@ -24,10 +24,9 @@ from openpyxl import load_workbook
 from .models import (BpinProceso, Cdp, CdpImputacion, CentroCosto, Compromiso,
                      CompromisoImputacion, Contrato, ContratoSecop,
                      ContratoActa, ContratoImputacion, Departamento, FormulacionProyecto, Fuente,
-                     HomologacionIndicador, IndicadorCatalogo, IndicadorProyecto, MetaVigenciaIndicador,
+                     IndicadorCatalogo, IndicadorProyecto, MedidoATravesDe, MetaVigenciaIndicador,
                      Municipio, Obligacion, ObligacionImputacion, OrdenGasto, ProcesoSecop,
-                     ProductoCatalogo, ProgramaCatalogo, Proyecto, Reserva, ReservaImputacion, Rubro,
-                     SectorCatalogo, Tercero)
+                     ProductoCatalogo, Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
 
 CERO = Decimal("0")
 
@@ -743,7 +742,7 @@ ORDEN_DE_CARGA = ["cdp", "compromisos", "obligaciones", "reservas",
 COLUMNAS_PIIP = [
     "NombreArchivo", "BPIN", "SectorProyecto", "Programa", "Inicio", "Fin", "ObjetivoGeneral",
     "Problema", "Descripcion", "PoblacionAfectada", "PoblacionObjetivo", "Región", "Departamento",
-    "Municipios", "ObjetivoEspecifico", "CodigoProducto", "Producto", "Etapa", "CodigoIndicador",
+    "Municipios", "ObjetivoEspecifico", "CodigoProducto", "Producto", "Etapa", "UMP", "CodigoIndicador",
     "Indicador", "UMI", "TipoIndicador", "Acumula", "MetaTotalIndicador", "Vigencia", "MetaVigencia",
 ]
 PRINCIPAL = "(Producto principal del proyecto)"
@@ -781,17 +780,18 @@ def bpines_con_ejecucion(bpines):
 
 
 class CatalogoPIIP:
-    """El catalogo MGA de los proyectos y los municipios, en memoria para la carga.
+    """Los productos e indicadores del catalogo PIIP y los municipios, en memoria para la carga.
 
     Valida cada indicador del proyecto contra el catalogo por su codigo. El que no esta se
-    crea con los datos del PIIP (y su producto, programa y sector si tampoco estan), se
-    asocia al proyecto con sus metas como cualquier otro y se lista en el mensaje. Lo que
-    ya esta en el catalogo no se cambia: lo mantiene el equipo en el admin.
+    crea con los datos del PIIP (y su producto si tampoco esta), se asocia al proyecto con
+    sus metas como cualquier otro y se lista en el mensaje. Lo que ya esta en el catalogo
+    no se cambia: lo mantiene el equipo en el admin.
     """
 
     def __init__(self):
         self.indicadores = {i.codigo: i for i in IndicadorCatalogo.objects.all()}
-        self.programas = {p.codigo: p for p in ProgramaCatalogo.objects.all()}
+        self.productos = {p.codigo: p for p in ProductoCatalogo.objects.all()}
+        self.medidos = {m.nombre: m for m in MedidoATravesDe.objects.all()}
         self.municipios = {sin_tildes(m.nombre): m for m in Municipio.objects.select_related("departamento")}
         # Los nombres con coma ("Bogota, D.C.") se reconocen antes de partir la lista
         self.con_coma = sorted((m.nombre for m in self.municipios.values() if "," in m.nombre),
@@ -804,47 +804,31 @@ class CatalogoPIIP:
         if (tipo, codigo) in self.creados:
             self.creados[(tipo, codigo)].add(texto(f.get("BPIN")))
 
-    def programa(self, f):
-        codigo, _, nombre = texto(f["Programa"]).partition(" - ")
-        codigo = codigo.strip()
-        if not codigo:
-            return None
-        if codigo not in self.programas:
-            sector = SectorCatalogo.objects.filter(codigo=codigo[:2]).first()
-            if sector is None:
-                sector = SectorCatalogo.objects.create(
-                    codigo=codigo[:2], nombre=texto(f.get("SectorProyecto")) or codigo[:2])
-                self.creados[("sector", sector.codigo)] = set()
-            self.programas[codigo] = ProgramaCatalogo.objects.create(
-                codigo=codigo, sector=sector, nombre=nombre.strip() or codigo)
-            self.creados[("programa", codigo)] = set()
-        self._anotar("sector", codigo[:2], f)
-        self._anotar("programa", codigo, f)
-        return self.programas[codigo]
+    def producto(self, f):
+        codigo = texto(f["CodigoProducto"])
+        if codigo not in self.productos:
+            ump = texto(f.get("UMP"))
+            if ump and ump not in self.medidos:
+                self.medidos[ump] = MedidoATravesDe.objects.create(nombre=ump)
+            self.productos[codigo] = ProductoCatalogo.objects.create(
+                codigo=codigo, nombre=texto(f["Producto"]).replace(PRINCIPAL, "").strip() or codigo,
+                medido_a_traves_de=self.medidos.get(ump))
+            self.creados[("producto", codigo)] = set()
+        self._anotar("producto", codigo, f)
+        return self.productos[codigo]
 
     def indicador(self, f):
         codigo = texto(f["CodigoIndicador"])
         if codigo not in self.indicadores:
-            cod_producto = texto(f["CodigoProducto"])
-            producto = ProductoCatalogo.objects.filter(codigo=cod_producto).first()
-            if producto is None:
-                # El programa del producto son sus cuatro primeros digitos
-                programa = self.programa({"Programa": cod_producto[:4], "BPIN": f.get("BPIN"),
-                                          "SectorProyecto": f.get("SectorProyecto")})
-                producto = ProductoCatalogo.objects.create(
-                    codigo=cod_producto, programa=programa,
-                    nombre=texto(f["Producto"]).replace(PRINCIPAL, "").strip() or cod_producto)
-                self.creados[("producto", cod_producto)] = set()
             self.indicadores[codigo] = IndicadorCatalogo.objects.create(
-                codigo=codigo, producto=producto, nombre=texto(f["Indicador"]) or codigo)
+                codigo=codigo, producto=self.producto(f), nombre=texto(f["Indicador"]) or codigo)
             self.creados[("indicador", codigo)] = set()
-        self._anotar("producto", texto(f["CodigoProducto"]), f)
         self._anotar("indicador", codigo, f)
         return self.indicadores[codigo]
 
     def resumen_creados(self):
         """'indicador 170201200 (BPIN 2025...); producto 1702012 (BPIN ...)'."""
-        orden = {"indicador": 0, "producto": 1, "programa": 2, "sector": 3}
+        orden = {"indicador": 0, "producto": 1}
         return "; ".join(f"{tipo} {codigo} (BPIN {', '.join(sorted(b for b in bpines if b))})"
                          for (tipo, codigo), bpines in sorted(self.creados.items(),
                                                               key=lambda x: (orden[x[0][0]], x[0][1])))
@@ -907,7 +891,7 @@ def cargar_piip(carga):
             proyecto_id=con_ejecucion[bpin],
             defaults={
                 "reporte": carga, "archivo_ficha": texto(f["NombreArchivo"])[:255],
-                "programa": cat.programa(f),
+                "sector": texto(f["SectorProyecto"])[:255], "programa": texto(f["Programa"])[:255],
                 "vigencia_inicio": entero(f["Inicio"]), "vigencia_fin": entero(f["Fin"]),
                 "objetivo_general": texto(f["ObjetivoGeneral"]), "problema": texto(f["Problema"]),
                 "descripcion": texto(f["Descripcion"]),
@@ -955,13 +939,13 @@ def cargar_piip(carga):
                 for v, m in sorted(metas.items())])
             n_metas += len(metas)
 
-    homologados = HomologacionIndicador.homologar_por_codigo(usados)
+    homologados = IndicadorCatalogo.homologar_por_codigo(usados)
 
     partes = [f"{len(con_ejecucion)} proyectos, {n_indicadores} indicadores, {n_metas} metas por vigencia"]
     if cat.creados:
         partes.append("no estaban en el catalogo y se crearon: " + cat.resumen_creados())
     if homologados:
-        partes.append(f"{homologados} homologaciones nuevas por codigo con el plan")
+        partes.append(f"{homologados} indicadores homologados por codigo con el plan")
     if omitidos:
         partes.append(f"{len(omitidos)} BPIN sin ejecucion en SIIFWEB, no se cargan: "
                       f"{', '.join(omitidos[:20])}{' ...' if len(omitidos) > 20 else ''}")

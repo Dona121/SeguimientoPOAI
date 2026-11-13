@@ -351,16 +351,17 @@ comprometido.
 
 ## 16. Catalogo PIIP y formulacion de los proyectos (12 de noviembre)
 
-- Catalogo MGA aparte del del plan: migraciones `0020` (modelos) y `0021` (datos: 20
-  sectores y 75 programas territoriales, y solo los 190 indicadores que usan los proyectos
-  de `InfoGeneral`, con sus 187 productos, validados por codigo contra el catalogo),
-  homologacion por codigo con el plan (163) y departamento de Sucre para los municipios
-  existentes. `0022`: el hash de la carga es unico por tipo. La vista de indicadores
-  muestra si cada uno esta homologado.
-- Modelos `Departamento`, `HomologacionIndicador`, `FormulacionProyecto`,
-  `IndicadorProyecto` y `MetaVigenciaIndicador`; `Municipio` apunta a su departamento.
+- Catalogo PIIP aparte del del plan, solo con producto e indicador: migraciones `0020`
+  (modelos, mas el hash de la carga unico por tipo) y `0021` (los 190 indicadores que usan
+  los proyectos de `InfoGeneral`, con sus 187 productos, validados por codigo contra el
+  catalogo MGA). Cada indicador se vincula con el indicador del plan (163 por codigo) y de
+  alla salen producto, programa y sector del plan. Departamento de Sucre para los
+  municipios existentes.
+- Modelos `Departamento`, `FormulacionProyecto`, `IndicadorProyecto` y
+  `MetaVigenciaIndicador`; `Municipio` apunta a su departamento.
 - Carga **Informacion general PIIP** (tabla `InfoGeneral`): solo BPIN con documentos en
-  SIIFWEB. En la base local: 364 proyectos, 436 indicadores y 519 metas; 124 BPIN quedan
-  fuera por no tener ejecucion.
-- Modulo **Catalogo PIIP** en el menu y pestana **Formulacion (PIIP)** en la ficha, en
-  formato de tabla.
+  SIIFWEB; valida cada indicador por codigo y crea el que falte con sus metas; homologa por
+  codigo los que queden sin homologar. En la base local: 364 proyectos, 436 indicadores y
+  519 metas; 124 BPIN quedan fuera por no tener ejecucion.
+- Modulo **Catalogo PIIP** en el menu (formulacion, productos e indicadores, editables) y
+  pestana **Formulacion (PIIP)** en la ficha: lo del PIIP y la linea del plan homologada.

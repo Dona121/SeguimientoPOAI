@@ -1248,53 +1248,24 @@ class SeguimientoMeta(Fechas):
 
 
 
-# 5 - Catalogo MGA territorial y formulacion de los proyectos (PIIP)
+# 5 - Catalogo PIIP y formulacion de los proyectos
 #
 # El catalogo del plan de desarrollo (SectorMGA ... IndicadorMGA) no admite productos
-# nuevos: cambiarlo pasa por la Asamblea. Los proyectos se formulan con el catalogo MGA
-# completo, asi que ese va aparte, y sus indicadores se homologan con los del plan.
-
-class SectorCatalogo(Fechas):
-    codigo = models.CharField(max_length=4, unique=True, verbose_name="Código")
-    nombre = models.CharField(max_length=255, verbose_name="Nombre")
-
-    class Meta:
-        verbose_name = "Sector (catálogo MGA)"
-        verbose_name_plural = "Sectores (catálogo MGA)"
-        ordering = ("codigo",)
-
-    def __str__(self):
-        return f"{self.codigo} - {self.nombre}"
-
-
-class ProgramaCatalogo(Fechas):
-    sector = models.ForeignKey(SectorCatalogo, on_delete=models.PROTECT, related_name="programas",
-                               verbose_name="Sector")
-    codigo = models.CharField(max_length=6, unique=True, verbose_name="Código")
-    nombre = models.TextField(verbose_name="Nombre")
-
-    class Meta:
-        verbose_name = "Programa (catálogo MGA)"
-        verbose_name_plural = "Programas (catálogo MGA)"
-        ordering = ("codigo",)
-
-    def __str__(self):
-        return f"{self.codigo} - {self.nombre}"
-
+# nuevos: cambiarlo pasa por la Asamblea. Los proyectos se formulan en PIIP con el catalogo
+# MGA completo, asi que sus productos e indicadores van aparte. Cada indicador se vincula
+# con el del plan, y de alla salen el producto, el programa y el sector del plan.
 
 class ProductoCatalogo(Fechas):
-    programa = models.ForeignKey(ProgramaCatalogo, on_delete=models.PROTECT, related_name="productos",
-                                 verbose_name="Programa")
+    """El producto MGA con que se formulo el proyecto: de el cuelga el objetivo especifico."""
     codigo = models.CharField(max_length=10, unique=True, verbose_name="Código")
     nombre = models.TextField(verbose_name="Nombre")
-    descripcion = models.TextField(blank=True, default="", verbose_name="Descripción")
     medido_a_traves_de = models.ForeignKey(MedidoATravesDe, on_delete=models.PROTECT, null=True, blank=True,
                                            related_name="productos_catalogo",
                                            verbose_name="Medido a través de")
 
     class Meta:
-        verbose_name = "Producto (catálogo MGA)"
-        verbose_name_plural = "Productos (catálogo MGA)"
+        verbose_name = "Producto (catálogo PIIP)"
+        verbose_name_plural = "Productos (catálogo PIIP)"
         ordering = ("codigo",)
 
     def __str__(self):
@@ -1302,67 +1273,52 @@ class ProductoCatalogo(Fechas):
 
 
 class IndicadorCatalogo(Fechas):
+    """Un indicador de producto con que se formulo algun proyecto, y su indicador del plan.
+
+    La homologacion es el vinculo con el plan: por codigo cuando coinciden (lo hacen la
+    migracion, la carga y el admin) o a mano cuando no.
+    """
     producto = models.ForeignKey(ProductoCatalogo, on_delete=models.PROTECT, related_name="indicadores",
                                  verbose_name="Producto")
     codigo = models.CharField(max_length=12, unique=True, verbose_name="Código")
     nombre = models.TextField(verbose_name="Nombre")
     unidad_medida = models.ForeignKey(UnidadMedida, on_delete=models.PROTECT, null=True, blank=True,
                                       related_name="indicadores_catalogo", verbose_name="Unidad de medida")
-    es_principal = models.BooleanField(null=True, blank=True, verbose_name="Indicador principal")
-    es_nacional = models.BooleanField(null=True, blank=True, verbose_name="Es nacional")
-    # Se cargan solo los territoriales; un "No" es un indicador que usa algun proyecto
-    # aunque el catalogo no lo marque como territorial (los de bomberos, por ejemplo)
-    es_territorial = models.BooleanField(null=True, blank=True, verbose_name="Es territorial")
+    indicador_pdd = models.ForeignKey(IndicadorMGA, on_delete=models.PROTECT, null=True, blank=True,
+                                      related_name="indicadores_piip",
+                                      verbose_name="Indicador del plan de desarrollo",
+                                      help_text="Con el que se homologa. De él salen producto, programa y "
+                                                "sector del plan")
+    homologado_por_codigo = models.BooleanField(default=False, editable=False, verbose_name="Por código",
+                                                help_text="Homologado solo porque los dos tienen el mismo código")
+    observacion = models.TextField(blank=True, default="", verbose_name="Observación",
+                                   help_text="Por qué se consideran equivalentes")
 
     class Meta:
-        verbose_name = "Indicador (catálogo MGA)"
-        verbose_name_plural = "Indicadores (catálogo MGA)"
+        verbose_name = "Indicador (catálogo PIIP)"
+        verbose_name_plural = "Indicadores (catálogo PIIP)"
         ordering = ("codigo",)
 
     def __str__(self):
         return f"{self.codigo} - {self.nombre}"
 
-
-class HomologacionIndicador(Fechas):
-    """Un indicador del catalogo MGA que cuenta para un indicador del plan de desarrollo.
-
-    Las que coinciden por codigo se crean solas; las demas las asigna el equipo.
-    """
-    indicador = models.ForeignKey(IndicadorCatalogo, on_delete=models.CASCADE, related_name="homologaciones",
-                                  verbose_name="Indicador del catálogo MGA")
-    indicador_pdd = models.ForeignKey(IndicadorMGA, on_delete=models.PROTECT, related_name="homologaciones",
-                                      verbose_name="Indicador del plan de desarrollo")
-    por_codigo = models.BooleanField(default=False, editable=False, verbose_name="Por código",
-                                     help_text="Creada sola porque los dos tienen el mismo código")
-    observacion = models.TextField(blank=True, default="", verbose_name="Observación",
-                                   help_text="Por qué se consideran equivalentes")
-
-    class Meta:
-        verbose_name = "Homologación de indicador"
-        verbose_name_plural = "Homologación de indicadores"
-        ordering = ("indicador__codigo",)
-        constraints = [models.UniqueConstraint(fields=["indicador", "indicador_pdd"],
-                                               name="homologacion_unica",
-                                               violation_error_message="Esa homologación ya existe.")]
-
-    def __str__(self):
-        return f"{self.indicador.codigo} -> {self.indicador_pdd.codigo}"
-
     @classmethod
     def homologar_por_codigo(cls, indicadores):
-        """Homologa cada indicador sin homologacion con los del plan de su mismo codigo.
+        """Vincula cada indicador sin homologar con el del plan de su mismo codigo.
 
-        Solo toca los que no tienen ninguna: si el equipo cambio una por codigo por una
-        manual, no se vuelve a crear. Devuelve cuantas creo.
+        Solo toca los que no tienen indicador del plan: uno que el equipo homologo a mano
+        no se cambia. Devuelve cuantos homologo.
         """
-        sin = {i.pk: i.codigo for i in indicadores if i.pk and not i.homologaciones.exists()}
-        del_plan = {}
-        for pk, codigo in IndicadorMGA.objects.filter(codigo__in=set(sin.values())).values_list("pk", "codigo"):
-            del_plan.setdefault(codigo, []).append(pk)
-        nuevas = [cls(indicador_id=pk, indicador_pdd_id=pdd, por_codigo=True)
-                  for pk, codigo in sin.items() for pdd in del_plan.get(codigo, [])]
-        cls.objects.bulk_create(nuevas)
-        return len(nuevas)
+        sin = [i for i in indicadores if i.pk and i.indicador_pdd_id is None]
+        del_plan = dict(IndicadorMGA.objects.filter(codigo__in={i.codigo for i in sin})
+                        .values_list("codigo", "pk"))
+        homologados = []
+        for i in sin:
+            if i.codigo in del_plan:
+                i.indicador_pdd_id, i.homologado_por_codigo = del_plan[i.codigo], True
+                homologados.append(i)
+        cls.objects.bulk_update(homologados, ["indicador_pdd", "homologado_por_codigo"])
+        return len(homologados)
 
 
 class FormulacionProyecto(Fechas):
@@ -1377,8 +1333,9 @@ class FormulacionProyecto(Fechas):
                                 related_name="formulaciones", verbose_name="Carga")
     archivo_ficha = models.CharField(max_length=255, blank=True, verbose_name="Ficha del PIIP",
                                      help_text="Archivo de la ficha del proyecto descargada del PIIP")
-    programa = models.ForeignKey(ProgramaCatalogo, on_delete=models.PROTECT, null=True, blank=True,
-                                 related_name="formulaciones", verbose_name="Programa")
+    # Como los trae el PIIP: el sector y el programa del plan salen de los indicadores
+    sector = models.CharField(max_length=255, blank=True, verbose_name="Sector")
+    programa = models.CharField(max_length=255, blank=True, verbose_name="Programa")
     vigencia_inicio = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Vigencia de inicio")
     vigencia_fin = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Vigencia de fin")
     objetivo_general = models.TextField(blank=True, default="", verbose_name="Objetivo general")
@@ -1396,10 +1353,6 @@ class FormulacionProyecto(Fechas):
 
     def __str__(self):
         return f"Formulación de {self.proyecto}"
-
-    @property
-    def sector(self):
-        return self.programa.sector if self.programa_id else None
 
 
 class IndicadorProyecto(Fechas):

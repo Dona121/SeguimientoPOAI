@@ -1,24 +1,28 @@
 # -*- coding: utf-8 -*-
-"""El catalogo MGA territorial, su homologacion con el plan y la carga de la
-informacion general de los proyectos en PIIP (tabla InfoGeneral)."""
+"""El catalogo PIIP (producto e indicador, vinculado al plan) y la carga de la informacion
+general de los proyectos en PIIP (tabla InfoGeneral)."""
 import hashlib
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.files.base import ContentFile
 from django.test import TestCase
 from django.urls import reverse
 
 from siifweb import cargas
 from siifweb.admin import CargaReporteForm
-from siifweb.models import (CargaReporte, Departamento, FormulacionProyecto, HomologacionIndicador,
-                            IndicadorCatalogo, IndicadorMGA, IndicadorProyecto, Municipio, ProductoCatalogo)
+from siifweb.models import (CargaReporte, Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorMGA,
+                            IndicadorProyecto, Municipio, ProductoCatalogo)
 
 from .fabricas import cadena, libro, proyecto
 
 COLUMNAS = cargas.COLUMNAS_PIIP
+HOMOLOGADO = "410402000"      # esta en el plan: queda homologado por codigo
+FUERA_DEL_PLAN = "170201200"  # no esta en el plan: se homologa a mano
 
-# Una fila de la tabla con un indicador del catalogo territorial (Personas con discapacidad
+# Una fila de la tabla con un indicador que esta en el plan (Personas con discapacidad
 # atendidas, del producto 4104020); cada prueba cambia lo que le interesa
 FILA = {
     "NombreArchivo": "Reporte Ficha actualizada del proyecto_12112026164549.xlsx",
@@ -32,14 +36,18 @@ FILA = {
     "ObjetivoEspecifico": "Atender a la población",
     "CodigoProducto": "4104020",
     "Producto": "Servicio de atención integral a población en condición de discapacidad     (Producto principal del proyecto)",
-    "Etapa": "Inversión", "CodigoIndicador": "410402000", "Indicador": "Personas atendidas",
-    "UMI": "Número de personas", "TipoIndicador": "Principal", "Acumula": "Si",
-    "MetaTotalIndicador": "300", "Vigencia": "2025", "MetaVigencia": "100",
+    "Etapa": "Inversión", "UMP": "Número de personas", "CodigoIndicador": HOMOLOGADO,
+    "Indicador": "Personas atendidas", "UMI": "Número de personas", "TipoIndicador": "Principal",
+    "Acumula": "Si", "MetaTotalIndicador": "300", "Vigencia": "2025", "MetaVigencia": "100",
 }
 
 
 def fila(**cambios):
     return {**FILA, **cambios}
+
+
+def fuera_del_plan(**cambios):
+    return fila(CodigoProducto="1702012", CodigoIndicador=FUERA_DEL_PLAN, **cambios)
 
 
 def carga_piip(filas):
@@ -52,24 +60,29 @@ def carga_piip(filas):
     return registro
 
 
+def un_indicador_del_plan_fuera_del_catalogo():
+    return (IndicadorMGA.objects.exclude(codigo__in=IndicadorCatalogo.objects.values("codigo"))
+            .exclude(codigo="410109300").first())
+
+
 class CatalogoDeLosProyectos(TestCase):
     """Lo que deja la migracion 0021."""
 
-    def test_trae_solo_los_indicadores_de_los_proyectos(self):
-        # Los 190 codigos de InfoGeneral, no los 5.739 territoriales del catalogo
+    def test_trae_solo_los_indicadores_de_los_proyectos_con_su_producto(self):
+        # Los 190 codigos de InfoGeneral, no los miles del catalogo MGA
         self.assertEqual(IndicadorCatalogo.objects.count(), 190)
         self.assertEqual(ProductoCatalogo.objects.count(), 187)
-        # Validados por codigo contra el catalogo: entran aunque no sean territoriales
-        self.assertEqual(set(IndicadorCatalogo.objects.filter(es_territorial=False).values_list("codigo", flat=True)),
-                         {"370800900", "370801300"})
+        self.assertEqual(IndicadorCatalogo.objects.get(codigo=HOMOLOGADO).producto.codigo, "4104020")
 
-    def test_homologa_por_codigo_los_indicadores_del_plan(self):
-        con_par = IndicadorMGA.objects.filter(codigo__in=IndicadorCatalogo.objects.values("codigo"))
-        self.assertEqual(HomologacionIndicador.objects.filter(por_codigo=True).count(), con_par.count())
-        for h in HomologacionIndicador.objects.select_related("indicador", "indicador_pdd")[:50]:
-            self.assertEqual(h.indicador.codigo, h.indicador_pdd.codigo)
-        # El del plan que ya no esta en el catalogo de 2025 queda para homologar a mano
-        self.assertFalse(HomologacionIndicador.objects.filter(indicador_pdd__codigo="410109300").exists())
+    def test_homologa_por_codigo_con_el_plan(self):
+        del_plan = set(IndicadorMGA.objects.values_list("codigo", flat=True))
+        for i in IndicadorCatalogo.objects.select_related("indicador_pdd"):
+            with self.subTest(codigo=i.codigo):
+                if i.codigo in del_plan:
+                    self.assertEqual((i.indicador_pdd.codigo, i.homologado_por_codigo), (i.codigo, True))
+                else:
+                    self.assertIsNone(i.indicador_pdd)
+        self.assertEqual(IndicadorCatalogo.objects.filter(homologado_por_codigo=True).count(), 163)
 
     def test_los_municipios_existentes_son_de_sucre(self):
         sucre = Departamento.objects.get(nombre="Sucre")
@@ -86,13 +99,13 @@ class CargaPIIP(TestCase):
         carga = carga_piip([fila(), fila(Vigencia="2026", MetaVigencia="200")])
         self.assertEqual(carga.estado, CargaReporte.Estado.PROCESADO, carga.mensaje)
         f = FormulacionProyecto.objects.get(proyecto=self.proy)
-        self.assertEqual(f.programa.codigo, "4104")
-        self.assertEqual(f.sector.codigo, "41")
+        self.assertEqual(f.sector, "Inclusión social y reconciliación")
+        self.assertTrue(f.programa.startswith("4104 - "))
         self.assertEqual((f.vigencia_inicio, f.vigencia_fin), (2025, 2026))
         self.assertEqual((f.poblacion_afectada, f.poblacion_objetivo), (1006044, 2470))
         self.assertEqual(sorted(f.municipios.values_list("nombre", flat=True)), ["Corozal", "Sincelejo"])
         [i] = f.indicadores.all()
-        self.assertEqual(i.indicador.codigo, "410402000")
+        self.assertEqual(i.indicador.codigo, HOMOLOGADO)
         self.assertEqual(i.producto.codigo, "4104020")   # el producto sale del indicador
         self.assertTrue(i.producto_principal)
         self.assertEqual((i.etapa, i.tipo, i.acumula), ("inversion", "principal", True))
@@ -137,52 +150,48 @@ class CargaPIIP(TestCase):
                          ["Sincelejo"])
 
     def test_un_indicador_fuera_del_catalogo_se_crea_y_se_asocia_con_sus_metas(self):
-        carga = carga_piip([fila(), fila(CodigoProducto="9999001", Producto="Producto nuevo",
+        carga = carga_piip([fila(), fila(CodigoProducto="9999001", Producto="Producto nuevo", UMP="Número de cosas",
                                          CodigoIndicador="999900100", Indicador="Indicador nuevo",
                                          MetaTotalIndicador="10", MetaVigencia="4")])
         self.assertEqual(carga.estado, CargaReporte.Estado.PROCESADO, carga.mensaje)
         nuevo = IndicadorCatalogo.objects.get(codigo="999900100")
-        self.assertEqual((nuevo.nombre, nuevo.producto.codigo, nuevo.producto.nombre, nuevo.producto.programa.codigo),
-                         ("Indicador nuevo", "9999001", "Producto nuevo", "9999"))
-        self.assertIsNone(nuevo.es_territorial)
+        self.assertEqual((nuevo.nombre, nuevo.producto.codigo, nuevo.producto.nombre,
+                          nuevo.producto.medido_a_traves_de.nombre),
+                         ("Indicador nuevo", "9999001", "Producto nuevo", "Número de cosas"))
+        self.assertIsNone(nuevo.indicador_pdd)
         del_proyecto = IndicadorProyecto.objects.get(indicador=nuevo)
         self.assertEqual(del_proyecto.meta_total, Decimal("10"))
         self.assertEqual(list(del_proyecto.metas.values_list("vigencia", "meta")), [(2025, Decimal("4"))])
         self.assertIn("no estaban en el catalogo y se crearon: indicador 999900100 (BPIN 202500000000001); "
-                      "producto 9999001 (BPIN 202500000000001); programa 9999", carga.mensaje)
+                      "producto 9999001 (BPIN 202500000000001)", carga.mensaje)
 
     def test_lo_que_ya_esta_en_el_catalogo_no_se_cambia(self):
-        IndicadorCatalogo.objects.filter(codigo="410402000").update(nombre="Nombre del equipo")
+        IndicadorCatalogo.objects.filter(codigo=HOMOLOGADO).update(nombre="Nombre del equipo")
         carga = carga_piip([fila(Indicador="Nombre del PIIP")])
-        self.assertEqual(IndicadorCatalogo.objects.get(codigo="410402000").nombre, "Nombre del equipo")
+        self.assertEqual(IndicadorCatalogo.objects.get(codigo=HOMOLOGADO).nombre, "Nombre del equipo")
         self.assertNotIn("se crearon", carga.mensaje)
 
     def test_el_indicador_creado_se_homologa_si_su_codigo_esta_en_el_plan(self):
-        del_plan = IndicadorMGA.objects.exclude(codigo__in=IndicadorCatalogo.objects.values("codigo"))             .exclude(codigo="").exclude(codigo="410109300").first()
-        carga_piip([fila(CodigoIndicador=del_plan.codigo, CodigoProducto=del_plan.codigo[:7])])
-        h = HomologacionIndicador.objects.get(indicador__codigo=del_plan.codigo)
-        self.assertEqual((h.indicador_pdd, h.por_codigo), (del_plan, True))
+        del_plan = un_indicador_del_plan_fuera_del_catalogo()
+        carga = carga_piip([fila(CodigoIndicador=del_plan.codigo, CodigoProducto=del_plan.codigo[:7])])
+        creado = IndicadorCatalogo.objects.get(codigo=del_plan.codigo)
+        self.assertEqual((creado.indicador_pdd, creado.homologado_por_codigo), (del_plan, True))
+        self.assertIn("1 indicadores homologados por codigo", carga.mensaje)
 
-    def test_homologa_por_codigo_los_indicadores_que_no_tienen_homologacion(self):
-        del_plan = IndicadorMGA.objects.filter(codigo="410402000").first()
-        if del_plan is None:
-            self.skipTest("410402000 no esta en el plan")
-        HomologacionIndicador.objects.filter(indicador__codigo="410402000").delete()
-        carga = carga_piip([fila()])
-        h = HomologacionIndicador.objects.get(indicador__codigo="410402000")
-        self.assertEqual((h.indicador_pdd, h.por_codigo), (del_plan, True))
-        self.assertIn("1 homologaciones nuevas por codigo", carga.mensaje)
-
-    def test_no_vuelve_a_homologar_el_que_ya_tiene_una_manual(self):
-        otro = IndicadorMGA.objects.exclude(codigo="410402000").exclude(codigo="").first()
-        HomologacionIndicador.objects.filter(indicador__codigo="410402000").delete()
-        manual = HomologacionIndicador.objects.create(
-            indicador=IndicadorCatalogo.objects.get(codigo="410402000"), indicador_pdd=otro)
+    def test_homologa_por_codigo_los_que_quedaron_sin_homologar(self):
+        IndicadorCatalogo.objects.filter(codigo=HOMOLOGADO).update(indicador_pdd=None, homologado_por_codigo=False)
         carga_piip([fila()])
-        self.assertEqual(list(HomologacionIndicador.objects.filter(indicador__codigo="410402000")), [manual])
+        i = IndicadorCatalogo.objects.get(codigo=HOMOLOGADO)
+        self.assertEqual((i.indicador_pdd.codigo, i.homologado_por_codigo), (HOMOLOGADO, True))
+
+    def test_no_cambia_una_homologacion_hecha_a_mano(self):
+        otro = IndicadorMGA.objects.exclude(codigo=HOMOLOGADO).first()
+        IndicadorCatalogo.objects.filter(codigo=HOMOLOGADO).update(indicador_pdd=otro, homologado_por_codigo=False)
+        carga_piip([fila()])
+        self.assertEqual(IndicadorCatalogo.objects.get(codigo=HOMOLOGADO).indicador_pdd, otro)
 
     def test_proyecto_sin_indicadores(self):
-        vacias = {c: None for c in ("ObjetivoEspecifico", "CodigoProducto", "Producto", "Etapa",
+        vacias = {c: None for c in ("ObjetivoEspecifico", "CodigoProducto", "Producto", "Etapa", "UMP",
                                     "CodigoIndicador", "Indicador", "UMI", "TipoIndicador", "Acumula",
                                     "MetaTotalIndicador", "Vigencia", "MetaVigencia")}
         carga = carga_piip([fila(**vacias)])
@@ -222,27 +231,49 @@ class PestanaDeLaFicha(TestCase):
     def test_sin_formulacion_lo_dice(self):
         self.assertIn("no tiene formulación del PIIP cargada", self.html())
 
-    def test_muestra_datos_generales_indicadores_y_homologacion(self):
+    def test_muestra_datos_generales_y_metas(self):
         carga_piip([fila(), fila(Vigencia="2026", MetaVigencia="200")])
         html = self.html()
-        for texto in ("Formulación (PIIP)", "Mejorar la atención", "4104 - ", "Corozal, Sincelejo", "Caribe",
-                      "410402000", "4104020", "Producto principal", "Número de personas", "Meta 2025",
-                      "Meta 2026"):
+        for texto in ("Formulación (PIIP)", "Mejorar la atención", "Inclusión social y reconciliación",
+                      "4104 - Atención integral", "Corozal, Sincelejo", "Caribe", "Número de personas",
+                      "Meta 2025", "Meta 2026"):
             self.assertIn(texto, html)
-        homologado = HomologacionIndicador.objects.filter(indicador__codigo="410402000").exists()
-        self.assertEqual("Sin homologar" not in html, homologado)
+        self.assertNotIn("{#", html)
+
+    def test_homologado_muestra_lo_del_piip_y_la_linea_del_plan_aunque_coincidan(self):
+        carga_piip([fila()])
+        tabla = self.html().split("Indicadores de producto")[1]
+        # El codigo del indicador sale dos veces: el del PIIP y el del plan, que coinciden
+        self.assertEqual(tabla.count(f">{HOMOLOGADO}<"), 2)
+        self.assertEqual(tabla.count(">4104020<"), 2)
+        self.assertIn("41 - Inclusión social y reconciliación", tabla)
+        self.assertIn("4104 - ", tabla)
+        self.assertIn("Por código", tabla)
+        self.assertNotIn("Sin homologar", tabla)
+
+    def test_sin_homologar_solo_muestra_lo_del_piip(self):
+        carga_piip([fuera_del_plan()])
+        tabla = self.html().split("Indicadores de producto")[1]
+        self.assertEqual(tabla.count(f">{FUERA_DEL_PLAN}<"), 1)
+        self.assertIn("Sin homologar", tabla)
+
+    def test_homologado_a_mano_lo_dice(self):
+        carga_piip([fuera_del_plan()])
+        IndicadorCatalogo.objects.filter(codigo=FUERA_DEL_PLAN).update(
+            indicador_pdd=IndicadorMGA.objects.get(codigo=HOMOLOGADO))
+        tabla = self.html().split("Indicadores de producto")[1]
+        self.assertIn(f">{FUERA_DEL_PLAN}<", tabla)
+        self.assertIn(f">{HOMOLOGADO}<", tabla)
+        self.assertIn("Homologado a mano", tabla)
 
 
 class SeccionDelMenu(TestCase):
-    ORDEN = ["formulacionproyecto", "homologacionindicador", "sectorcatalogo", "programacatalogo",
-             "productocatalogo", "indicadorcatalogo"]
+    ORDEN = ["formulacionproyecto", "productocatalogo", "indicadorcatalogo"]
 
     def seccion(self):
-        from django.conf import settings
         return next(g for g in settings.UNFOLD["SIDEBAR"]["navigation"] if g["title"] == "Catálogo PIIP")
 
     def test_va_despues_del_plan_con_sus_modelos(self):
-        from django.conf import settings
         titulos = [g["title"] for g in settings.UNFOLD["SIDEBAR"]["navigation"]]
         self.assertEqual(titulos.index("Catálogo PIIP"), titulos.index("Plan de Desarrollo") + 1)
         self.assertEqual([str(i["link"]) for i in self.seccion()["items"]],
@@ -255,7 +286,6 @@ class SeccionDelMenu(TestCase):
                 self.assertEqual(self.client.get(str(item["link"])).status_code, 200)
 
     def test_los_roles_del_equipo_no_la_ven(self):
-        from django.contrib.auth.models import Group
         for rol in ("Seguimiento", "Consulta"):
             usuario = get_user_model().objects.create_user(f"u_{rol}", "x@b.co", "clave", is_staff=True)
             usuario.groups.add(Group.objects.get(name=rol))
@@ -265,50 +295,55 @@ class SeccionDelMenu(TestCase):
 
 
 class EditarElIndicador(TestCase):
-    """La ficha del indicador del catalogo: sus datos editables y la homologacion debajo."""
+    """La ficha del indicador del catalogo: sus datos y su indicador del plan."""
 
     def setUp(self):
         self.client.force_login(get_user_model().objects.create_superuser("admin", "a@b.co", "clave"))
-        # Uno de los que no estan en el plan: no tiene homologacion por codigo
-        self.indicador = IndicadorCatalogo.objects.get(codigo="170201200")
-        self.del_plan = IndicadorMGA.objects.exclude(codigo="").first()
+        self.indicador = IndicadorCatalogo.objects.get(codigo=FUERA_DEL_PLAN)
+        self.del_plan = IndicadorMGA.objects.get(codigo=HOMOLOGADO)
         self.url = reverse("admin:siifweb_indicadorcatalogo_change", args=(self.indicador.pk,))
 
     def datos(self, **cambios):
         i = self.indicador
-        nulo = lambda v: "unknown" if v is None else str(v).lower()
-        datos = {"codigo": i.codigo, "nombre": i.nombre, "producto": str(i.producto_id),
-                 "unidad_medida": str(i.unidad_medida_id or ""), "es_principal": nulo(i.es_principal),
-                 "es_nacional": nulo(i.es_nacional), "es_territorial": nulo(i.es_territorial),
-                 "homologaciones-TOTAL_FORMS": "1", "homologaciones-INITIAL_FORMS": "0",
-                 "homologaciones-MIN_NUM_FORMS": "0", "homologaciones-MAX_NUM_FORMS": "1000",
-                 "homologaciones-0-indicador_pdd": str(self.del_plan.pk),
-                 "homologaciones-0-observacion": "Mide lo mismo", "_save": "Guardar"}
+        datos = {"producto": str(i.producto_id), "codigo": i.codigo, "nombre": i.nombre,
+                 "unidad_medida": str(i.unidad_medida_id or ""), "indicador_pdd": "", "observacion": "",
+                 "_save": "Guardar"}
         datos.update(cambios)
         return datos
 
-    def test_sin_homologar_abre_con_la_fila_para_elegir(self):
-        html = self.client.get(self.url).content.decode()
-        self.assertIn('name="homologaciones-0-indicador_pdd"', html)
+    def test_la_lista_dice_si_esta_homologado(self):
+        html = self.client.get(reverse("admin:siifweb_indicadorcatalogo_changelist") + "?homologado=no").content.decode()
+        self.assertIn(FUERA_DEL_PLAN, html)
+        self.assertNotIn(HOMOLOGADO, html)
 
-    def test_guardar_crea_la_homologacion_manual(self):
-        respuesta = self.client.post(self.url, self.datos())
+    def test_homologar_a_mano(self):
+        respuesta = self.client.post(self.url, self.datos(indicador_pdd=str(self.del_plan.pk),
+                                                          observacion="Mide lo mismo"))
         self.assertEqual(respuesta.status_code, 302)
-        h = HomologacionIndicador.objects.get(indicador=self.indicador)
-        self.assertEqual((h.indicador_pdd, h.observacion, h.por_codigo), (self.del_plan, "Mide lo mismo", False))
+        self.indicador.refresh_from_db()
+        self.assertEqual((self.indicador.indicador_pdd, self.indicador.observacion,
+                          self.indicador.homologado_por_codigo), (self.del_plan, "Mide lo mismo", False))
 
-    def test_los_datos_del_catalogo_se_editan(self):
-        respuesta = self.client.post(self.url, self.datos(nombre="Otro nombre",
-                                                          **{"homologaciones-TOTAL_FORMS": "0"}))
+    def test_la_ficha_muestra_la_linea_del_plan(self):
+        IndicadorCatalogo.objects.filter(pk=self.indicador.pk).update(indicador_pdd=self.del_plan)
+        html = self.client.get(self.url).content.decode()
+        self.assertIn("Sector:", html)
+        self.assertIn("Programa:", html)
+        self.assertIn("Producto:", html)
+
+    def test_los_datos_se_editan(self):
+        respuesta = self.client.post(self.url, self.datos(nombre="Otro nombre"))
         self.assertEqual(respuesta.status_code, 302)
         self.indicador.refresh_from_db()
         self.assertEqual(self.indicador.nombre, "Otro nombre")
 
-    def test_se_agregan_indicadores(self):
-        self.assertEqual(self.client.get(reverse("admin:siifweb_indicadorcatalogo_add")).status_code, 200)
-        for modelo in ("sectorcatalogo", "programacatalogo", "productocatalogo"):
-            with self.subTest(modelo=modelo):
-                self.assertEqual(self.client.get(reverse(f"admin:siifweb_{modelo}_add")).status_code, 200)
+    def test_agregar_un_indicador_con_codigo_del_plan_lo_homologa_por_codigo(self):
+        del_plan = un_indicador_del_plan_fuera_del_catalogo()
+        datos = self.datos(codigo=del_plan.codigo, nombre="Nuevo")
+        respuesta = self.client.post(reverse("admin:siifweb_indicadorcatalogo_add"), datos)
+        self.assertEqual(respuesta.status_code, 302)
+        nuevo = IndicadorCatalogo.objects.get(codigo=del_plan.codigo)
+        self.assertEqual((nuevo.indicador_pdd, nuevo.homologado_por_codigo), (del_plan, True))
 
     def test_solo_se_borra_lo_que_no_esta_en_uso(self):
         libre = IndicadorCatalogo.objects.create(codigo="999999999", nombre="Sin uso",
@@ -316,10 +351,9 @@ class EditarElIndicador(TestCase):
         borrar = reverse("admin:siifweb_indicadorcatalogo_delete", args=(libre.pk,))
         self.assertEqual(self.client.post(borrar, {"post": "yes"}).status_code, 302)
         self.assertFalse(IndicadorCatalogo.objects.filter(pk=libre.pk).exists())
-        # Un indicador que usa un proyecto: el admin muestra que esta protegido y no lo borra
         proy = proyecto()
         cadena(proy)
-        carga_piip([fila(CodigoProducto="1702012", CodigoIndicador="170201200")])
+        carga_piip([fuera_del_plan()])
         usado = reverse("admin:siifweb_indicadorcatalogo_delete", args=(self.indicador.pk,))
         self.client.post(usado, {"post": "yes"})
         self.assertTrue(IndicadorCatalogo.objects.filter(pk=self.indicador.pk).exists())
@@ -329,33 +363,11 @@ class LaCargaNoTocaLaHomologacion(TestCase):
     def test_volver_a_cargar_conserva_la_homologacion_manual(self):
         proy = proyecto()
         cadena(proy)
-        fuera_del_plan = fila(CodigoProducto="1702012", CodigoIndicador="170201200")
-        carga_piip([fuera_del_plan])
-        indicador = IndicadorCatalogo.objects.get(codigo="170201200")
-        manual = HomologacionIndicador.objects.create(
-            indicador=indicador, indicador_pdd=IndicadorMGA.objects.exclude(codigo="").first(),
-            observacion="Mide lo mismo")
-        carga_piip([fuera_del_plan, fila(CodigoProducto="1702012", CodigoIndicador="170201200",
-                                         Vigencia="2026", MetaVigencia="5")])
-        self.assertTrue(HomologacionIndicador.objects.filter(pk=manual.pk, observacion="Mide lo mismo").exists())
-        # Y el indicador del proyecto la sigue viendo
-        self.assertEqual(IndicadorProyecto.objects.get(formulacion__proyecto=proy).indicador.homologaciones.get(),
-                         manual)
-
-
-class HomologarAlAgregarEnElAdmin(TestCase):
-    def setUp(self):
-        self.client.force_login(get_user_model().objects.create_superuser("admin", "a@b.co", "clave"))
-
-    def test_agregar_un_indicador_con_codigo_del_plan_lo_homologa(self):
-        # Un indicador del plan cuyo codigo no esta en el catalogo de los proyectos
-        del_plan = IndicadorMGA.objects.exclude(codigo__in=IndicadorCatalogo.objects.values("codigo"))             .exclude(codigo="").exclude(codigo="410109300").first()
-        producto = ProductoCatalogo.objects.first()
-        datos = {"codigo": del_plan.codigo, "nombre": "Nuevo", "producto": str(producto.pk), "unidad_medida": "",
-                 "es_principal": "unknown", "es_nacional": "unknown", "es_territorial": "unknown",
-                 "homologaciones-TOTAL_FORMS": "0", "homologaciones-INITIAL_FORMS": "0",
-                 "homologaciones-MIN_NUM_FORMS": "0", "homologaciones-MAX_NUM_FORMS": "1000", "_save": "Guardar"}
-        respuesta = self.client.post(reverse("admin:siifweb_indicadorcatalogo_add"), datos)
-        self.assertEqual(respuesta.status_code, 302)
-        h = HomologacionIndicador.objects.get(indicador__codigo=del_plan.codigo)
-        self.assertEqual((h.indicador_pdd, h.por_codigo), (del_plan, True))
+        carga_piip([fuera_del_plan()])
+        del_plan = IndicadorMGA.objects.get(codigo=HOMOLOGADO)
+        IndicadorCatalogo.objects.filter(codigo=FUERA_DEL_PLAN).update(indicador_pdd=del_plan,
+                                                                       observacion="Mide lo mismo")
+        carga_piip([fuera_del_plan(), fuera_del_plan(Vigencia="2026", MetaVigencia="5")])
+        i = IndicadorCatalogo.objects.get(codigo=FUERA_DEL_PLAN)
+        self.assertEqual((i.indicador_pdd, i.observacion), (del_plan, "Mide lo mismo"))
+        self.assertEqual(IndicadorProyecto.objects.get(formulacion__proyecto=proy).indicador.indicador_pdd, del_plan)

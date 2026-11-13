@@ -429,24 +429,15 @@ UNFOLD = {
                 ],
             },
             {
-                # El catalogo MGA territorial con el que se formulan los proyectos, aparte
-                # del del plan (que no admite productos sin pasar por la Asamblea), su
-                # homologacion con el plan y lo que cada proyecto formulo en PIIP
+                # Los productos e indicadores con que se formulan los proyectos en PIIP, aparte
+                # del catalogo del plan (que no admite productos sin pasar por la Asamblea);
+                # cada indicador se homologa con uno del plan. Y lo que cada proyecto formulo
                 "title": "Catálogo PIIP",
                 "collapsible": True,
                 "separator": True,
                 "items": [
                     {"title": "Formulación de proyectos", "icon": "description",
                      "link": reverse_lazy("admin:siifweb_formulacionproyecto_changelist"),
-                     "permission": _administra_los_datos},
-                    {"title": "Homologación de indicadores", "icon": "compare_arrows",
-                     "link": reverse_lazy("admin:siifweb_homologacionindicador_changelist"),
-                     "permission": _administra_los_datos},
-                    {"title": "Sectores", "icon": "domain",
-                     "link": reverse_lazy("admin:siifweb_sectorcatalogo_changelist"),
-                     "permission": _administra_los_datos},
-                    {"title": "Programas", "icon": "list",
-                     "link": reverse_lazy("admin:siifweb_programacatalogo_changelist"),
                      "permission": _administra_los_datos},
                     {"title": "Productos", "icon": "inventory_2",
                      "link": reverse_lazy("admin:siifweb_productocatalogo_changelist"),

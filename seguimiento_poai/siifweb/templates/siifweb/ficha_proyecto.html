@@ -218,7 +218,7 @@
   <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
     <div class="border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Datos generales
-        {% include "siifweb/_ayuda.html" with etiqueta="De donde sale la formulacion" texto="De la ficha del proyecto en PIIP, consolidada en la tabla InfoGeneral. El sector sale del programa del catálogo MGA; la región y el departamento, de los municipios." %}</h2>
+        {% include "siifweb/_ayuda.html" with etiqueta="De donde sale la formulacion" texto="De la ficha del proyecto en PIIP, consolidada en la tabla InfoGeneral. El sector y el programa son los del PIIP; la región y el departamento salen de los municipios." %}</h2>
       <p class="text-sm text-base-500 mt-1">{{ formulacion.archivo_ficha|default:"" }}{% if formulacion.reporte %} · cargada el {{ formulacion.reporte.fecha_descarga|date:"DATE_FORMAT" }}{% endif %}</p>
     </div>
     {# Campo y valor, uno por fila #}
@@ -245,27 +245,38 @@
   <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
     <div class="border-b px-4 py-3 dark:border-base-800">
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Indicadores de producto ({{ piip_indicadores|length }})
-        {% include "siifweb/_ayuda.html" with etiqueta="Como leer los indicadores" texto="Cada indicador mide un producto del catálogo MGA. La meta total es la del horizonte del proyecto; si el indicador acumula, es la suma de las metas de cada vigencia. La última columna es el indicador del plan de desarrollo con el que está homologado." %}</h2>
+        {% include "siifweb/_ayuda.html" with etiqueta="Como leer los indicadores" texto="A la izquierda, el producto y el indicador como los formuló el proyecto en PIIP. En el centro, la línea del plan de desarrollo del indicador con que está homologado (sector, programa, producto e indicador), aunque coincida, para ver que quedó bien homologado. La meta total es la del horizonte del proyecto; si el indicador acumula, es la suma de las metas de cada vigencia." %}</h2>
     </div>
-    {# Un dato por columna, en el orden de la tabla InfoGeneral #}
+    {% comment %}Un dato por columna. Lo del PIIP siempre; la linea del plan cuando esta homologado,
+       aunque coincida: asi se ve que quedo bien homologado{% endcomment %}
     <div class="overflow-auto" style="max-height:34rem">
       <table class="w-full text-sm indicadores-piip">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr class="grupos">
+            <th colspan="5">PIIP</th>
+            <th colspan="6" class="plan">Plan de desarrollo (homologado)</th>
+            <th colspan="{{ piip_vigencias|length|add:7 }}">Formulación</th>
+          </tr>
           <tr>
             <th>Objetivo específico</th>
             <th>Código producto</th>
             <th>Producto</th>
+            <th>Código indicador</th>
+            <th>Indicador</th>
+            <th class="plan">Sector</th>
+            <th class="plan">Programa</th>
+            <th class="plan">Código producto</th>
+            <th class="plan">Producto</th>
+            <th class="plan">Código indicador</th>
+            <th class="plan">Indicador</th>
             <th>Producto principal</th>
             <th>Etapa</th>
             <th>UMP</th>
-            <th>Código indicador</th>
-            <th>Indicador</th>
             <th>Tipo indicador</th>
             <th>UMI</th>
             <th>Acumula</th>
             <th class="num">Meta total</th>
             {% for v in piip_vigencias %}<th class="num">Meta {{ v }}</th>{% endfor %}
-            <th>Plan de desarrollo</th>
           </tr>
         </thead>
         <tbody>
@@ -274,23 +285,34 @@
             <td class="largo">{{ i.objetivo_especifico|default:"—"|linebreaksbr }}</td>
             <td class="font-mono">{{ i.indicador.producto.codigo }}</td>
             <td class="largo">{{ i.indicador.producto.nombre }}</td>
+            <td class="font-mono">{{ i.indicador.codigo }}</td>
+            <td class="largo">{{ i.indicador.nombre }}</td>
+            {% with p=i.indicador.indicador_pdd %}
+            {% if p %}
+            {% with producto=p.producto_mga programa=p.producto_mga.programa_mga sector=p.producto_mga.programa_mga.sector_mga %}
+            <td class="plan" style="min-width:10rem">{% if sector %}{{ sector.codigo }} - {{ sector.descripcion|striptags }}{% else %}—{% endif %}</td>
+            <td class="plan largo">{% if programa %}{{ programa.codigo }} - {{ programa.descripcion|striptags }}{% else %}—{% endif %}</td>
+            <td class="plan font-mono">{{ producto.codigo|default:"—" }}</td>
+            <td class="plan largo">{{ producto.descripcion|striptags|default:"—" }}</td>
+            <td class="plan font-mono">{{ p.codigo }}</td>
+            <td class="plan largo">{{ p.descripcion|striptags }}
+              <div class="text-xs text-base-500 mt-1">{% if i.indicador.homologado_por_codigo %}Por código{% else %}Homologado a mano{% endif %}</div></td>
+            {% endwith %}
+            {% else %}
+            <td class="plan text-base-500" colspan="6">Sin homologar</td>
+            {% endif %}
+            {% endwith %}
             <td>{% if i.producto_principal %}Sí{% else %}No{% endif %}</td>
             <td>{{ i.get_etapa_display|default:"—" }}</td>
             <td>{{ i.indicador.producto.medido_a_traves_de|default:"—" }}</td>
-            <td class="font-mono">{{ i.indicador.codigo }}</td>
-            <td class="largo">{{ i.indicador.nombre }}</td>
             <td>{{ i.get_tipo_display|default:"—" }}</td>
             <td>{{ i.unidad_medida|default:"—" }}</td>
             <td>{% if i.acumula is None %}—{% elif i.acumula %}Sí{% else %}No{% endif %}</td>
             <td class="num font-mono">{{ i.meta_total|default_if_none:"—"|floatformat:"-3g" }}</td>
             {% for m in i.metas_por_vigencia %}<td class="num font-mono">{% if m is None %}—{% else %}{{ m|floatformat:"-3g" }}{% endif %}</td>{% endfor %}
-            <td class="largo">
-              {% for p in i.homologados %}<div><span class="font-mono">{{ p.codigo }}</span> {{ p.descripcion|striptags|truncatechars:70 }}</div>
-              {% empty %}<span class="text-base-500">Sin homologar</span>{% endfor %}
-            </td>
           </tr>
           {% empty %}
-          <tr><td colspan="{{ piip_vigencias|length|add:13 }}" class="text-center text-base-500">La ficha del PIIP no trae indicadores.</td></tr>
+          <tr><td colspan="{{ piip_vigencias|length|add:18 }}" class="text-center text-base-500">La ficha del PIIP no trae indicadores.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -310,6 +332,10 @@
     .indicadores-piip th { white-space: nowrap; }
     .indicadores-piip .num { text-align: right; white-space: nowrap; }
     .indicadores-piip .largo { min-width: 14rem; }
+    /* Los grupos del encabezado y la parte del plan, sombreada para distinguirla del PIIP */
+    .indicadores-piip .grupos th { text-align: center; border-bottom: 1px solid rgba(0, 0, 0, .08); }
+    .indicadores-piip .plan { background: rgba(57, 135, 229, .06); }
+    .dark .indicadores-piip .plan { background: rgba(57, 135, 229, .12); }
     .indicadores-piip tbody tr:nth-child(even) td { background: rgba(0, 0, 0, .02); }
     .dark .indicadores-piip tbody tr:nth-child(even) td { background: rgba(255, 255, 255, .03); }
   </style>

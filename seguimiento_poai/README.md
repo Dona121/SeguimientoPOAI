@@ -646,27 +646,25 @@ pagina cae con `Missing staticfiles manifest entry`.
 ## Catalogo PIIP y formulacion de los proyectos
 
 El catalogo del plan de desarrollo no admite productos nuevos (cambiarlo pasa por la
-Asamblea), y los proyectos se formulan en PIIP con el catalogo MGA completo. Por eso hay
-un catalogo aparte, en el modulo **Catalogo PIIP** del menu:
+Asamblea), y los proyectos se formulan en PIIP con el catalogo MGA completo. Por eso sus
+productos e indicadores van aparte, en el modulo **Catalogo PIIP** del menu:
 
-- **Catalogo MGA de los proyectos** (`SectorCatalogo`, `ProgramaCatalogo`, `ProductoCatalogo`,
-  `IndicadorCatalogo`): la migracion `0021` carga del `CatalogoProductoMGA_junio_2025.xlsx`
-  solo los indicadores que usan los proyectos de la tabla `InfoGeneral` (190, con sus 187
-  productos), validados por codigo contra el catalogo, sean territoriales o no (los de
-  bomberos, 370800900 y 370801300, no lo son). Sectores y programas van todos los
-  territoriales. Se genera con `modelos-metas/generar_migracion_catalogo_territorial.py`.
-  El equipo lo mantiene en el admin (agregar, editar y borrar lo que no este en uso); las
-  cargas del PIIP no lo cambian. La vista de indicadores dice si cada uno esta homologado,
-  y al abrir uno se homologa ahi mismo (tabla de indicadores del plan con su observacion).
-- **Homologacion de indicadores**: indicador del catalogo -> indicador del plan
-  (`IndicadorMGA`). La `0021` crea las que coinciden por codigo (163); las demas las asigna
-  el equipo. En Indicadores, los filtros "Lo usa algun proyecto" y "Sin homologar" dejan
-  los que faltan.
-- **Formulacion de proyectos**: `FormulacionProyecto` (uno a uno con el proyecto: programa,
-  vigencias de inicio y fin, objetivo general, problema, descripcion, poblaciones y
-  municipios), `IndicadorProyecto` (indicador del catalogo, objetivo especifico, producto
-  principal, etapa, UMI, tipo, acumula y meta total; el producto sale del indicador) y
-  `MetaVigenciaIndicador`.
+- **Productos** (`ProductoCatalogo`) e **Indicadores** (`IndicadorCatalogo`): solo los que
+  usan los proyectos. La migracion `0021` carga los 190 indicadores de la tabla
+  `InfoGeneral` (con sus 187 productos), validados por codigo contra el
+  `CatalogoProductoMGA_junio_2025.xlsx`; se genera con
+  `modelos-metas/generar_migracion_catalogo_territorial.py`. Se editan en el admin.
+- Cada indicador se **vincula con un indicador del plan** (`indicador_pdd`). De alla salen
+  el producto, el programa y el sector del plan: el catalogo PIIP no guarda programa ni
+  sector. La homologacion es automatica por codigo (la `0021` hizo 163; luego la hacen la
+  carga y el admin para el que quede sin homologar) o a mano en la ficha del indicador, con
+  su observacion. La lista de indicadores dice si cada uno esta homologado, si fue por
+  codigo, y filtra los que faltan.
+- **Formulacion de proyectos**: `FormulacionProyecto` (uno a uno con el proyecto: sector y
+  programa como los trae el PIIP, vigencias de inicio y fin, objetivo general, problema,
+  descripcion, poblaciones y municipios), `IndicadorProyecto` (indicador del catalogo,
+  objetivo especifico, producto principal, etapa, UMI, tipo, acumula y meta total; el
+  producto sale del indicador) y `MetaVigenciaIndicador`.
 
 Se llena con la carga **Informacion general PIIP**, que lee la tabla de Excel `InfoGeneral`
 (hoja `IndicadoresPIIP` del libro `ReporteSIIFWEB_*.xlsx`, el mismo de SECOP II: el hash
@@ -675,22 +673,21 @@ del archivo es unico por tipo de reporte, asi que el libro se carga una vez para
 - Solo entran los BPIN que tienen algun documento en SIIFWEB (CDP, RP, obligacion, reserva
   o contrato): sin ejecucion no hay traza presupuestal. Los demas se listan en el mensaje.
 - Cada BPIN del archivo reemplaza su formulacion anterior; los que no trae no se tocan.
+- Cada indicador se valida contra el catalogo por su codigo. El que no esta se crea con los
+  datos del PIIP (y su producto si tampoco esta), se asocia al proyecto con sus metas y se
+  lista en el mensaje. Lo que ya esta en el catalogo no se cambia.
+- Los indicadores sin homologar se homologan por codigo con el plan si su codigo esta alla;
+  una homologacion hecha a mano no se cambia.
 - Los municipios se cruzan por nombre (sin tildes ni mayusculas); los que no estan en el
   admin se avisan. Un municipio sin departamento lo toma del PIIP.
-- Cada indicador del proyecto se valida contra el catalogo por su codigo. El que no esta se
-  crea con los datos del PIIP (y su producto, programa y sector si tampoco estan), se asocia
-  al proyecto con sus metas y se lista en el mensaje. Lo que ya esta en el catalogo no se
-  cambia.
-- Homologacion por codigo: en cada carga, los indicadores usados que no tengan ninguna
-  homologacion se homologan con los del plan de su mismo codigo; lo mismo al agregar un
-  indicador en el admin o cambiarle el codigo. Al que ya tiene una (por codigo o manual) no
-  se le agrega otra.
 - Un indicador repetido bajo dos objetivos especificos queda una vez, con los dos
   objetivos, y su meta no se duplica.
 
-En la ficha del proyecto, la pestana **Formulacion (PIIP)** muestra los datos generales y
-la tabla de indicadores (un dato por columna, metas por vigencia en columnas y el
-indicador del plan con el que esta homologado).
+En la ficha del proyecto, la pestana **Formulacion (PIIP)** muestra los datos generales y la
+tabla de indicadores, un dato por columna: el producto y el indicador como los trae el
+PIIP; si esta homologado, la linea del plan (sector, programa, producto e indicador) aunque
+coincida, para ver que quedo bien homologado, y si fue por codigo o a mano; y las metas
+por vigencia en columnas.
 
 ## Reportes
 
@@ -859,7 +856,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-382 pruebas en quince modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+385 pruebas en quince modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
@@ -868,7 +865,7 @@ datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 | `test_cargar_secop.py` | El cargador: grano, deduplicacion, procesos sin contrato, BPIN fuera del catalogo, normalizacion, idempotencia, atomicidad y el mensaje de resultado. Al final, las cifras del archivo real |
 | `test_modelos_secop.py` | Llaves unicas, la restriccion de la fila BPIN, los `PROTECT` y el tipo de reporte nuevo |
 | `test_ficha_proyecto.py` | Los dos paneles: que cada uno consulte solo lo suyo, el orden del tramite, el modal, las ayudas, las tablas con alto limitado y que ninguna suma se multiplique. El saldo y el pagado de las obligaciones, el filtro de fechas (cada tabla por su fecha, limites incluidos, tarjetas sin filtrar, fechas invalidas) y el formato de fecha |
-| `test_formulacion_piip.py` | El catalogo territorial con sus excepciones, la homologacion por codigo, la carga de `InfoGeneral` (solo BPIN con documentos en SIIFWEB, reemplazo por BPIN, indicador bajo dos objetivos, municipios con coma o de fuera, indicador fuera del catalogo), el mismo libro para SECOP y PIIP, la pestana de la ficha y la seccion del menu |
+| `test_formulacion_piip.py` | El catalogo PIIP (solo los indicadores de los proyectos, homologados por codigo), la carga de `InfoGeneral` (solo BPIN con documentos en SIIFWEB, reemplazo por BPIN, indicador bajo dos objetivos, municipios, indicador fuera del catalogo que se crea con sus metas, homologacion por codigo sin tocar la manual), el mismo libro para SECOP y PIIP, la pestana de la ficha con el PIIP y la linea del plan, la ficha del indicador y la seccion del menu |
 | `test_pdf_ficha.py` | El PDF y el Excel de cada tabla: que traigan solo la tabla pedida y las mismas columnas (con el centro de costo), que respeten el filtro, el 404 de una tabla desconocida, los textos con `<`, `>` y `&`, las tablas de varias paginas, los permisos, el encabezado con la dependencia responsable y los enlaces junto a cada titulo |
 | `test_regresion_cargadores.py` | Que los cargadores de siempre sigan funcionando, ya que comparten `leer_filas` con el de SECOP. Los valores monetarios: separador de miles y que un valor ilegible aborte la carga |
 | `test_validar.py` | La seccion 8 del comando `validar` y que las siete anteriores sigan saliendo |
