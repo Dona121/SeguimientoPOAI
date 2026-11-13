@@ -44,31 +44,15 @@ class Edicion(TestCase):
     def p(self, codigo):
         return ProductoCUIPO.objects.get(codigo=codigo).pk
 
-    def test_202500000039332_digitar_desde_el_piip_y_repartir_proporcional(self):
+    def test_202500000039332_digitar_desde_el_piip(self):
         d = self.dist("202500000039332")
         f = d.filas().get()
-        distribucion.guardar_valor(d, f.pk, self.p("2201048"), self.vig1.pk, "compromisos", "717349192")
-        distribucion.guardar_valor(d, f.pk, self.p("2201006"), self.vig1.pk, "compromisos", "337.409.820,00")
+        for producto, c, o in (("2201048", "717349192", "567333673.07"), ("2201006", "337.409.820,00", "266849052,93")):
+            distribucion.guardar_valor(d, f.pk, self.p(producto), self.vig1.pk, "compromisos", c)
+            distribucion.guardar_valor(d, f.pk, self.p(producto), self.vig1.pk, "obligaciones", o)
+            distribucion.guardar_valor(d, f.pk, self.p(producto), self.vig1.pk, "pagos", o)
         self.assertEqual(set(d.lineas.values_list("origen_valores", flat=True)), {"piip"})
-        self.assertEqual(distribucion.matriz(d)[0]["diferencia"][0], Decimal("0"))
-        mensaje = distribucion.proporcional_a_compromisos(d)
-        self.assertIn("en 1 filas", mensaje)
-        lineas = {l.producto.codigo: l for l in d.lineas.select_related("producto")}
-        self.assertEqual(sum(l.obligaciones for l in lineas.values()), Decimal("834182726"))
-        self.assertEqual(sum(l.pagos for l in lineas.values()), Decimal("834182726"))
-        for linea in lineas.values():
-            self.assertLessEqual(linea.obligaciones, linea.compromisos)
-        # 834.182.726 x 717.349.192 / 1.054.759.012 = 567.333.673,065...
-        self.assertEqual(lineas["2201048"].obligaciones, Decimal("567333673.07"))
         self.assertTrue(distribucion.matriz(d)[0]["cuadra"])
-
-    def test_202500000029628_todo_a_un_producto(self):
-        d = self.dist("202500000029628")
-        distribucion.todo_a_un_producto(d, self.p("4502038"))
-        self.assertEqual(d.lineas.count(), 3)
-        self.assertEqual(set(d.lineas.values_list("producto__codigo", "origen_valores")), {("4502038", "siifweb")})
-        self.assertTrue(all(f["cuadra"] for f in distribucion.matriz(d)))
-        self.assertEqual(d.asociaciones.count(), 3)          # solo con ese producto
 
     def test_repartir_una_fila_entre_vigencias(self):
         d = self.dist("202500000039332")
@@ -119,9 +103,6 @@ class Edicion(TestCase):
         with self.assertRaisesMessage(ValueError, "no está en borrador"):
             distribucion.guardar_valor(d, f.pk, self.p("2201048"), self.vig1.pk, "compromisos", "5")
 
-    def test_proporcional_sin_compromisos_lo_dice(self):
-        d = self.dist("202500000029628")
-        self.assertIn("Sin compromisos distribuidos", distribucion.proporcional_a_compromisos(d))
 
 
 class Antecedente(TestCase):
@@ -157,10 +138,15 @@ class Pantalla(TestCase):
         self.client.force_login(self.usuario)
         self.url = reverse("admin:cuipo_distribuir", args=(self.d.pk,))
 
+    def celda(self, valor="1"):
+        return {"fila": self.d.filas().get().pk, "producto": ProductoCUIPO.objects.get(codigo="2201048").pk,
+                "vigencia": VigenciaGasto.objects.get(codigo="1").pk, "campo": "compromisos", "valor": valor}
+
     def test_la_pantalla_abre(self):
         respuesta = self.client.get(self.url)
-        self.assertContains(respuesta, "Proporcional a compromisos")
+        self.assertNotContains(respuesta, "Proporcional a compromisos")     # el reparto es manual
         self.assertContains(respuesta, "2.3.2.02.02.009")
+        self.assertContains(respuesta, 'id="elegir"')
         self.assertContains(respuesta, 'id="fila-')
         self.assertContains(respuesta, "X-CSRFToken")
         self.assertContains(self.client.get(reverse("admin:cuipo_distribucionbpin_changelist")), self.url)
@@ -185,20 +171,12 @@ class Pantalla(TestCase):
         self.assertContains(respuesta, "El valor no puede ser negativo")
         self.assertFalse(self.d.lineas.exists())
 
-    def test_botones(self):
-        respuesta = self.client.post(reverse("admin:cuipo_distribuir_todo", args=(self.d.pk,)),
-                                     {"producto": ProductoCUIPO.objects.get(codigo="2201048").pk})
-        self.assertContains(respuesta, "Todo al producto 2201048")
-        self.assertTrue(distribucion.matriz(self.d)[0]["cuadra"])
-        respuesta = self.client.post(reverse("admin:cuipo_distribuir_proporcional", args=(self.d.pk,)))
-        self.assertContains(respuesta, "repartidos con la participación")
-
     def test_validada_es_solo_lectura(self):
         self.d.estado = DistribucionBPIN.Estado.VALIDADO
         self.d.save()
         self.assertContains(self.client.get(self.url), "Solo lectura")
-        respuesta = self.client.post(reverse("admin:cuipo_distribuir_proporcional", args=(self.d.pk,)))
-        self.assertEqual(respuesta.status_code, 403)
+        self.assertEqual(self.client.post(reverse("admin:cuipo_distribuir_celda", args=(self.d.pk,)),
+                                          self.celda()).status_code, 403)
 
     def test_sin_permisos_del_cuipo_403(self):
         otro = User.objects.create_user("consulta", "c@example.com", "clave", is_staff=True)
@@ -211,8 +189,8 @@ class Pantalla(TestCase):
         lector.user_permissions.add(Permission.objects.get(codename="view_distribucionbpin"))
         self.client.force_login(lector)
         self.assertContains(self.client.get(self.url), "Solo lectura")
-        self.assertEqual(self.client.post(reverse("admin:cuipo_distribuir_proporcional", args=(self.d.pk,))).status_code,
-                         403)
+        self.assertEqual(self.client.post(reverse("admin:cuipo_distribuir_celda", args=(self.d.pk,)),
+                                          self.celda()).status_code, 403)
 
     def test_la_lista_vacia_explica_como_se_crean(self):
         DistribucionBPIN.objects.all().delete()

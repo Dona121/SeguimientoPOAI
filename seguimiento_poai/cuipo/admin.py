@@ -564,10 +564,8 @@ class DistribucionBPINAdmin(ModelAdmin):
             ruta("vigencia/", self.d_vigencia, "_vigencia"),
             ruta("quitar/", self.d_quitar, "_quitar"),
             ruta("cualitativo/", self.d_cualitativo, "_cualitativo"),
-            ruta("proporcional/", self.d_proporcional, "_proporcional"),
-            ruta("todo/", self.d_todo, "_todo"),
             ruta("estado/", self.d_estado, "_estado"),
-            ruta("opciones/", self.d_opciones, "_opciones"),
+            ruta("elegir/", self.d_elegir, "_elegir"),
         ]
         return propias + super().get_urls()
 
@@ -585,9 +583,7 @@ class DistribucionBPINAdmin(ModelAdmin):
                 "vigencias": list(VigenciaGasto.objects.filter(activo=True).order_by("codigo")),
                 "vigencia_1": VigenciaGasto.objects.filter(codigo="1").first(),
                 "totales": distribucion.totales(dist), "validacion": validacion.validar_distribucion(dist),
-                "puede_cambiar_estado": request.user.has_perm("cuipo.change_distribucionbpin"),
-                "detalles": DetalleSectorial.objects.filter(activo=True).order_by("codigo"),
-                "politicas": PoliticaPublica.objects.filter(activo=True).order_by("codigo"), **extra}
+                "puede_cambiar_estado": request.user.has_perm("cuipo.change_distribucionbpin"), **extra}
 
     def _parcial(self, request, dist, fila=None, mensaje="", error=""):
         """La fila (o toda la matriz) y, fuera de banda, los totales."""
@@ -635,20 +631,28 @@ class DistribucionBPINAdmin(ModelAdmin):
         }
         return TemplateResponse(request, "cuipo/distribuir.html", contexto)
 
-    def d_opciones(self, request, pk):
-        """Las opciones de CPC o tercero que coinciden con lo escrito (codigo o descripcion), para
-        la lista desplegable de la celda. Son miles: se buscan, no se cargan todas."""
-        self._distribucion(request, pk)
-        modelo = {"cpc": CPC, "tercero": TerceroCUIPO}.get(request.GET.get("campo"))
-        if modelo is None:
+    ELEGIBLES = {"cpc": ("CPC", CPC), "detalle_sectorial": ("detalle sectorial", DetalleSectorial),
+                 "tercero": ("tercero", TerceroCUIPO), "politica_publica": ("política pública", PoliticaPublica)}
+
+    def d_elegir(self, request, pk):
+        """La ventana para elegir un cualitativo de la linea: buscador y lista con la descripcion
+        completa. Con solo=resultados devuelve solo la lista (al escribir en el buscador)."""
+        dist = self._distribucion(request, pk)
+        if request.GET.get("campo") not in self.ELEGIBLES:
             return HttpResponseBadRequest("Campo desconocido")
+        campo = request.GET["campo"]
+        titulo, modelo = self.ELEGIBLES[campo]
+        linea = get_object_or_404(dist.lineas.select_related("fila", "producto", campo), pk=request.GET.get("linea"))
         texto = (request.GET.get("codigo") or "").strip()
         opciones = modelo.objects.filter(activo=True)
-        if texto:
-            opciones = opciones.filter(Q(codigo__startswith=texto) | Q(descripcion__icontains=texto))
-        html = format_html_join("", '<option value="{}">{} - {}</option>',
-                                ((o.codigo, o.codigo, o.descripcion[:90]) for o in opciones.order_by("codigo")[:30]))
-        return HttpResponse(html)
+        for palabra in texto.split():
+            opciones = opciones.filter(Q(codigo__startswith=palabra) | Q(descripcion__icontains=palabra))
+        total = opciones.count()
+        contexto = {"dist": dist, "linea": linea, "campo": campo, "titulo": titulo, "actual": getattr(linea, campo),
+                    "opciones": opciones.order_by("codigo")[:60], "total": total, "texto": texto,
+                    "editable": self._puede_editar(request, dist)}
+        plantilla = "cuipo/_opciones.html" if request.GET.get("solo") == "resultados" else "cuipo/_elegir.html"
+        return TemplateResponse(request, plantilla, contexto)
 
     def d_estado(self, request, pk):
         """Validar, volver a borrador o marcar enviada, desde la pantalla."""
@@ -683,13 +687,6 @@ class DistribucionBPINAdmin(ModelAdmin):
     def d_cualitativo(self, request, pk):
         return self._editar(request, pk, lambda d: distribucion.cambiar_cualitativo(
             d, request.POST.get("linea"), request.POST.get("campo"), request.POST.get("codigo")))
-
-    def d_proporcional(self, request, pk):
-        return self._editar(request, pk, distribucion.proporcional_a_compromisos, fila_de_respuesta=False)
-
-    def d_todo(self, request, pk):
-        return self._editar(request, pk, lambda d: distribucion.todo_a_un_producto(d, request.POST.get("producto")),
-                            fila_de_respuesta=False)
 
     @display(description="Pantalla")
     def distribuir_enlace(self, obj):

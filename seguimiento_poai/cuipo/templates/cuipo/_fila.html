@@ -1,5 +1,5 @@
 {% load humanize l10n %}
-{% url 'admin:cuipo_distribuir_celda' dist.pk as u_celda %}{% url 'admin:cuipo_distribuir_asociar' dist.pk as u_asociar %}{% url 'admin:cuipo_distribuir_vigencia' dist.pk as u_vigencia %}{% url 'admin:cuipo_distribuir_quitar' dist.pk as u_quitar %}{% url 'admin:cuipo_distribuir_cualitativo' dist.pk as u_cual %}{% url 'admin:cuipo_distribuir_opciones' dist.pk as u_opciones %}
+{% url 'admin:cuipo_distribuir_celda' dist.pk as u_celda %}{% url 'admin:cuipo_distribuir_asociar' dist.pk as u_asociar %}{% url 'admin:cuipo_distribuir_vigencia' dist.pk as u_vigencia %}{% url 'admin:cuipo_distribuir_quitar' dist.pk as u_quitar %}{% url 'admin:cuipo_distribuir_cualitativo' dist.pk as u_cual %}{% url 'admin:cuipo_distribuir_elegir' dist.pk as u_elegir %}
 <tbody class="fila" id="fila-{{ d.fila.pk }}">
   <tr class="cabeza">
     <td colspan="2">
@@ -36,26 +36,10 @@
     <td class="num"><input class="entrada valor" name="valor" value="{{ l.pagos|unlocalize }}"{% if not editable %} disabled{% endif %}
       hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
       hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "pagos"}'></td>
-    <td><form hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "cpc"}'>
-      <input class="entrada codigo" name="codigo" value="{{ l.cpc.codigo|default:'' }}" list="op-cpc-{{ l.pk }}" autocomplete="off" placeholder="Buscar"{% if not editable %} disabled{% endif %}
-        hx-get="{{ u_opciones }}?campo=cpc" hx-trigger="input changed delay:300ms, focus once" hx-target="#op-cpc-{{ l.pk }}" hx-swap="innerHTML" hx-sync="this:replace">
-      <datalist id="op-cpc-{{ l.pk }}"></datalist></form>{% if l.origen_cpc %}<span class="origen {{ l.origen_cpc }}">{{ l.get_origen_cpc_display }}</span>{% endif %}<span class="desc" title="{{ l.cpc.descripcion|default:'' }}">{{ l.cpc.descripcion|default:'' }}</span></td>
-    <td><select class="entrada" style="max-width:13rem" name="codigo"{% if not editable %} disabled{% endif %}
-      hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "detalle_sectorial"}'>
-      <option value="">—</option>
-      {% if l.detalle_sectorial and not l.detalle_sectorial.activo %}<option value="{{ l.detalle_sectorial.codigo }}" selected>{{ l.detalle_sectorial.codigo }} (inactivo en la lista)</option>{% endif %}
-      {% for o in detalles %}<option value="{{ o.codigo }}"{% if o.pk == l.detalle_sectorial_id %} selected{% endif %}>{{ o.codigo }} - {{ o.descripcion|truncatechars:60 }}</option>{% endfor %}
-    </select>{% if l.origen_detalle_sectorial %}<span class="origen {{ l.origen_detalle_sectorial }}">{{ l.get_origen_detalle_sectorial_display }}</span>{% endif %}</td>
-    <td><form hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "tercero"}'>
-      <input class="entrada codigo" name="codigo" value="{{ l.tercero.codigo|default:'' }}" list="op-tercero-{{ l.pk }}" autocomplete="off" placeholder="Buscar"{% if not editable %} disabled{% endif %}
-        hx-get="{{ u_opciones }}?campo=tercero" hx-trigger="input changed delay:300ms, focus once" hx-target="#op-tercero-{{ l.pk }}" hx-swap="innerHTML" hx-sync="this:replace">
-      <datalist id="op-tercero-{{ l.pk }}"></datalist></form>{% if l.origen_tercero %}<span class="origen {{ l.origen_tercero }}">{{ l.get_origen_tercero_display }}</span>{% endif %}<span class="desc" title="{{ l.tercero.descripcion|default:'' }}">{{ l.tercero.descripcion|default:'' }}</span></td>
-    <td><select class="entrada" style="max-width:13rem" name="codigo"{% if not editable %} disabled{% endif %}
-      hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "politica_publica"}'>
-      <option value="">—</option>
-      {% if l.politica_publica and not l.politica_publica.activo %}<option value="{{ l.politica_publica.codigo }}" selected>{{ l.politica_publica.codigo }} (inactivo en la lista)</option>{% endif %}
-      {% for o in politicas %}<option value="{{ o.codigo }}"{% if o.pk == l.politica_publica_id %} selected{% endif %}>{{ o.codigo }} - {{ o.descripcion|truncatechars:60 }}</option>{% endfor %}
-    </select>{% if l.origen_politica_publica %}<span class="origen {{ l.origen_politica_publica }}">{{ l.get_origen_politica_publica_display }}</span>{% endif %}</td>
+    {% include "cuipo/_cualitativo.html" with campo="cpc" valor=l.cpc origen=l.origen_cpc origen_texto=l.get_origen_cpc_display %}
+    {% include "cuipo/_cualitativo.html" with campo="detalle_sectorial" valor=l.detalle_sectorial origen=l.origen_detalle_sectorial origen_texto=l.get_origen_detalle_sectorial_display %}
+    {% include "cuipo/_cualitativo.html" with campo="tercero" valor=l.tercero origen=l.origen_tercero origen_texto=l.get_origen_tercero_display %}
+    {% include "cuipo/_cualitativo.html" with campo="politica_publica" valor=l.politica_publica origen=l.origen_politica_publica origen_texto=l.get_origen_politica_publica_display %}
     <td style="white-space:nowrap">
       {% if editable %}
       <select name="vigencia" title="Repartir esta fila y producto en otra vigencia del gasto" hx-post="{{ u_vigencia }}" hx-trigger="change"

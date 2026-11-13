@@ -58,8 +58,26 @@ actualizan fuera de banda. Vistas en DistribucionBPINAdmin; logica en cuipo/dist
                 background:var(--color-base-100); color:var(--color-base-600); margin-left:.25rem; }
   .ds .origen.manual { background:#e8f0fe; color:#1a56db; }
   .ds .origen.antecedente { background:#f3e8ff; color:#7e22ce; }
-  .ds .desc { display:block; font-size:.68rem; color:var(--color-base-500); max-width:11rem; overflow:hidden;
-              text-overflow:ellipsis; white-space:nowrap; }
+  /* Descripciones largas: dos lineas y el texto completo al pasar el cursor */
+  .ds .desc { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+              font-size:.7rem; line-height:1.25; color:var(--color-base-500); max-width:15rem; white-space:normal; }
+  .ds td.cual { min-width:11rem; }
+  .ds .elegir { font-size:.7rem; color:var(--color-primary-600); font-weight:600; cursor:pointer; margin-left:.3rem; }
+  .ds .elegir:hover { text-decoration:underline; }
+  .ds .fondo { position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:60; display:flex;
+               align-items:flex-start; justify-content:center; padding:6vh 1rem; }
+  .ds .ventana { background:#fff; border-radius:8px; width:min(52rem, 100%); max-height:82vh; display:flex;
+                 flex-direction:column; box-shadow:0 20px 50px rgba(0,0,0,.25); }
+  .dark .ds .ventana { background:var(--color-base-900); }
+  .ds .ventana .cab { padding:.9rem 1.25rem; border-bottom:1px solid var(--color-base-200); display:flex; gap:1rem;
+                      align-items:baseline; justify-content:space-between; }
+  .ds .ventana .buscar { margin:.8rem 1.25rem; width:auto; font-size:.9rem; padding:.45rem .7rem; }
+  .ds .ventana .lista { overflow-y:auto; padding:0 1.25rem 1rem; }
+  .ds .opcion { display:flex; gap:.8rem; width:100%; text-align:left; padding:.5rem .6rem; border-radius:6px;
+                border-bottom:1px solid var(--color-base-100); font-size:.82rem; line-height:1.35; }
+  .ds .opcion:hover { background:var(--color-base-50); }
+  .ds .opcion b { min-width:6.5rem; font-variant-numeric:tabular-nums; }
+  .ds .opcion.actual { background:#ecfdf3; }
   .ds .htmx-request { opacity:.6; }
   .ds .marcar { display:inline-flex; align-items:center; gap:.3rem; margin-right:.7rem; white-space:nowrap; }
   .ds .marcar input { accent-color:var(--color-primary-600); }
@@ -107,18 +125,13 @@ actualizan fuera de banda. Vistas en DistribucionBPINAdmin; logica en cuipo/dist
   {% include "cuipo/_totales.html" %}
   {% include "cuipo/_validacion.html" %}
 
-  {% if editable and productos %}
-  <section class="caja" style="padding:.8rem 1.25rem;display:flex;flex-wrap:wrap;gap:1rem;align-items:center">
-    <button class="boton" hx-post="{% url 'admin:cuipo_distribuir_proporcional' dist.pk %}" hx-target="#matriz" hx-swap="outerHTML">Proporcional a compromisos</button>
-    <span class="dato">O y P de cada fila con la participación de los compromisos ya digitados.</span>
-    <form hx-post="{% url 'admin:cuipo_distribuir_todo' dist.pk %}" hx-target="#matriz" hx-swap="outerHTML"
-          hx-confirm="Se borran las líneas actuales y todo va al producto elegido. ¿Seguir?" style="display:flex;gap:.5rem;align-items:center">
-      <select name="producto">{% for p in productos %}<option value="{{ p.pk }}">{{ p.codigo }}</option>{% endfor %}</select>
-      <button class="boton gris" type="submit">Todo a un producto</button>
-    </form>
-  </section>
-  {% endif %}
-
   {% include "cuipo/_matriz.html" %}
+  <div id="elegir"></div>
 </div>
+<script>
+  // Esc cierra la ventana de elegir
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { document.getElementById("elegir").innerHTML = ""; }
+  });
+</script>
 {% endblock %}

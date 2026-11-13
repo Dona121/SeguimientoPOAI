@@ -331,45 +331,6 @@ def cambiar_cualitativo(distribucion, linea_id, campo, codigo):
     return linea.fila
 
 
-@transaction.atomic
-def proporcional_a_compromisos(distribucion):
-    """Obligaciones y pagos de cada fila, repartidos con la participacion de los compromisos
-    ya distribuidos en sus lineas. Las filas sin compromisos distribuidos quedan igual."""
-    editable(distribucion)
-    filas, omitidas = 0, []
-    for fila in distribucion.filas().order_by("rubro", "recurso", "centro_costo"):
-        lineas = list(distribucion.lineas.filter(fila=fila).order_by("pk"))
-        pesos = [linea.compromisos for linea in lineas]
-        if not lineas or not sum(pesos):
-            omitidas.append(f"{fila.rubro} · recurso {fila.recurso}")
-            continue
-        for linea, o, p in zip(lineas, repartir(fila.obligacion, pesos), repartir(fila.pago, pesos)):
-            linea.obligaciones, linea.pagos = o, p
-        LineaCUIPO.objects.bulk_update(lineas, ["obligaciones", "pagos"])
-        filas += 1
-    mensaje = f"Obligaciones y pagos repartidos con la participación de los compromisos en {filas} filas."
-    if omitidas:
-        mensaje += f" Sin compromisos distribuidos: {', '.join(omitidas)}."
-    return mensaje
-
-
-@transaction.atomic
-def todo_a_un_producto(distribucion, producto_id):
-    """El 100 % de cada fila al producto, en vigencia 1. Borra las demas lineas."""
-    editable(distribucion)
-    producto = _producto_de(distribucion, producto_id)
-    contexto = Cualitativos(distribucion.corte)
-    distribucion.lineas.all().delete()
-    distribucion.asociaciones.exclude(producto=producto).delete()
-    nuevas = []
-    for fila in distribucion.filas():
-        AsociacionFuenteProducto.objects.get_or_create(distribucion=distribucion, fila=fila, producto=producto)
-        nuevas.append(contexto.linea(distribucion, fila, producto, compromisos=fila.rp, obligaciones=fila.obligacion,
-                                     pagos=fila.pago, origen_valores=LineaCUIPO.OrigenValores.SIIFWEB))
-    LineaCUIPO.objects.bulk_create(nuevas)
-    return f"Todo al producto {producto.codigo}: {len(nuevas)} filas."
-
-
 def antecedente(distribucion):
     """La distribucion por producto del mismo BPIN en el ultimo periodo enviado de la vigencia:
     (distribucion anterior, [(codigo, descripcion, compromisos, participacion %)])."""

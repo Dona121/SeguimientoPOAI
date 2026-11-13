@@ -176,29 +176,41 @@ class EnLaPantallaYElAdmin(Base):
         self.assertIn("Sin errores.", html)
 
 
-class Desplegables(Base):
+class ElegirCualitativos(Base):
+    """La ventana para elegir CPC, detalle sectorial, tercero o politica publica."""
+
     def setUp(self):
         super().setUp()
         self.client.force_login(self.usuario)
+        self.url = reverse("admin:cuipo_distribuir_elegir", args=(self.d.pk,))
 
-    def test_detalle_y_politica_son_listas_con_descripcion(self):
+    def test_la_celda_muestra_codigo_descripcion_y_elegir(self):
         html = self.client.get(reverse("admin:cuipo_distribuir", args=(self.d.pk,))).content.decode()
-        self.assertIn('<option value="0" selected>0 - NO APLICA</option>', html)
-        self.assertIn('list="op-cpc-', html)
-        self.assertIn('list="op-tercero-', html)
+        self.assertIn(f"campo=detalle_sectorial&linea={self.linea.pk}", html)
+        self.assertIn("<b>0</b>", html)
+        self.assertIn('title="NO APLICA">NO APLICA</span>', html)
 
-    def test_cpc_y_tercero_se_buscan_por_codigo_o_descripcion(self):
-        url = reverse("admin:cuipo_distribuir_opciones", args=(self.d.pk,))
-        self.assertContains(self.client.get(url, {"campo": "cpc", "codigo": "otros serv"}),
-                            '<option value="85999">85999 - Otros servicios</option>')
-        respuesta = self.client.get(url, {"campo": "tercero", "codigo": "2201"}).content.decode()
-        self.assertIn('value="220170001"', respuesta)
-        self.assertNotIn('value="23900000"', respuesta)
+    def test_la_ventana_lista_con_la_descripcion_completa(self):
+        larga = "SPC - E4 ATENCIÓN PRIMARIA SALUD - L1 DESARROLLO INSTITUCIONAL Y SECTORIAL - DESARROLLO DE CAPACIDADES"
+        DetalleSectorial.objects.create(codigo="19.02.01", descripcion=larga, version=self.linea.detalle_sectorial.version)
+        respuesta = self.client.get(self.url, {"campo": "detalle_sectorial", "linea": self.linea.pk})
+        self.assertContains(respuesta, "Elegir detalle sectorial")
+        self.assertContains(respuesta, larga)
+        self.assertContains(respuesta, 'class="opcion actual"')
+
+    def test_buscar_por_codigo_o_palabras(self):
+        datos = {"campo": "cpc", "linea": self.linea.pk, "solo": "resultados"}
+        respuesta = self.client.get(self.url, {**datos, "codigo": "otros servicios"})
+        self.assertContains(respuesta, "<b>85999</b>")
+        self.assertNotContains(respuesta, "Elegir CPC")             # solo la lista
+        self.assertContains(self.client.get(self.url, {**datos, "codigo": "859"}), "<b>85999</b>")
+        self.assertContains(self.client.get(self.url, {**datos, "codigo": "nada parecido"}), "Nada coincide")
         TerceroCUIPO.objects.filter(codigo="220170001").update(activo=False)
-        self.assertNotContains(self.client.get(url, {"campo": "tercero", "codigo": "2201"}), "220170001")
-        self.assertEqual(self.client.get(url, {"campo": "otro"}).status_code, 400)
+        self.assertNotContains(self.client.get(self.url, {"campo": "tercero", "linea": self.linea.pk, "codigo": "2201"}),
+                               "220170001")
+        self.assertEqual(self.client.get(self.url, {"campo": "otro", "linea": self.linea.pk}).status_code, 400)
 
-    def test_elegir_de_la_lista_guarda_el_codigo(self):
+    def test_elegir_guarda_el_codigo(self):
         respuesta = self.client.post(reverse("admin:cuipo_distribuir_cualitativo", args=(self.d.pk,)),
                                      {"linea": self.linea.pk, "campo": "cpc", "codigo": "85999"})
         self.assertEqual(respuesta.status_code, 200)
