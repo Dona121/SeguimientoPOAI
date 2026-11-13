@@ -683,7 +683,7 @@ del archivo es unico por tipo de reporte, asi que el libro se carga una vez para
 - Un indicador repetido bajo dos objetivos especificos queda una vez, con los dos
   objetivos, y su meta no se duplica.
 
-En la ficha del proyecto, la pestana **Formulacion (PIIP)** muestra los datos generales y la
+En la ficha del proyecto, la pestana **Ficha PIIP** muestra los datos generales y la
 tabla de indicadores, un dato por columna: el producto y el indicador como los trae el
 PIIP; si esta homologado, la linea del plan (sector, programa, producto e indicador) aunque
 coincida, para ver que quedo bien homologado, y si fue por codigo o a mano; y las metas

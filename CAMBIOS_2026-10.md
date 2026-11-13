@@ -364,4 +364,4 @@ comprometido.
   codigo los que queden sin homologar. En la base local: 364 proyectos, 436 indicadores y
   519 metas; 124 BPIN quedan fuera por no tener ejecucion.
 - Modulo **Catalogo PIIP** en el menu (formulacion, productos e indicadores, editables) y
-  pestana **Formulacion (PIIP)** en la ficha: lo del PIIP y la linea del plan homologada.
+  pestana **Ficha PIIP** en la ficha: lo del PIIP y la linea del plan homologada.

@@ -229,14 +229,14 @@
           <tr><th>Programa</th><td>{{ formulacion.programa|default:"—" }}</td></tr>
           <tr><th>Vigencia de inicio</th><td>{{ formulacion.vigencia_inicio|default:"—" }}</td></tr>
           <tr><th>Vigencia de fin</th><td>{{ formulacion.vigencia_fin|default:"—" }}</td></tr>
-          <tr><th>Región</th><td>{{ piip_regiones|join:", "|default:"—" }}</td></tr>
-          <tr><th>Departamento</th><td>{{ piip_departamentos|join:", "|default:"—" }}</td></tr>
-          <tr><th>Municipios</th><td>{{ piip_municipios|join:", "|default:"—" }}</td></tr>
-          <tr><th>Población afectada</th><td>{{ formulacion.poblacion_afectada|default_if_none:"—"|intcomma }}</td></tr>
-          <tr><th>Población objetivo</th><td>{{ formulacion.poblacion_objetivo|default_if_none:"—"|intcomma }}</td></tr>
           <tr><th>Objetivo general</th><td>{{ formulacion.objetivo_general|default:"—"|linebreaksbr }}</td></tr>
           <tr><th>Problema</th><td>{{ formulacion.problema|default:"—"|linebreaksbr }}</td></tr>
           <tr><th>Descripción</th><td>{{ formulacion.descripcion|default:"—"|linebreaksbr }}</td></tr>
+          <tr><th>Población afectada</th><td>{{ formulacion.poblacion_afectada|default_if_none:"—"|intcomma }}</td></tr>
+          <tr><th>Población objetivo</th><td>{{ formulacion.poblacion_objetivo|default_if_none:"—"|intcomma }}</td></tr>
+          <tr><th>Región</th><td>{{ piip_regiones|join:", "|default:"—" }}</td></tr>
+          <tr><th>Departamento</th><td>{{ piip_departamentos|join:", "|default:"—" }}</td></tr>
+          <tr><th>Municipios</th><td>{{ piip_municipios|join:", "|default:"—" }}</td></tr>
         </tbody>
       </table>
     </div>
@@ -247,36 +247,35 @@
       <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Indicadores de producto ({{ piip_indicadores|length }})
         {% include "siifweb/_ayuda.html" with etiqueta="Como leer los indicadores" texto="A la izquierda, el producto y el indicador como los formuló el proyecto en PIIP. En el centro, la línea del plan de desarrollo del indicador con que está homologado (sector, programa, producto e indicador), aunque coincida, para ver que quedó bien homologado. La meta total es la del horizonte del proyecto; si el indicador acumula, es la suma de las metas de cada vigencia." %}</h2>
     </div>
-    {% comment %}Un dato por columna. Lo del PIIP siempre; la linea del plan cuando esta homologado,
+    {% comment %}Un dato por columna, en el orden de InfoGeneral. Al final la linea del plan cuando esta homologado,
        aunque coincida: asi se ve que quedo bien homologado{% endcomment %}
     <div class="overflow-auto" style="max-height:34rem">
       <table class="w-full text-sm indicadores-piip">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr class="grupos">
-            <th colspan="7">PIIP</th>
+            <th colspan="{{ piip_vigencias|length|add:12 }}">PIIP</th>
             <th colspan="6" class="plan">Plan de desarrollo (homologado)</th>
-            <th colspan="{{ piip_vigencias|length|add:5 }}">Formulación</th>
           </tr>
           <tr>
             <th>Objetivo específico</th>
             <th>Código producto</th>
             <th>Producto</th>
             <th>Producto principal</th>
+            <th>Etapa</th>
             <th>UMP</th>
             <th>Código indicador</th>
             <th>Indicador</th>
+            <th>UMI</th>
+            <th>Tipo indicador</th>
+            <th>Acumula</th>
+            <th class="num">Meta total</th>
+            {% for v in piip_vigencias %}<th class="num">Meta {{ v }}</th>{% endfor %}
             <th class="plan">Sector</th>
             <th class="plan">Programa</th>
             <th class="plan">Código producto</th>
             <th class="plan">Producto</th>
             <th class="plan">Código indicador</th>
             <th class="plan">Indicador</th>
-            <th>Etapa</th>
-            <th>Tipo indicador</th>
-            <th>UMI</th>
-            <th>Acumula</th>
-            <th class="num">Meta total</th>
-            {% for v in piip_vigencias %}<th class="num">Meta {{ v }}</th>{% endfor %}
           </tr>
         </thead>
         <tbody>
@@ -286,9 +285,15 @@
             <td class="font-mono">{{ i.indicador.producto.codigo }}</td>
             <td class="largo">{{ i.indicador.producto.nombre }}</td>
             <td>{% if i.producto_principal %}Sí{% else %}No{% endif %}</td>
+            <td>{{ i.get_etapa_display|default:"—" }}</td>
             <td>{{ i.indicador.producto.medido_a_traves_de|default:"—" }}</td>
             <td class="font-mono">{{ i.indicador.codigo }}</td>
             <td class="largo">{{ i.indicador.nombre }}</td>
+            <td>{{ i.unidad_medida|default:"—" }}</td>
+            <td>{{ i.get_tipo_display|default:"—" }}</td>
+            <td>{% if i.acumula is None %}—{% elif i.acumula %}Sí{% else %}No{% endif %}</td>
+            <td class="num font-mono">{{ i.meta_total|default_if_none:"—"|floatformat:"-3g" }}</td>
+            {% for m in i.metas_por_vigencia %}<td class="num font-mono">{% if m is None %}—{% else %}{{ m|floatformat:"-3g" }}{% endif %}</td>{% endfor %}
             {% with p=i.indicador.indicador_pdd %}
             {% if p %}
             {% with producto=p.producto_mga programa=p.producto_mga.programa_mga sector=p.producto_mga.programa_mga.sector_mga %}
@@ -304,12 +309,6 @@
             <td class="plan text-base-500" colspan="6">Sin homologar</td>
             {% endif %}
             {% endwith %}
-            <td>{{ i.get_etapa_display|default:"—" }}</td>
-            <td>{{ i.get_tipo_display|default:"—" }}</td>
-            <td>{{ i.unidad_medida|default:"—" }}</td>
-            <td>{% if i.acumula is None %}—{% elif i.acumula %}Sí{% else %}No{% endif %}</td>
-            <td class="num font-mono">{{ i.meta_total|default_if_none:"—"|floatformat:"-3g" }}</td>
-            {% for m in i.metas_por_vigencia %}<td class="num font-mono">{% if m is None %}—{% else %}{{ m|floatformat:"-3g" }}{% endif %}</td>{% endfor %}
           </tr>
           {% empty %}
           <tr><td colspan="{{ piip_vigencias|length|add:18 }}" class="text-center text-base-500">La ficha del PIIP no trae indicadores.</td></tr>

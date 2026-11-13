@@ -234,7 +234,7 @@ class PestanaDeLaFicha(TestCase):
     def test_muestra_datos_generales_y_metas(self):
         carga_piip([fila(), fila(Vigencia="2026", MetaVigencia="200")])
         html = self.html()
-        for texto in ("Formulación (PIIP)", "Mejorar la atención", "Inclusión social y reconciliación",
+        for texto in ("Ficha PIIP", "Mejorar la atención", "Inclusión social y reconciliación",
                       "4104 - Atención integral", "Corozal, Sincelejo", "Caribe", "Número de personas",
                       "Meta 2025", "Meta 2026"):
             self.assertIn(texto, html)

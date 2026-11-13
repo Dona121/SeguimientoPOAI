@@ -773,7 +773,7 @@ class ProyectoAdmin(ModelAdmin):
             "title": f"Ficha de ejecucion - {proyecto.bpin}",
             "proyecto": proyecto,
             "panel": panel,
-            "paneles": (("siifweb", "SIIFWEB"), ("secop", "SECOP II"), ("piip", "Formulación (PIIP)")),
+            "paneles": (("siifweb", "SIIFWEB"), ("secop", "SECOP II"), ("piip", "Ficha PIIP")),
             "volver": reverse("admin:siifweb_proyecto_change", args=(object_id,)),
         }
         if panel == "secop":
