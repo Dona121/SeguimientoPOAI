@@ -1,0 +1,92 @@
+{% extends "admin/base_site.html" %}
+{% comment %}
+El plano CHIP de un corte. Vista: CorteEjecucionGastosAdmin.plano_chip; logica: cuipo/plano.py.
+{% endcomment %}
+
+{% block title %}Plano CUIPO | POAI{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url 'admin:cuipo_corteejecuciongastos_changelist' %}" class="font-medium text-primary-600">Cortes de ejecución de gastos</a></li>
+      <li class="mx-2">/</li>
+      <li>Plano CUIPO</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .pl { display:flex; flex-direction:column; gap:1.25rem; }
+  .pl .caja { background:#fff; border:1px solid var(--color-base-200); border-radius:6px; padding:1rem 1.25rem; }
+  .dark .pl .caja { background:var(--color-base-900); border-color:var(--color-base-800); }
+  .pl h2 { font-weight:600; font-size:1rem; margin-bottom:.5rem; }
+  .pl .nota { font-size:.8rem; color:var(--color-base-500); margin:.3rem 0 .6rem; }
+  .pl .mal { color:#b42318; }
+  .pl .ok { color:var(--color-primary-700); }
+  .pl .boton { display:inline-block; background:var(--color-primary-600); color:#fff; border-radius:6px;
+               padding:.45rem .9rem; font-size:.85rem; font-weight:500; }
+  .pl .boton:hover { background:var(--color-primary-700); }
+  .pl .boton.gris { background:var(--color-base-100); color:var(--color-base-700); border:1px solid var(--color-base-200); }
+  .pl ul.problemas { list-style:disc; margin-left:1.2rem; font-size:.82rem; }
+  .pl .tabla { overflow-x:auto; }
+  .pl table { border-collapse:collapse; font-size:.72rem; font-family:ui-monospace, monospace; }
+  .pl td { padding:.2rem .5rem; border-bottom:1px solid var(--color-base-100); white-space:nowrap; }
+  .pl td.num { text-align:right; }
+  .pl tr.resumen td { color:var(--color-base-500); }
+</style>
+
+<div class="pl">
+  <section class="caja">
+    <h2>{{ corte }} · periodo {{ periodo|default:"sin periodo" }}</h2>
+    <p class="nota">Distribuciones:
+      {% for etiqueta, n in estados %}{{ etiqueta }} {{ n }}{% if not forloop.last %} · {% endif %}{% endfor %}
+    </p>
+    {% if problemas %}
+    <p class="mal">No se puede generar el plano: {{ problemas|length }} problemas.</p>
+    <ul class="problemas">{% for p in problemas|slice:":40" %}<li>{{ p }}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="ok">Todas las filas de inversión tienen distribución sin errores: {{ n_lineas }} líneas en el bloque.</p>
+    {% endif %}
+  </section>
+
+  {% if not problemas %}
+  <section class="caja">
+    <h2>Descargar</h2>
+    <p class="nota">El bloque D_EJECUCION_DE_GASTOS solo de la inversión (2.3), con su encabezado.</p>
+    <a class="boton" href="?descargar=1">Descargar el bloque de inversión</a>
+  </section>
+
+  <section class="caja">
+    <h2>Integrar en el plano de presupuesto</h2>
+    <p class="nota">Suba el plano completo de presupuesto del mismo periodo. Dentro del bloque D_EJECUCION_DE_GASTOS se reemplazan las líneas 2.3 y se recalcula la línea resumen 2; las líneas 2.1 y 2.2 y las demás categorías quedan idénticas. Se descarga el plano resultante; el archivo subido no se guarda.</p>
+    <form method="post" enctype="multipart/form-data" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">{% csrf_token %}
+      <input type="file" name="presupuesto" accept=".txt" required>
+      <button class="boton" type="submit">Integrar y descargar</button>
+    </form>
+  </section>
+
+  <section class="caja">
+    <h2>Vista previa</h2>
+    <p class="nota">Las primeras 40 líneas del bloque. En gris, las líneas resumen.</p>
+    <div class="tabla"><table>
+      {% for campos in vista %}
+      <tr{% if not campos.4 and campos.0 == "D" %} class="resumen"{% endif %}>{% for c in campos %}<td{% if forloop.counter > 12 %} class="num"{% endif %}>{{ c }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </table></div>
+  </section>
+  {% endif %}
+
+  {% if puede_marcar and validadas %}
+  <section class="caja">
+    <h2>Después de enviar a CHIP</h2>
+    <p class="nota">Marque como enviadas las {{ validadas }} distribuciones validadas del corte. Una enviada ya no cambia.</p>
+    <form method="post">{% csrf_token %}<button class="boton gris" name="marcar_enviadas" value="1">Marcar enviadas las validadas</button></form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

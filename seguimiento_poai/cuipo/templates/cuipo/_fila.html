@@ -2,9 +2,17 @@
 {% url 'admin:cuipo_distribuir_celda' dist.pk as u_celda %}{% url 'admin:cuipo_distribuir_asociar' dist.pk as u_asociar %}{% url 'admin:cuipo_distribuir_vigencia' dist.pk as u_vigencia %}{% url 'admin:cuipo_distribuir_quitar' dist.pk as u_quitar %}{% url 'admin:cuipo_distribuir_cualitativo' dist.pk as u_cual %}{% url 'admin:cuipo_distribuir_elegir' dist.pk as u_elegir %}
 <tbody class="fila" id="fila-{{ d.fila.pk }}">
   <tr class="cabeza">
-    <td colspan="2">
-      <b>{{ d.fila.rubro }}</b> · recurso {{ d.fila.recurso }} · CC {{ d.fila.centro_costo }}
-      <span class="desc" style="max-width:none">{{ d.fila.nombre_rubro|truncatechars:70 }} · {{ d.fila.nombre_recurso|truncatechars:60 }}</span>
+    <td colspan="2" style="min-width:26rem">
+      <div class="ident">
+        <div><span class="dato">Rubro</span> <b>{{ d.fila.rubro }}</b> {{ d.fila.nombre_rubro }}</div>
+        <div><span class="dato">Recurso</span> <b>{{ d.fila.recurso }}</b> {{ d.fila.nombre_recurso }}</div>
+        <div><span class="dato">Centro de costo</span> <b>{{ d.fila.centro_costo }}</b> {{ d.fila.nombre_centro_costo }}</div>
+        <div class="cuipo"><span class="dato">En el CUIPO</span>
+          {% if d.derivacion.concepto %}concepto <b>{{ d.derivacion.concepto.codigo }}</b>{% else %}<span class="mal">sin concepto</span>{% endif %}
+          · {% if d.derivacion.fuente %}fuente <b>{{ d.derivacion.fuente.codigo }}</b> {{ d.derivacion.fuente.descripcion }}{% else %}<span class="mal">fuente sin homologar</span>{% endif %}
+          · {% if d.derivacion.seccion %}sección <b>{{ d.derivacion.seccion.codigo }}</b>{% endif %}
+        </div>
+      </div>
       <div style="margin-top:.3rem">
         {% for p, activo in d.asociados %}
         <label class="marcar" title="{{ p.descripcion }}"><input type="checkbox" name="activo" value="1"{% if activo %} checked{% endif %}{% if not editable %} disabled{% endif %}

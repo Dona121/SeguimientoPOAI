@@ -575,3 +575,20 @@ Rama `cuipo-fase5-validaciones`, sobre `cuipo-fase4-pantalla`. Sin migraciones.
   desplegables con descripcion (CPC y tercero se buscan al escribir).
 
 **Pruebas.** 518, todas pasan (`cuipo/tests/test_validacion.py`, 22 nuevas).
+
+## 25. CUIPO, fase 6: plano CHIP y ajustes de la pantalla (13 de noviembre)
+
+Rama `cuipo-fase6-plano`, sobre `cuipo-fase5-validaciones`. Sin migraciones.
+
+- Pantalla Distribuir: se quitaron "Proporcional a compromisos" y "Todo a un producto" (el
+  reparto es manual); los cualitativos se eligen en una ventana con buscador y la
+  descripcion completa; cada fila muestra rubro, recurso y centro de costo con sus nombres
+  completos y su concepto, fuente CUIPO y seccion.
+- `cuipo/plano.py`: el bloque D_EJECUCION_DE_GASTOS de la inversion (encabezado, lineas de 15
+  campos, resumenes por prefijo, enteros con mayor residuo por fila, agrupacion, sin ceros,
+  orden vigencia -> seccion -> codigo) y su integracion en el plano completo de presupuesto
+  (cambia solo las lineas 2.3 y el resumen 2 del bloque D).
+- Pantalla **Plano** por corte: problemas, vista previa, descarga, integracion y "Marcar
+  enviadas las validadas".
+
+**Pruebas.** 534, todas pasan (`cuipo/tests/test_plano.py`, 18 nuevas).

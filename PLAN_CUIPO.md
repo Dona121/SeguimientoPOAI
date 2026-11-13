@@ -28,6 +28,7 @@ importador del reporte de ejecución ya está hecho (sección 3).
 | Valores por producto (PIIP) | El reporte de AporteProductos del PIIP **no se carga** al aplicativo: los valores por producto se digitan a mano en la matriz a partir de ese reporte |
 | Inversión sin BPIN | Entra al CUIPO con BPIN 0 y producto 0, el 100 % automático; solo se diligencian los cualitativos |
 | Roles | Por ahora sin roles nuevos: quien tenga los permisos de los modelos del CUIPO puede distribuir y validar |
+| Reparto | **Manual** (decisión del 13/11): sin los botones "Proporcional a compromisos" ni "Todo a un producto", porque pueden generar confusión o errores. La precarga sigue haciendo el 100 % cuando hay un solo producto y en la inversión sin BPIN |
 | 2023002700021 | La fila de 15.251.706.362,76 (recurso 7, centro de costo 16) que aparecía duplicada en la ejecución al 30/09 se había agregado a mano. En el reporte oficial la llave de la fila es única |
 
 ---
@@ -70,7 +71,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 518.
+  disco temporal). Hoy son 534.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -364,9 +365,9 @@ así que un BPIN con ejecución solo queda sin productos si no está en el expor
 **Pantalla por BPIN** (vista propia con HTMX, registrada en `get_urls()` del admin de
 `DistribucionBPIN`; `htmx.min.js` como estático propio en `cuipo/static/cuipo/`, no por CDN):
 1. Asociar filas con productos.
-2. Matriz filas × productos con C, O y P y la diferencia contra SIIFWEB en vivo. Botones:
-   "Proporcional a compromisos" (O y P con la participación de C) y "Todo a un producto".
-   Los valores del PIIP se digitan directamente en las celdas.
+2. Matriz filas × productos con C, O y P y la diferencia contra SIIFWEB en vivo. Los valores
+   se digitan a mano (los del PIIP, directamente en las celdas); no hay botones de reparto
+   automático (decisión del 13/11).
 3. Cualitativos por línea, mostrando su origen.
 
 **Validaciones** (`validar_distribucion()`, que usan la pantalla y el generador):
@@ -565,8 +566,9 @@ pruebas en `cuipo/tests/test_pantalla.py`).
 - Pantalla `/admin/cuipo/distribucionbpin/<id>/distribuir/` (enlace "Distribuir" en la lista
   de distribuciones y en cada distribución): encabezado (BPIN, nombre, corte, periodo, regla,
   estado, productos), referencia del periodo anterior enviado (valor y participación por
-  producto, solo lectura), totales SIIFWEB / distribuido y filas que cuadran, botones
-  "Proporcional a compromisos" y "Todo a un producto", y la matriz: por fila, la casilla de
+  producto, solo lectura), totales SIIFWEB / distribuido y filas que cuadran, y la matriz:
+  por fila, el rubro, el recurso y el centro de costo con sus nombres completos y lo que
+  llevan en el CUIPO (concepto, fuente CUIPO y sección), la casilla de
   cada producto (asociar), lo de SIIFWEB y la diferencia en C, O y P, y una línea por
   producto y vigencia del gasto con C, O y P editables, los cuatro cualitativos por código con
   su descripción y su origen, "+ vigencia" para repartir en otra vigencia del gasto y "×"
@@ -575,18 +577,19 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   se actualizan fuera de banda (`hx-swap-oob`). Un error (valor negativo, código que no está
   en la lista, inactivo) se muestra en la fila y no se guarda.
 - Lógica en `cuipo/distribucion.py`: `guardar_valor`, `asociar` (desasociar borra las líneas),
-  `agregar_vigencia`, `quitar_linea`, `cambiar_cualitativo`, `proporcional_a_compromisos`
-  (reparte O y P de cada fila con la participación de los compromisos digitados, al centavo,
-  por mayor residuo con `repartir()`), `todo_a_un_producto`, `antecedente` y `matriz`.
-  Lo digitado queda con origen PIIP si la regla es "varios productos, una fuente" y manual en
-  los demás casos; "Todo a un producto" deja origen SIIFWEB.
+  `agregar_vigencia`, `quitar_linea`, `cambiar_cualitativo`, `antecedente` y `matriz`, y
+  `repartir()` (mayor residuo, la usa el plano). Lo digitado queda con origen PIIP si la
+  regla es "varios productos, una fuente" y manual en los demás casos. Los botones
+  "Proporcional a compromisos" y "Todo a un producto" se hicieron y se quitaron el mismo día:
+  el reparto es manual.
 - Solo se edita una distribución en borrador y con permisos de agregar, cambiar y borrar
   líneas; sin permiso de ver distribuciones, 403.
-- Cualitativos como listas desplegables con su descripción (pedido del 13/11): detalle
-  sectorial (167) y política pública (87) en una lista completa; CPC (7.659) y tercero (5.736)
-  en una lista que se llena con las 30 coincidencias de lo que se escribe, por código o por
-  descripción (`distribuir/opciones/`), porque cargarlas completas en cada línea haría la
-  página muy pesada. Solo ofrece códigos activos.
+- Cualitativos: cada celda muestra el código, la descripción completa (en dos líneas, entera
+  al pasar el cursor) y su origen, con un botón **Elegir** que abre una ventana con buscador
+  (por código o por palabras de la descripción) y la lista de opciones con la descripción
+  completa; clic en una opción la guarda y cierra; Esc o clic fuera cierra
+  (`distribuir/elegir/`). Solo ofrece códigos activos y muestra hasta 60 coincidencias. Se
+  probó antes con listas desplegables, pero los nombres largos no se leían.
 - La lista de distribuciones vacía explica cómo se crean (con la precarga del corte).
 - No se probó en el navegador con datos locales: el corte local va al 11/11 y no tiene
   periodo. Las pruebas cubren la pantalla y cada acción.
@@ -595,7 +598,6 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   (pantalla y parciales), `cuipo/static/cuipo/htmx.min.js`.
 - Aceptación:
   - La matriz recalcula la diferencia contra SIIFWEB sin recargar.
-  - Los dos botones dan los valores esperados en los BPIN de prueba.
   - Los cualitativos muestran su origen; un usuario sin permiso sobre los modelos del CUIPO
     recibe 403.
   - Si el BPIN se distribuyó en un periodo anterior de la vigencia, se ve esa distribución
@@ -625,7 +627,28 @@ pruebas en `cuipo/tests/test_pantalla.py`).
 - Aceptación: cada regla de la sección 4.3 tiene su prueba; en 202500000029628, recurso 35,
   ninguna celda deja O > C.
 
-**Fase 6 — Generador del plano**
+**Fase 6 — Generador del plano** — **hecha el 13/11** (rama `cuipo-fase6-plano`, sin migraciones,
+18 pruebas en `cuipo/tests/test_plano.py`).
+- `cuipo/plano.py`: `revisar(corte)` (BPIN sin distribución y distribuciones con errores),
+  `detalle(corte)` (líneas de detalle: cada valor de cada fila se redondea al peso y se
+  reparte entre sus líneas por mayor residuo; luego se agrupan las iguales), `resumenes()`,
+  `generar(corte)` (el bloque de la inversión con su encabezado, fin de línea CRLF) e
+  `integrar(texto, corte)`. El código de la entidad sale de `settings.CUIPO_ENTIDAD`
+  (por defecto 117070000).
+- Integración en el plano de presupuesto: dentro del bloque D se quitan las líneas 2.3 y el
+  resumen 2; las demás líneas quedan con su texto original; se agregan las 2.3 nuevas y el
+  resumen 2 se recalcula como la suma de los resúmenes de primer nivel (2.1, 2.2… y la 2.3
+  nueva) por vigencia y sección. El encabezado debe ser del mismo periodo y año del corte.
+  Se conservan el fin de línea y la codificación del archivo subido.
+- Pantalla **Plano** de cada corte (`/admin/cuipo/corteejecuciongastos/<id>/plano/`, enlace
+  en la lista de cortes): estado de las distribuciones, problemas que impiden generar, vista
+  previa de las primeras 40 líneas, descarga del bloque de inversión, integración subiendo el
+  plano de presupuesto (no se guarda) y "Marcar enviadas las validadas".
+- Se puede generar con distribuciones en borrador si no tienen errores; la pantalla muestra
+  cuántas hay en cada estado.
+- Por confirmar con el primer envío: que CHIP acepte las secciones como `16.0` y el fin de
+  línea CRLF en el bloque generado (el integrado conserva el del archivo subido).
+
 - Archivos: `cuipo/plano.py` y una vista o acción de descarga.
 - Aceptación:
   - Encabezado exacto, 15 campos por línea D, líneas resumen con los cualitativos vacíos.

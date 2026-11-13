@@ -18,7 +18,8 @@ from unfold.decorators import action, display
 from siifweb import cargas
 from siifweb.admin import SoloLectura, hash_archivo, pesos
 
-from . import derivacion, distribucion, ejecucion, listas, semillas, validacion
+from . import derivacion, distribucion, ejecucion, listas, plano, semillas, validacion
+from .models import periodo_de as derivacion_periodo
 from .models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, DistribucionBPIN,
                      FilaEjecucionGastos, FuenteCUIPO, HomologacionFuente, LineaCUIPO, HomologacionRubro, PoliticaPublica, ProductoCUIPO, ReglaSeccion,
                      ReglaSituacionFondos, ReglaTercero, SeccionPresupuestal, SituacionFondos, TerceroCUIPO,
@@ -52,7 +53,7 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
     compressed_fields = True
     list_fullwidth = True
     list_display = ("__str__", "vigencia", "fecha_inicio", "fecha_fin", "fecha_descarga", "estado_badge", "filas",
-                    "rp", "obligacion", "pago", "ver_filas", "ver_pendientes", "n_distribuciones")
+                    "rp", "obligacion", "pago", "ver_filas", "ver_pendientes", "n_distribuciones", "ver_plano")
     list_filter = ("vigencia", ("estado", ChoicesDropdownFilter))
     readonly_fields = ("estado", "filas", "mensaje", "hash", "fecha_creacion", "fecha_actualizacion")
     actions = ("volver_a_procesar", "precargar_distribucion")
@@ -84,6 +85,7 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
             path("pendientes/", self.admin_site.admin_view(self.pendientes_ultimo), name="cuipo_pendientes"),
             path("<int:pk>/pendientes/", self.admin_site.admin_view(self.pendientes),
                  name="cuipo_corte_pendientes"),
+            path("<int:pk>/plano/", self.admin_site.admin_view(self.plano_chip), name="cuipo_corte_plano"),
         ]
         return propias + super().get_urls()
 
@@ -132,6 +134,73 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
             "puede_sembrar": puede_sembrar,
         }
         return TemplateResponse(request, "cuipo/pendientes.html", contexto)
+
+    def plano_chip(self, request, pk):
+        """El plano CHIP del corte: revisar, descargar el bloque de inversion, integrarlo en el plano
+        de presupuesto y marcar enviadas las distribuciones validadas."""
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        corte = get_object_or_404(CorteEjecucionGastos, pk=pk)
+        volver = redirect("admin:cuipo_corte_plano", pk=corte.pk)
+        if request.GET.get("descargar"):
+            try:
+                texto = plano.generar(corte)
+            except ValueError as error:
+                self.message_user(request, str(error), messages.ERROR)
+                return volver
+            respuesta = HttpResponse(texto.encode("utf-8"), content_type="text/plain; charset=utf-8")
+            respuesta["Content-Disposition"] = f'attachment; filename="{plano.nombre_archivo(corte)}"'
+            return respuesta
+        if request.method == "POST" and request.FILES.get("presupuesto"):
+            archivo = request.FILES["presupuesto"]
+            datos = archivo.read()
+            codificacion = "utf-8"
+            try:
+                texto = datos.decode("utf-8")
+            except UnicodeDecodeError:
+                codificacion, texto = "latin-1", datos.decode("latin-1")
+            try:
+                integrado = plano.integrar(texto, corte)
+            except ValueError as error:
+                self.message_user(request, str(error), messages.ERROR)
+                return volver
+            nombre = archivo.name.rsplit(".", 1)[0] + "_con_inversion_CUIPO.txt"
+            respuesta = HttpResponse(integrado.encode(codificacion), content_type=f"text/plain; charset={codificacion}")
+            respuesta["Content-Disposition"] = f'attachment; filename="{nombre}"'
+            return respuesta
+        if request.method == "POST" and request.POST.get("marcar_enviadas"):
+            if not request.user.has_perm("cuipo.change_distribucionbpin"):
+                raise PermissionDenied
+            n = 0
+            for dist in corte.distribuciones.filter(estado=DistribucionBPIN.Estado.VALIDADO):
+                validacion.cambiar_estado(dist, DistribucionBPIN.Estado.ENVIADO, request.user)
+                n += 1
+            self.message_user(request, f"Marcadas como enviadas: {n}.", messages.SUCCESS)
+            return volver
+
+        problemas = plano.revisar(corte)
+        vista, n_lineas = [], 0
+        if not problemas:
+            renglones = plano.generar(corte).splitlines()
+            n_lineas, vista = len(renglones) - 1, renglones[:41]
+        estados = {e: corte.distribuciones.filter(estado=e).count() for e in DistribucionBPIN.Estado.values}
+        contexto = {
+            **self.admin_site.each_context(request),
+            "title": f"Plano CUIPO · {corte}",
+            "corte": corte, "periodo": derivacion_periodo(corte), "problemas": problemas,
+            "vista": [r.split("\t") for r in vista], "n_lineas": n_lineas,
+            "estados": [(DistribucionBPIN.Estado(e).label, n) for e, n in estados.items()],
+            "validadas": estados.get(DistribucionBPIN.Estado.VALIDADO, 0),
+            "puede_marcar": request.user.has_perm("cuipo.change_distribucionbpin"),
+        }
+        return TemplateResponse(request, "cuipo/plano.html", contexto)
+
+    @display(description="Plano")
+    def ver_plano(self, obj):
+        if not obj.distribuciones.exists():
+            return "—"
+        return format_html('<a href="{}" class="text-primary-600">Plano</a>',
+                           reverse("admin:cuipo_corte_plano", args=(obj.pk,)))
 
     def _procesar(self, request, corte):
         try:

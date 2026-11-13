@@ -349,7 +349,7 @@ def antecedente(distribucion):
                       for codigo, valor in sorted(por_producto.items())]
 
 
-def matriz(distribucion, solo_fila=None):
+def matriz(distribucion, solo_fila=None, con_derivacion=True):
     """Lo que pinta la pantalla: por fila, sus lineas (y una vacia por cada producto asociado
     sin lineas), lo de SIIFWEB, lo distribuido y la diferencia."""
     lineas = defaultdict(list)
@@ -364,6 +364,7 @@ def matriz(distribucion, solo_fila=None):
     filas = distribucion.filas().order_by("rubro", "recurso", "centro_costo")
     if solo_fila is not None:
         filas = filas.filter(pk=solo_fila.pk)
+    derivador = Derivador(distribucion.corte.vigencia) if con_derivacion else None
     resultado = []
     for fila in filas:
         propias = lineas.get(fila.pk, [])
@@ -376,13 +377,13 @@ def matriz(distribucion, solo_fila=None):
             "vacias": [p for p in productos if p.pk in asociados[fila.pk] and p.pk not in con_linea],
             "asociados": [(p, p.pk in asociados[fila.pk]) for p in productos],
             "siifweb": siifweb, "distribuido": distribuido, "diferencia": diferencia,
-            "cuadra": not any(diferencia)})
+            "cuadra": not any(diferencia), "derivacion": derivador.derivar(fila) if derivador else None})
     return resultado
 
 
 def totales(distribucion):
     """Para el encabezado: SIIFWEB, distribuido y filas que cuadran."""
-    filas = matriz(distribucion)
+    filas = matriz(distribucion, con_derivacion=False)
     suma = lambda clave, i: sum((f[clave][i] for f in filas), Decimal(0))
     return {"siifweb": tuple(suma("siifweb", i) for i in range(3)),
             "distribuido": tuple(suma("distribuido", i) for i in range(3)),
