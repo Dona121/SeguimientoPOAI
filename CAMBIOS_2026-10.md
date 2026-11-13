@@ -641,6 +641,7 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   `cuipo.0005` (solo cambia las etiquetas de la regla; no toca datos).
 - **Distribuciones por BPIN CUIPO** trae las columnas **Filas** (registros del corte del BPIN que
   entran al CUIPO) y **Productos programados** (del PIIP con meta en la vigencia del corte), que
-  se pueden ordenar y filtrar; las opciones del filtro son las cantidades que hay.
+  se pueden ordenar y filtrar; las opciones del filtro son las cantidades que hay y se pueden
+  elegir varias a la vez (por ejemplo 2, 3 y 7 productos).
 
 **Pruebas.** 547, todas pasan (156 del CUIPO).

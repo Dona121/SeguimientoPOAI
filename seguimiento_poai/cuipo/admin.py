@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin, TabularInline
-from unfold.contrib.filters.admin import ChoicesDropdownFilter, DropdownFilter, RelatedDropdownFilter
+from unfold.contrib.filters.admin import ChoicesDropdownFilter, MultipleDropdownFilter, RelatedDropdownFilter
 from unfold.decorators import action, display
 
 from siifweb import cargas
@@ -584,8 +584,9 @@ class LineaCUIPOInline(TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-class ConteoFilter(DropdownFilter):
-    """Filtro por una cantidad anotada en el queryset del admin; las opciones son las que hay."""
+class ConteoFilter(MultipleDropdownFilter):
+    """Filtro por una cantidad anotada en el queryset del admin. Las opciones son las cantidades
+    que hay y se pueden elegir varias (por ejemplo 2, 3 y 7)."""
     campo = None
 
     def lookups(self, request, model_admin):
@@ -593,9 +594,8 @@ class ConteoFilter(DropdownFilter):
         return [(str(v), str(v)) for v in sorted(set(valores))]
 
     def queryset(self, request, queryset):
-        if self.value() and self.value().isdigit():
-            return queryset.filter(**{self.campo: int(self.value())})
-        return queryset
+        elegidos = [int(v) for v in (self.value() or []) if str(v).isdigit()]
+        return queryset.filter(**{f"{self.campo}__in": elegidos}) if elegidos else queryset
 
 
 class FilasFilter(ConteoFilter):

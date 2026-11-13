@@ -74,7 +74,8 @@ class ProductosProgramados(TestCase):
         self.assertEqual((d.filas_n, d.programados_n), (2, 1))
         self.assertContains(respuesta, "Productos programados")
         for filtro, cuantas in (({"filas": "2"}, 1), ({"filas": "1"}, 0), ({"programados": "1"}, 1),
-                                ({"programados": "2"}, 0)):
+                                ({"programados": "2"}, 0), ({"filas": ["1", "2"]}, 1),
+                                ({"programados": ["2", "3"]}, 0), ({"filas": ["1", "2"], "programados": ["1"]}, 1)):
             with self.subTest(filtro=filtro):
                 self.assertEqual(self.client.get(url, filtro).context["cl"].result_count, cuantas)
 
