@@ -56,7 +56,7 @@ Dos restricciones definieron el diseño:
 ### Relaciones
 
 ```
-Proyecto (SIIFWEB) 1──1 FormulacionProyecto ──* IndicadorProyecto ──* MetaVigenciaIndicador
+Proyecto (SIIFWEB) 0..1──1 FormulacionProyecto (bpin) ──* IndicadorProyecto ──* MetaVigenciaIndicador
                               │                       │
                               *                       *
                          Municipio ──> Departamento   IndicadorCatalogo ──> ProductoCatalogo ──> MedidoATravesDe
@@ -197,7 +197,7 @@ Seguimiento y Consulta no.
 ## 8. Qué pasa solo (no hay triggers de base de datos)
 
 No hay triggers en la base ni señales de Django para estos modelos. Lo automático está en
-tres lugares, y en ninguno más:
+cuatro lugares, y en ninguno más:
 
 1. **La migración `0021`**: homologa por código una sola vez, al aplicarse.
 2. **La carga PIIP**: crea indicadores y productos que falten, y homologa por código los
@@ -206,6 +206,8 @@ tres lugares, y en ninguno más:
    existe en el plan, se homologa por código (por ejemplo, al agregar uno nuevo o al
    cambiarle el código). Si el usuario eligió el indicador del plan a mano, se marca como
    manual y no se reemplaza.
+4. **Guardar un `Proyecto`**: enlaza la formulación del PIIP de su BPIN que estaba sin
+   enlace (sección 9).
 
 La regla común: **la homologación automática solo toca indicadores sin homologar**. Una
 homologación hecha a mano nunca la cambia el sistema; si se quiere volver a la
@@ -214,7 +216,89 @@ automática, se vacía el campo y se guarda.
 Ya existían antes, y siguen igual: `Proyecto.save()` limpia el BPIN (espacios y ".0"), y
 una señal sobre los indicadores PDD de la meta, ajena a este módulo.
 
-## 9. Dónde se ve
+## 9. Enlace entre la formulación y el proyecto de SIIFWEB
+
+Desde el 13 de noviembre (rama `piip-control-siifweb`, migración `0023`) la carga del PIIP
+crea la formulación de **todos** los BPIN, estén o no en SIIFWEB, para poder controlar
+cuáles están y cuáles no.
+
+### La relación
+
+- `FormulacionProyecto.bpin`: el BPIN del PIIP, único. Identifica la formulación aunque no
+  tenga proyecto enlazado. `FormulacionProyecto.nombre`: el nombre del proyecto en el PIIP
+  (columna `NombreProyecto`).
+- `FormulacionProyecto.proyecto`: relación uno a uno con `Proyecto` (el proyecto de
+  SIIFWEB). Ya existía; ahora es **opcional**: queda vacía mientras el BPIN no esté en
+  SIIFWEB. Si se borra el proyecto, la formulación no se borra: queda sin enlace
+  (`SET_NULL`).
+- No hay una llave nueva hacia "proyectos PIIP" ni triggers en la base de datos.
+
+### Los dos enlazadores
+
+El enlace se hace por BPIN en dos lugares, uno para cada orden en que lleguen los datos:
+
+| Qué llega primero | Quién enlaza |
+|---|---|
+| El proyecto ya está en SIIFWEB y después se carga (o reprocesa) el PIIP | **La carga del PIIP**: para cada BPIN busca el `Proyecto` con ese BPIN y lo enlaza. |
+| Se carga el PIIP y después el proyecto aparece en SIIFWEB | **`Proyecto.save()`**: al guardarse el proyecto, enlaza la formulación de su BPIN que estaba sin enlace. |
+
+Por eso el orden no importa: en cualquiera de los dos queda enlazado.
+
+### Cuándo se activa el de `Proyecto.save()`
+
+Es esta línea, en `siifweb/models.py`, que corre después de guardar el proyecto:
+
+```python
+FormulacionProyecto.objects.filter(bpin=self.bpin, proyecto__isnull=True).update(proyecto=self)
+```
+
+Se activa cada vez que se guarda un `Proyecto`, al crearlo o al modificarlo:
+
+1. **Una carga de SIIFWEB trae un BPIN nuevo.** Al procesar un consolidado de CDP,
+   compromisos, obligaciones, reservas o contratos, la carga crea el proyecto que no
+   existía; si el PIIP ya tenía una formulación con ese BPIN, queda enlazada. Es el caso
+   para el que existe.
+2. **Alguien crea o edita un proyecto en el admin** y lo guarda.
+3. **Una carga completa datos de un proyecto que ya existía** (nombre o dependencia) y lo
+   guarda.
+
+En los casos 2 y 3 casi siempre la formulación ya está enlazada: como la consulta solo
+busca formulaciones sin enlace (`proyecto__isnull=True`), no encuentra nada y no cambia
+nada.
+
+No se activa:
+- al cargar el PIIP (esa carga enlaza por su cuenta);
+- al guardar una formulación (la línea está en `Proyecto`, no en `FormulacionProyecto`);
+- si algún día se crean proyectos en bloque (`bulk_create`) o se cambia el BPIN con un
+  `update()` directo, porque esos caminos no pasan por `save()`. Hoy no hay ninguno: las
+  cargas crean el proyecto con `get_or_create` y el admin con su formulario. Si pasara,
+  reprocesar el PIIP enlaza todo igual.
+
+### Ejemplo en el tiempo
+
+| Día | Qué pasa | Resultado |
+|---|---|---|
+| 12/11 | Se carga el PIIP; el BPIN 2026000000X está en el PIIP pero no en SIIFWEB | Formulación creada sin enlace: **rojo** |
+| 20/11 | Se carga el consolidado de CDP, que trae por primera vez ese BPIN | La carga crea el proyecto, `save()` lo enlaza |
+| 20/11 | Se abre la lista de formulaciones | **Verde**, sin haber reprocesado el PIIP |
+
+### El semáforo
+
+En *Catálogo PIIP → Formulación de proyectos*, la columna **BPIN en SIIFWEB** muestra:
+- **verde, con el BPIN**: el proyecto enlazado tiene al menos un CDP, RP, obligación,
+  reserva o contrato en SIIFWEB;
+- **rojo, "No está"**: la formulación no tiene proyecto enlazado, o lo tiene pero sin
+  ningún documento (proyectos creados a mano o por la programación del Access).
+
+No se guarda en ningún campo: se calcula cada vez que se abre la lista, así que siempre
+refleja lo último que se cargó. El filtro "En SIIFWEB" ("Está en SIIFWEB" / "Solo en PIIP")
+usa la misma regla. La lista también filtra por indicador y busca por BPIN, nombre,
+programa o código de indicador.
+
+En la base local, con el PIIP y los consolidados al 11/11/2026: 488 formulaciones, 368 en
+verde y 120 en rojo (10 de ellas enlazadas a un proyecto sin documentos).
+
+## 10. Dónde se ve
 
 - **Ficha del proyecto → pestaña Ficha PIIP**, en el orden de `InfoGeneral`:
   - Datos generales: sector, programa, vigencia de inicio y fin, objetivo general,
@@ -228,21 +312,27 @@ una señal sobre los indicadores PDD de la meta, ajena a este módulo.
     "Sin homologar".
 - **Catálogo PIIP → Indicadores**: columnas Homologado, Indicador del plan, Por código y
   Proyectos; filtros "Sin homologar", "Lo usa algún proyecto" y "Por código".
+- **Catálogo PIIP → Formulación de proyectos**: BPIN, nombre del PIIP, semáforo "BPIN en
+  SIIFWEB", programa, vigencias e indicadores; filtros "En SIIFWEB", indicador, sector y
+  vigencias (sección 9).
 
-## 10. Pendiente para producción
+## 11. Pendiente para producción
 
-1. Respaldar Supabase y subir la rama (aplica `0020` y `0021`).
+1. Respaldar Supabase y subir las ramas (aplica `0020`, `0021`, `0022` y `0023`).
 2. En el admin de producción, igualar los nombres de municipio a los del PIIP (en local se
    cambiaron: "Todo el departamento de sucre", "San Luis De Sincé", "San José De
    Toluviejo", "San Juan De Betulia", "Palmito") y crear los de fuera de Sucre que use
    algún proyecto cargado (en local: Barranquilla, Garzón, San Andrés, Santiago De Cali).
 3. Subir `ReporteSIIFWEB_20261111.xlsx` como "Información general PIIP" y procesarlo.
-4. Homologar a mano los indicadores sin homologar que usan proyectos (18 en local).
+4. Homologar a mano los indicadores sin homologar que usan proyectos (27 en local desde
+   que entran todos los BPIN del PIIP; eran 18 con solo los de SIIFWEB).
 
-## 11. Pruebas
+## 12. Pruebas
 
 `siifweb/tests/test_formulacion_piip.py` cubre el catálogo que deja la migración, la
-carga (filtro por SIIFWEB, reemplazo por BPIN, indicador bajo dos objetivos, municipios,
-indicador y producto que se crean con sus metas, homologación por código sin tocar la
-manual), el mismo libro para SECOP y PIIP, la pestaña de la ficha, la ficha del indicador
-en el admin y la sección del menú. La suite completa tiene 385 pruebas.
+carga (todos los BPIN y su enlace con SIIFWEB, también cuando el proyecto llega después;
+reemplazo por BPIN, indicador bajo dos objetivos, municipios, indicador y producto que se
+crean con sus metas, homologación por código sin tocar la manual), el mismo libro para
+SECOP y PIIP, la pestaña de la ficha, la ficha del indicador en el admin, la lista de
+formulaciones (semáforo, filtros "En SIIFWEB" e indicador, búsqueda por código de
+indicador) y la sección del menú. La suite completa tiene 410 pruebas.

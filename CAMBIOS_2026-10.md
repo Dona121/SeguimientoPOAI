@@ -451,8 +451,11 @@ cuales no:
   opcional (`SET_NULL`).
 - La carga del PIIP crea la formulacion de **todos** los BPIN y la enlaza con el `Proyecto`
   del mismo BPIN si existe. Antes solo entraban los que tenian documentos en SIIFWEB.
-- `Proyecto.save()` enlaza la formulacion que estaba esperando su BPIN: cuando un reporte de
-  SIIFWEB crea el proyecto, queda asociado sin volver a procesar el PIIP.
+- Dos enlazadores por BPIN, uno para cada orden: la carga del PIIP enlaza con el proyecto
+  que ya existe, y `Proyecto.save()` enlaza la formulacion que estaba esperando su BPIN
+  cuando un reporte de SIIFWEB crea el proyecto, sin volver a procesar el PIIP. No hay
+  triggers de base de datos. Detalle (cuando se activa cada uno, limites y ejemplo) en la
+  seccion 9 de `CATALOGO_PIIP.md`.
 - Lista de formulaciones: columna **BPIN en SIIFWEB** con semaforo (verde si el BPIN tiene
   algun CDP, RP, obligacion, reserva o contrato; rojo "No esta" si solo esta en el PIIP),
   filtro "En SIIFWEB", filtro por indicador y busqueda por codigo de indicador.
