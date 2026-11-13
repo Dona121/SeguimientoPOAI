@@ -177,54 +177,24 @@ def derivar(fila):
 
 
 # ---------------------------------------------------------------------------
-# Pendientes de un corte
+# Resumen de un corte
 # ---------------------------------------------------------------------------
 
-def _sumar(grupos, clave, fila, **datos):
-    g = grupos.setdefault(clave, {"filas": 0, "rp": Decimal(0), **datos})
-    g["filas"] += 1
-    g["rp"] += fila.rp
-
-
-def pendientes(corte):
-    """Lo que falta resolver antes de distribuir el corte, agrupado para revisarlo.
-
-    - recursos sin homologacion de fuente (con el codigo que trae el nombre como pista: no es
-      confiable, en 20 recursos no es la fuente correcta);
-    - rubros sin concepto CUIPO valido;
-    - recursos que no estan en SIIFWEB y otros faltantes;
-    - centros de costo que van a la seccion por defecto (informativo).
-    """
+def resumen(corte):
+    """Cuantas filas del corte entran al CUIPO y cuantas se derivan completas, y que recursos,
+    rubros y centros de costo les faltan. Lo detallado se trabaja en las listas de SIIFWEB
+    (Fuentes, Rubros y Dependencias, con su columna CUIPO)."""
     derivador = Derivador(corte.vigencia)
-    codigos_fuente = set(FuenteCUIPO.objects.values_list("codigo", flat=True))
-    filas = list(filas_cuipo(corte).order_by("rubro", "recurso", "centro_costo", "proyecto"))
-    recursos, rubros, otros, por_defecto = {}, {}, {}, {}
-    completas = 0
+    filas = list(filas_cuipo(corte))
+    completas, recursos, rubros = 0, set(), set()
     for f in filas:
         d = derivador.derivar(f)
         completas += d.completa
-        for faltante in d.faltantes:
-            if faltante.startswith(f"Recurso {f.recurso}: sin homologación"):
-                pista = re.match(r"\s*([\d.]+)", f.nombre_recurso or "")
-                pista = pista.group(1).rstrip(".") if pista else ""
-                _sumar(recursos, f.recurso, f, nombre=f.nombre_recurso,
-                       pista=pista if pista in codigos_fuente else "")
-            elif faltante.startswith(f"Rubro {f.rubro}:"):
-                _sumar(rubros, f.rubro, f, nombre=f.nombre_rubro, motivo=faltante.split(": ", 1)[1])
-            else:
-                _sumar(otros, faltante, f)
-        if d.origen_seccion == "por defecto":
-            _sumar(por_defecto, f.centro_costo, f, nombre=f.nombre_centro_costo)
-
-    def lista(grupos, nombre_clave):
-        return [{nombre_clave: k, **v} for k, v in sorted(grupos.items())]
-
-    return {
-        "filas": len(filas), "completas": completas, "con_faltantes": len(filas) - completas,
-        "recursos": lista(recursos, "recurso"), "rubros": lista(rubros, "rubro"),
-        "otros": lista(otros, "faltante"),
-        "por_defecto": lista(por_defecto, "centro_costo"),
-    }
+        if d.fuente is None:
+            recursos.add(f.recurso)
+        if d.concepto is None:
+            rubros.add(f.rubro)
+    return {"filas": len(filas), "completas": completas, "recursos": sorted(recursos), "rubros": sorted(rubros)}
 
 
 # ---------------------------------------------------------------------------

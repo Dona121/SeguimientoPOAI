@@ -1410,11 +1410,40 @@ class FuenteAdmin(ModelAdmin):
         return f"{obj.fuente_cuipo_codigo} ({vigencia_de_trabajo()})"
 
 
+class CentroEnElCorte(EnElCorteCUIPO):
+    campo = "centro_costo"
+
+
+class SeccionCUIPO(admin.SimpleListFilter):
+    title = "sección CUIPO"
+    parameter_name = "seccion"
+
+    def lookups(self, request, model_admin):
+        return (("regla", "Con regla de sección"), ("defecto", "Por defecto (16.0)"))
+
+    def queryset(self, request, queryset):
+        if self.value() in ("regla", "defecto"):
+            return queryset.filter(regla_seccion_cuipo__isnull=self.value() == "defecto")
+        return queryset
+
+
 @admin.register(CentroCosto)
 class CentroCostoAdmin(ModelAdmin):
+    """Con la columna Sección CUIPO: la de su regla o, sin regla, 16.0 (administracion central).
+    Sirve para notar una dependencia que deberia reportarse en otra seccion."""
     compressed_fields = True
-    list_display = ("codigo", "nombre")
+    list_display = ("codigo", "nombre", "seccion_cuipo")
+    list_filter_submit = True
+    list_filter = (SeccionCUIPO, CentroEnElCorte)
+    list_select_related = ("regla_seccion_cuipo__seccion",)
     search_fields = ("codigo", "nombre")
+
+    @display(description="Sección CUIPO", label={"regla": "success", "defecto": "info"})
+    def seccion_cuipo(self, obj):
+        regla = getattr(obj, "regla_seccion_cuipo", None)
+        if regla:
+            return "regla", f"{regla.seccion.codigo} {regla.seccion.descripcion}"
+        return "defecto", "16.0 por defecto"
 
 
 @admin.register(DependenciaResponsable)

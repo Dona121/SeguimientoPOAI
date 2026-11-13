@@ -629,5 +629,8 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   obligacion y pago) van en formato de moneda, como en las demas listas.
 - Boton para aplicar los filtros ("Apply Filters") en las listas del CUIPO con filtros
   desplegables y en Fuentes y Rubros.
+- Se quita la pantalla **Pendientes** y lo que mostraba pasa a las listas: Cortes (columna
+  "Filas completas"), Dependencias (columna "Seccion CUIPO" con filtros por seccion y por
+  corte) y el boton "Crear las reglas iniciales" arriba de Homologacion de fuentes.
 
-**Pruebas.** 541, todas pasan (150 del CUIPO).
+**Pruebas.** 543, todas pasan (152 del CUIPO).

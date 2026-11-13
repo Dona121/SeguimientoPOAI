@@ -71,7 +71,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 541.
+  disco temporal). Hoy son 543.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -295,9 +295,10 @@ Tablas propias; los modelos de `siifweb` no se modifican.
   como pendiente. Con los consolidados al 22/10 pasó con el recurso 130; con los del 11/11 ya
   no hay ninguno. La regla práctica: cargar los consolidados antes de distribuir.
 - La sección sale del centro de costo **de la fila de ejecución**.
-- Conviene una vista de "pendientes": los recursos, rubros y centros de costo de un corte que
-  no tienen homologación o regla, y los BPIN con ejecución sin formulación PIIP (con el aviso
-  "el BPIN no está en la carga del PIIP: actualizar el exporte del PIIP y cargarlo").
+- Lo que falta se ve en las listas, con una columna y su filtro (decisión del 13/11, que
+  reemplazó una pantalla de "pendientes"): SIIFWEB → Fuentes y Rubros (Homologado),
+  Dependencias (Sección CUIPO), CUIPO → Filas de ejecución (Productos PIIP) y la lista de
+  cortes (Filas completas).
 - En los scripts del T3 la regla de tercero por centro de costo se hacía por el nombre
   (`NOMBRE_CENTROCOSTO`); en el aplicativo va por el código del centro de costo.
 
@@ -447,7 +448,7 @@ como `siifweb/0009`. El menú "CUIPO" hoy solo lo ven quienes tienen el permiso 
      recursos y proyectos nuevos.
   3. Si hay un exporte nuevo del PIIP, cargarlo (el orden frente a los consolidados ya no
      importa).
-  4. Revisar la vista de pendientes y distribuir.
+  4. Revisar en Fuentes y Rubros lo que falte homologar (columna Homologado) y distribuir.
 
 **Fase 1 — Catálogos e importador de listas** — **hecha el 13/11** (rama
 `cuipo-fase1-listas`, migración `cuipo/0002`, 20 pruebas en `cuipo/tests/test_listas.py`).
@@ -489,12 +490,16 @@ migración `cuipo/0003`, 24 pruebas en `cuipo/tests/test_derivacion.py`).
   cruza con ellos por código.
 - `cuipo/derivacion.py`: `filas_cuipo(corte)` (las filas que entran), `Derivador(vigencia)` /
   `derivar(fila)` (concepto, fuente, sección, situación y tercero, con el origen de cada uno y
-  la lista de faltantes), `pendientes(corte)` y `crear_reglas_iniciales()`.
-- Pantalla **CUIPO → Pendientes** (`/admin/cuipo/corteejecuciongastos/<id>/pendientes/`, y sin
-  id va al último corte procesado): recursos sin homologación (con el código del nombre como
-  pista, marcada como no confiable), rubros sin concepto válido, otros faltantes, BPIN con
-  ejecución sin formulación PIIP y centros de costo que van a la sección 16.0. Un botón crea
-  las reglas iniciales del plan que falten (14), sin tocar las existentes.
+  la lista de faltantes), `resumen(corte)`, `corte_de_trabajo()` (el último corte que cierra
+  trimestre), `vigencia_de_trabajo()` y `crear_reglas_iniciales()`.
+- Hubo una pantalla **CUIPO → Pendientes**; se quitó el 13/11 y lo que mostraba quedó en las
+  listas: **Cortes** (columna "Filas completas", por ejemplo 198 de 200), **SIIFWEB → Fuentes**
+  y **Rubros** (columna Homologado, la fuente o el concepto CUIPO, y los filtros "Homologado
+  (CUIPO)" y "En el corte del CUIPO"), **Dependencias** (columna "Sección CUIPO": la de su
+  regla o 16.0 por defecto, con filtros por sección y por corte) y **CUIPO → Filas de
+  ejecución** (columna Productos PIIP). El botón **"Crear las reglas iniciales"** (las 14
+  reglas del plan y las 62 homologaciones de fuente del T3) está en la parte de arriba de
+  **CUIPO → Homologación de fuentes**; solo lo ve quien puede crear reglas.
 - Admin: en cada fuente CUIPO, una tabla para registrar los recursos que la usan (guarda quién
   y cuándo validó); las cinco tablas en el menú CUIPO; el autocompletar solo ofrece códigos
   activos de las listas.
@@ -692,8 +697,8 @@ a `0004`.
 1. CUIPO → Versiones de las listas CHIP: subir `Listas_Categoria_CUIPO_09-2026.xlsx`.
 2. Cargar los consolidados al día y, si hay uno nuevo, el exporte del PIIP.
 3. CUIPO → Cortes: cargar el corte 01/01–30/09/2026 (completo, 22 columnas).
-4. CUIPO → Pendientes: "Crear las reglas que falten" (las 14 del plan y las 62 homologaciones
-   de fuente del T3). Lo que falte homologar se ve en SIIFWEB → Fuentes y SIIFWEB → Rubros,
+4. CUIPO → Homologación de fuentes: "Crear las reglas iniciales" (las 14 del plan y las 62
+   homologaciones de fuente del T3). Lo que falte homologar se ve en SIIFWEB → Fuentes y SIIFWEB → Rubros,
    columna **Homologado**, con los filtros "Homologado (CUIPO): No" y "En el corte del CUIPO:
    Con filas en el corte" (al 30/09: los recursos 35 y 125).
 5. Cortes: acción "Precargar la distribución del CUIPO".

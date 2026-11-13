@@ -53,7 +53,7 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
     compressed_fields = True
     list_fullwidth = True
     list_display = ("__str__", "vigencia", "fecha_inicio", "fecha_fin", "fecha_descarga", "estado_badge", "filas",
-                    "rp", "obligacion", "pago", "ver_filas", "ver_pendientes", "n_distribuciones", "ver_plano")
+                    "rp", "obligacion", "pago", "ver_filas", "filas_completas", "n_distribuciones", "ver_plano")
     list_filter_submit = True
     list_filter = ("vigencia", ("estado", ChoicesDropdownFilter))
     readonly_fields = ("estado", "filas", "mensaje", "hash", "fecha_creacion", "fecha_actualizacion")
@@ -83,50 +83,9 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
 
     def get_urls(self):
         propias = [
-            path("pendientes/", self.admin_site.admin_view(self.pendientes_ultimo), name="cuipo_pendientes"),
-            path("<int:pk>/pendientes/", self.admin_site.admin_view(self.pendientes),
-                 name="cuipo_corte_pendientes"),
             path("<int:pk>/plano/", self.admin_site.admin_view(self.plano_chip), name="cuipo_corte_plano"),
         ]
         return propias + super().get_urls()
-
-    def pendientes_ultimo(self, request):
-        """Los pendientes del corte mas reciente que cierra un trimestre (el que se distribuye);
-        si no hay ninguno, del ultimo procesado."""
-        if not self.has_view_permission(request):
-            raise PermissionDenied
-        corte = derivacion.corte_de_trabajo()
-        if corte is None:
-            self.message_user(request, "No hay cortes de ejecución procesados.", messages.WARNING)
-            return redirect("admin:cuipo_corteejecuciongastos_changelist")
-        return redirect("admin:cuipo_corte_pendientes", pk=corte.pk)
-
-    def pendientes(self, request, pk):
-        """Lo que falta homologar o reglamentar antes de distribuir un corte."""
-        if not self.has_view_permission(request):
-            raise PermissionDenied
-        corte = get_object_or_404(CorteEjecucionGastos, pk=pk)
-        puede_crear = all(request.user.has_perm(f"cuipo.add_{m}") for m in
-                          ("reglaseccion", "reglatercero", "homologacionrubro", "reglasituacionfondos",
-                           "homologacionfuente"))
-        if request.method == "POST" and request.POST.get("reglas_iniciales") and puede_crear:
-            with transaction.atomic():
-                creadas, omitidas = derivacion.crear_reglas_iniciales()
-            self.message_user(request, f"Reglas creadas: {len(creadas)}" + (f" ({'; '.join(creadas)})" if creadas else ""),
-                              messages.SUCCESS)
-            if omitidas:
-                self.message_user(request, "Omitidas: " + "; ".join(omitidas), messages.WARNING)
-            return redirect("admin:cuipo_corte_pendientes", pk=corte.pk)
-        contexto = {
-            **self.admin_site.each_context(request),
-            "title": f"Pendientes del CUIPO · {corte}",
-            "corte": corte,
-            "p": derivacion.pendientes(corte),
-            "otros_cortes": CorteEjecucionGastos.objects.filter(estado=CorteEjecucionGastos.Estado.PROCESADO)
-                            .exclude(pk=corte.pk).order_by("-vigencia", "-fecha_fin")[:10],
-            "puede_crear_reglas": puede_crear,
-        }
-        return TemplateResponse(request, "cuipo/pendientes.html", contexto)
 
     def plano_chip(self, request, pk):
         """El plano CHIP del corte: revisar, descargar el bloque de inversion, integrarlo en el plano
@@ -249,12 +208,13 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
         url = reverse("admin:cuipo_filaejecuciongastos_changelist")
         return format_html('<a href="{}?corte__id__exact={}" class="text-primary-600">Ver</a>', url, obj.pk)
 
-    @display(description="Pendientes")
-    def ver_pendientes(self, obj):
+    @display(description="Filas completas", label={"completas": "success", "faltan": "warning"})
+    def filas_completas(self, obj):
+        """Filas de inversion con valores que ya tienen todos sus codigos CUIPO."""
         if obj.estado != CorteEjecucionGastos.Estado.PROCESADO:
             return "—"
-        url = reverse("admin:cuipo_corte_pendientes", args=(obj.pk,))
-        return format_html('<a href="{}" class="text-primary-600">Revisar</a>', url)
+        r = derivacion.resumen(obj)
+        return ("completas" if r["completas"] == r["filas"] else "faltan"), f"{r['completas']} de {r['filas']}"
 
 
 def productos_piip():
@@ -505,6 +465,9 @@ class ReglaAdmin(ModelAdmin):
 
 @admin.register(HomologacionFuente)
 class HomologacionFuenteAdmin(ReglaAdmin):
+    """Recurso de SIIFWEB -> fuente CUIPO. Lo que falta se ve en SIIFWEB -> Fuentes (columna
+    Homologado). El boton "Crear las reglas iniciales" se usa una vez, al empezar."""
+    actions_list = ("crear_reglas_iniciales",)
     list_display = ("vigencia", "recurso", "nombre_recurso", "fuente_cuipo", "validado_por", "fecha_validacion")
     list_filter_submit = True
     list_filter = ("vigencia", ("fuente_cuipo", RelatedDropdownFilter))
@@ -518,6 +481,25 @@ class HomologacionFuenteAdmin(ReglaAdmin):
     def save_model(self, request, obj, form, change):
         marcar_validacion(request, obj)
         super().save_model(request, obj, form, change)
+
+    @action(description="Crear las reglas iniciales", url_path="reglas-iniciales", icon="playlist_add",
+            permissions=["crear_reglas_iniciales"])
+    def crear_reglas_iniciales(self, request):
+        """Las 14 reglas del plan y las 62 homologaciones de fuente del T3 2026 que falten. No
+        cambia lo que ya existe; se puede repetir sin duplicar."""
+        modelos = ("reglaseccion", "reglatercero", "homologacionrubro", "reglasituacionfondos", "homologacionfuente")
+        if not all(request.user.has_perm(f"cuipo.add_{m}") for m in modelos):
+            raise PermissionDenied
+        with transaction.atomic():
+            creadas, omitidas = derivacion.crear_reglas_iniciales()
+        self.message_user(request, f"Reglas creadas: {len(creadas)}" + (f" ({'; '.join(creadas)})" if creadas else ""),
+                          messages.SUCCESS)
+        if omitidas:
+            self.message_user(request, "Omitidas: " + "; ".join(omitidas), messages.WARNING)
+        return redirect("admin:cuipo_homologacionfuente_changelist")
+
+    def has_crear_reglas_iniciales_permission(self, request):
+        return request.user.has_perm("cuipo.add_homologacionfuente")
 
     @display(description="Recurso", ordering="fuente_siifweb__codigo")
     def recurso(self, obj):

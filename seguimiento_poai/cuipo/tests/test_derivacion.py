@@ -1,6 +1,5 @@
 """Homologaciones y reglas: de la fila de ejecucion a los codigos CHIP (fase 2 del CUIPO)."""
 from datetime import date
-from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -162,55 +161,62 @@ class FilasQueEntran(TestCase):
         self.assertEqual(entran, ["128", "3"])
 
 
-class Pendientes(TestCase):
+class ResumenYReglasIniciales(TestCase):
+    """Lo que hacia la pantalla de pendientes, repartido: el resumen en la lista de cortes, las
+    secciones en Dependencias y las reglas iniciales en Homologacion de fuentes."""
+
     def setUp(self):
         listas()
         self.client.force_login(User.objects.create_superuser("admin", "admin@example.com", "clave"))
         self.corte = corte_con([
             fila(101, "2.3.2.02.02.009", 1000, "3", "2", "202500000039332"),
             fila(102, "2.3.3.05.09.054", 40, "108", "10", "202600000018441"),
-        ])
+        ], fecha_fin=date(2026, 9, 30))
+        self.reglas = reverse("admin:cuipo_homologacionfuente_crear_reglas_iniciales")
 
-    def test_lista_lo_que_falta(self):
-        Fuente.objects.filter(codigo="108").update(nombre="1.3.3.3.20 - R.B. ESTAMPILLA PROCULTURA")
-        FilaRecurso = self.corte.filas_ejecucion.filter(recurso="108")
-        FilaRecurso.update(nombre_recurso="1.3.3.3.20 - R.B. ESTAMPILLA PROCULTURA")
+    def test_resumen_del_corte(self):
         homologar("3", "1.2.4.1.01")
-        p = derivacion.pendientes(self.corte)
-        self.assertEqual((p["filas"], p["completas"], p["con_faltantes"]), (2, 1, 1))
-        self.assertEqual([(r["recurso"], r["pista"], r["rp"]) for r in p["recursos"]],
-                         [("108", "1.3.3.3.20", Decimal("40"))])
-        self.assertEqual([r["rubro"] for r in p["rubros"]], ["2.3.3.05.09.054"])
-        self.assertNotIn("sin_piip", p)        # se ve en las filas de ejecucion (columna Productos PIIP)
-        self.assertEqual([r["centro_costo"] for r in p["por_defecto"]], ["10", "2"])   # sin reglas de seccion
+        r = derivacion.resumen(self.corte)
+        self.assertEqual(r, {"filas": 2, "completas": 1, "recursos": ["108"], "rubros": ["2.3.3.05.09.054"]})
+        self.assertContains(self.client.get(reverse("admin:cuipo_corteejecuciongastos_changelist")), "1 de 2")
 
-    def test_la_pagina_abre_y_redirige_al_ultimo_corte(self):
-        url = reverse("admin:cuipo_corte_pendientes", args=(self.corte.pk,))
-        respuesta = self.client.get(url)
-        self.assertNotContains(respuesta, "Recursos sin homologación de fuente")   # se ve en Fuentes y Rubros
-        self.assertContains(respuesta, "Recursos sin fuente CUIPO en este corte: 2")
-        self.assertContains(respuesta, "Rubros sin concepto CUIPO en este corte: 1")
-        self.assertContains(respuesta, reverse("admin:siifweb_fuente_changelist") + "?homologado=no&en_corte=si")
-        self.assertRedirects(self.client.get(reverse("admin:cuipo_pendientes")), url)
-
-    def test_sin_corte_abre_el_ultimo_que_cierra_trimestre(self):
-        """Con un corte al 11/11 y otro al 30/09, abre el del 30/09: es el que se distribuye."""
-        al_30 = corte_con([fila(101, "2.3.2.02.02.009", 5, "3", "2", "202500000039332")], fecha_fin=date(2026, 9, 30))
+    def test_el_corte_de_trabajo_es_el_ultimo_que_cierra_trimestre(self):
+        """Con un corte al 11/11 y otro al 30/09, el de trabajo es el del 30/09: es el que se distribuye."""
         al_11 = corte_con([fila(101, "2.3.2.02.02.009", 7, "3", "2", "202500000039332")], fecha_fin=date(2026, 11, 11))
-        self.assertGreater(al_11.fecha_fin, al_30.fecha_fin)
-        self.assertRedirects(self.client.get(reverse("admin:cuipo_pendientes")),
-                             reverse("admin:cuipo_corte_pendientes", args=(al_30.pk,)))
+        self.assertGreater(al_11.fecha_fin, self.corte.fecha_fin)
+        self.assertEqual(derivacion.corte_de_trabajo(), self.corte)
+        self.assertEqual(derivacion.vigencia_de_trabajo(), 2026)
+
+    def test_la_pantalla_de_pendientes_ya_no_existe(self):
+        from django.urls import NoReverseMatch
+        with self.assertRaises(NoReverseMatch):
+            reverse("admin:cuipo_pendientes")
+
+    def test_secciones_en_dependencias(self):
+        ReglaSeccion.objects.create(centro_costo=CentroCosto.objects.get(codigo="2"),
+                                    seccion=SeccionPresupuestal.objects.get(codigo="22.0"))
+        url = reverse("admin:siifweb_centrocosto_changelist")
+
+        def codigos(**filtro):
+            return sorted(c.codigo for c in self.client.get(url, filtro).context["cl"].result_list)
+
+        self.assertEqual(codigos(seccion="regla"), ["2"])
+        self.assertEqual(codigos(seccion="defecto", en_corte="si"), ["10"])
+        html = self.client.get(url).content.decode()
+        self.assertIn("22.0 Sección 22.0", html)
+        self.assertIn("16.0 por defecto", html)
 
     def test_crea_las_reglas_iniciales_sin_duplicar(self):
         for codigo in ("5", "25"):
             CentroCosto.objects.create(codigo=codigo, nombre=f"Centro {codigo}")
-        url = reverse("admin:cuipo_corte_pendientes", args=(self.corte.pk,))
-        self.client.post(url, {"reglas_iniciales": "1"})
+        self.assertContains(self.client.get(reverse("admin:cuipo_homologacionfuente_changelist")),
+                            "Crear las reglas iniciales")
+        self.client.get(self.reglas)
         self.assertEqual(ReglaSeccion.objects.count(), 2)
         self.assertEqual(HomologacionRubro.objects.get().concepto.codigo, "2.3.3.05.09.099")
         self.assertEqual(ReglaSituacionFondos.objects.count(), 3)   # son prefijos: no exigen el rubro
         antes = ReglaTercero.objects.count()
-        self.client.post(url, {"reglas_iniciales": "1"})
+        self.client.get(self.reglas)
         self.assertEqual(ReglaTercero.objects.count(), antes)
         d = derivacion.derivar(self.corte.filas_ejecucion.get(recurso="108"))
         self.assertEqual((d.concepto.codigo, d.tercero.codigo), ("2.3.3.05.09.099", "220170001"))
@@ -218,18 +224,27 @@ class Pendientes(TestCase):
     def test_trae_las_homologaciones_de_fuente_del_t3(self):
         """Las 62 que valido presupuesto; aqui solo existen algunos recursos y fuentes."""
         homologar("1", "1.2.4.1.01")        # una que ya estaba con otro valor: no se cambia
-        url = reverse("admin:cuipo_corte_pendientes", args=(self.corte.pk,))
-        respuesta = self.client.post(url, {"reglas_iniciales": "1"}, follow=True)
+        respuesta = self.client.get(self.reglas, follow=True)
         self.assertContains(respuesta, "2 homologaciones de fuente del T3 2026")
         self.assertEqual(dict(HomologacionFuente.objects.values_list("fuente_siifweb__codigo", "fuente_cuipo__codigo")),
                          {"1": "1.2.4.1.01", "3": "1.2.4.1.01", "108": "1.3.3.3.20"})
         self.assertEqual(HomologacionFuente.objects.get(fuente_siifweb__codigo="108").observacion,
                          "Validada por presupuesto para el CUIPO del T3 2026")
         self.assertContains(respuesta, "fuente CUIPO 1.2.3.3.04 no existe")          # la del recurso 7
-        self.client.post(url, {"reglas_iniciales": "1"})
+        self.client.get(self.reglas)
         self.assertEqual(HomologacionFuente.objects.count(), 3)
         self.assertEqual(len(derivacion.FUENTES_T3_2026), 62)
         self.assertTrue(derivacion.derivar(self.corte.filas_ejecucion.get(recurso="108")).completa)
+
+    def test_sin_permiso_no_crea_reglas(self):
+        lector = User.objects.create_user("lector", "l@example.com", "clave", is_staff=True)
+        from django.contrib.auth.models import Permission
+        lector.user_permissions.add(Permission.objects.get(codename="view_homologacionfuente"))
+        self.client.force_login(lector)
+        self.assertNotContains(self.client.get(reverse("admin:cuipo_homologacionfuente_changelist")),
+                               "Crear las reglas iniciales")
+        self.assertEqual(self.client.get(self.reglas).status_code, 403)
+        self.assertFalse(ReglaSeccion.objects.exists())
 
 
 class AdminDeLasReglas(TestCase):
