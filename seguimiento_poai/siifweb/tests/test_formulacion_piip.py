@@ -230,8 +230,8 @@ class SeccionDelMenu(TestCase):
                 self.assertFalse(any(item["permission"](peticion) for item in self.seccion()["items"]))
 
 
-class HomologarDesdeElIndicador(TestCase):
-    """La ficha del indicador del catalogo: sus datos de lectura y la homologacion editable."""
+class EditarElIndicador(TestCase):
+    """La ficha del indicador del catalogo: sus datos editables y la homologacion debajo."""
 
     def setUp(self):
         self.client.force_login(get_user_model().objects.create_superuser("admin", "a@b.co", "clave"))
@@ -241,7 +241,12 @@ class HomologarDesdeElIndicador(TestCase):
         self.url = reverse("admin:siifweb_indicadorcatalogo_change", args=(self.indicador.pk,))
 
     def datos(self, **cambios):
-        datos = {"homologaciones-TOTAL_FORMS": "1", "homologaciones-INITIAL_FORMS": "0",
+        i = self.indicador
+        nulo = lambda v: "unknown" if v is None else str(v).lower()
+        datos = {"codigo": i.codigo, "nombre": i.nombre, "producto": str(i.producto_id),
+                 "unidad_medida": str(i.unidad_medida_id or ""), "es_principal": nulo(i.es_principal),
+                 "es_nacional": nulo(i.es_nacional), "es_territorial": nulo(i.es_territorial),
+                 "homologaciones-TOTAL_FORMS": "1", "homologaciones-INITIAL_FORMS": "0",
                  "homologaciones-MIN_NUM_FORMS": "0", "homologaciones-MAX_NUM_FORMS": "1000",
                  "homologaciones-0-indicador_pdd": str(self.del_plan.pk),
                  "homologaciones-0-observacion": "Mide lo mismo", "_save": "Guardar"}
@@ -258,16 +263,32 @@ class HomologarDesdeElIndicador(TestCase):
         h = HomologacionIndicador.objects.get(indicador=self.indicador)
         self.assertEqual((h.indicador_pdd, h.observacion, h.por_codigo), (self.del_plan, "Mide lo mismo", False))
 
-    def test_los_datos_del_catalogo_no_se_cambian(self):
-        nombre = self.indicador.nombre
-        self.client.post(self.url, self.datos(nombre="Otro nombre", codigo="000"))
+    def test_los_datos_del_catalogo_se_editan(self):
+        respuesta = self.client.post(self.url, self.datos(nombre="Otro nombre",
+                                                          **{"homologaciones-TOTAL_FORMS": "0"}))
+        self.assertEqual(respuesta.status_code, 302)
         self.indicador.refresh_from_db()
-        self.assertEqual((self.indicador.nombre, self.indicador.codigo), (nombre, "170201200"))
+        self.assertEqual(self.indicador.nombre, "Otro nombre")
 
-    def test_no_se_agregan_ni_se_borran_indicadores(self):
-        self.assertEqual(self.client.get(reverse("admin:siifweb_indicadorcatalogo_add")).status_code, 403)
-        borrar = reverse("admin:siifweb_indicadorcatalogo_delete", args=(self.indicador.pk,))
-        self.assertEqual(self.client.get(borrar).status_code, 403)
+    def test_se_agregan_indicadores(self):
+        self.assertEqual(self.client.get(reverse("admin:siifweb_indicadorcatalogo_add")).status_code, 200)
+        for modelo in ("sectorcatalogo", "programacatalogo", "productocatalogo"):
+            with self.subTest(modelo=modelo):
+                self.assertEqual(self.client.get(reverse(f"admin:siifweb_{modelo}_add")).status_code, 200)
+
+    def test_solo_se_borra_lo_que_no_esta_en_uso(self):
+        libre = IndicadorCatalogo.objects.create(codigo="999999999", nombre="Sin uso",
+                                                 producto=self.indicador.producto)
+        borrar = reverse("admin:siifweb_indicadorcatalogo_delete", args=(libre.pk,))
+        self.assertEqual(self.client.post(borrar, {"post": "yes"}).status_code, 302)
+        self.assertFalse(IndicadorCatalogo.objects.filter(pk=libre.pk).exists())
+        # Un indicador que usa un proyecto: el admin muestra que esta protegido y no lo borra
+        proy = proyecto()
+        cadena(proy)
+        carga_piip([fila(CodigoProducto="1702012", CodigoIndicador="170201200")])
+        usado = reverse("admin:siifweb_indicadorcatalogo_delete", args=(self.indicador.pk,))
+        self.client.post(usado, {"post": "yes"})
+        self.assertTrue(IndicadorCatalogo.objects.filter(pk=self.indicador.pk).exists())
 
 
 class LaCargaNoTocaLaHomologacion(TestCase):

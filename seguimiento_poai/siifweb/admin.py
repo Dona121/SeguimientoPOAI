@@ -2503,8 +2503,12 @@ class DepartamentoAdmin(ModelAdmin):
         return obj.n
 
 
-class CatalogoTerritorial(SoloLectura):
-    """El catalogo MGA territorial viene de una migracion: se consulta, no se edita."""
+class CatalogoTerritorial(ModelAdmin):
+    """El catalogo MGA de los proyectos. Lo cargo la migracion 0021 y lo mantiene el equipo:
+    las cargas del PIIP no lo cambian, solo agregan los codigos que no esten. Lo que esta en
+    uso (un indicador de un proyecto, un producto con indicadores) no se deja borrar."""
+    compressed_fields = True
+    list_fullwidth = True
     search_fields = ("codigo", "nombre")
     list_filter_submit = True
 
@@ -2523,6 +2527,7 @@ class ProgramaCatalogoAdmin(CatalogoTerritorial):
     list_display = ("codigo", "nombre_corto", "sector")
     list_filter = (("sector", RelatedDropdownFilter),)
     list_select_related = ("sector",)
+    autocomplete_fields = ("sector",)
 
 
 @admin.register(ProductoCatalogo)
@@ -2531,6 +2536,7 @@ class ProductoCatalogoAdmin(CatalogoTerritorial):
     list_filter = (("programa__sector", RelatedDropdownFilter), ("programa", RelatedDropdownFilter))
     search_fields = ("codigo", "nombre", "descripcion")
     list_select_related = ("programa", "medido_a_traves_de")
+    autocomplete_fields = ("programa", "medido_a_traves_de")
 
 
 class UsadoEnProyectos(admin.SimpleListFilter):
@@ -2579,33 +2585,19 @@ class HomologacionInline(TabularInline):
 
 
 @admin.register(IndicadorCatalogo)
-class IndicadorCatalogoAdmin(ModelAdmin):
+class IndicadorCatalogoAdmin(CatalogoTerritorial):
     """Solo los indicadores de los proyectos formulados en PIIP. Con "Sin homologar"
     quedan los que el equipo debe homologar a mano con un indicador del plan.
 
-    Los datos del catalogo no se editan: lo unico que se cambia aqui es la homologacion.
+    Se edita como el resto del catalogo, y abajo lleva su homologacion con el plan.
     """
-    compressed_fields = True
-    list_fullwidth = True
-    list_filter_submit = True
-    search_fields = ("codigo", "nombre")
     list_display = ("codigo", "nombre_corto", "producto", "unidad_medida", "es_territorial",
                     "homologado", "plan", "n_proyectos")
     list_filter = (UsadoEnProyectos, Homologado, "es_territorial", ("producto__programa__sector", RelatedDropdownFilter))
     list_select_related = ("producto", "unidad_medida")
     fields = ("codigo", "nombre", "producto", "unidad_medida", "es_principal", "es_nacional", "es_territorial")
-    readonly_fields = fields
+    autocomplete_fields = ("producto", "unidad_medida")
     inlines = (HomologacionInline,)
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-    @display(description="Nombre", ordering="nombre")
-    def nombre_corto(self, obj):
-        return corto(obj.nombre)
 
     def get_queryset(self, request):
         return (super().get_queryset(request)
