@@ -172,7 +172,7 @@ class AdminDelCorte(TestCase):
 
     def subir(self, datos, fecha_corte="2026-09-30"):
         return self.client.post(self.url, {
-            "vigencia": 2026, "fecha_corte": fecha_corte, "fecha_descarga": "2026-10-01",
+            "vigencia": 2026, "fecha_corte": fecha_corte, "fecha_descarga": "2026-11-13",
             "archivo": SimpleUploadedFile("estado_ppto_gasto.xlsx", datos)}, follow=True)
 
     def test_al_guardar_se_importa(self):
@@ -197,3 +197,17 @@ class AdminDelCorte(TestCase):
                                     {"corte__id__exact": corte.pk})
         self.assertContains(respuesta, "202500000039332")
         self.assertContains(self.client.get(reverse("admin:cuipo_corteejecuciongastos_changelist")), "$1,500")
+
+    def test_la_fecha_de_corte_va_dentro_de_la_vigencia(self):
+        respuesta = self.client.post(self.url, {
+            "vigencia": 2025, "fecha_corte": "2026-07-31", "fecha_descarga": "2026-07-31",
+            "archivo": SimpleUploadedFile("estado_ppto_gasto.xlsx", libro(reporte_basico()))})
+        self.assertContains(respuesta, "dentro de la vigencia 2025")
+        self.assertFalse(CorteEjecucionGastos.objects.exists())
+
+    def test_no_se_descarga_antes_del_corte(self):
+        respuesta = self.client.post(self.url, {
+            "vigencia": 2026, "fecha_corte": "2026-09-30", "fecha_descarga": "2026-09-15",
+            "archivo": SimpleUploadedFile("estado_ppto_gasto.xlsx", libro(reporte_basico()))})
+        self.assertContains(respuesta, "antes de su fecha de corte")
+        self.assertFalse(CorteEjecucionGastos.objects.exists())

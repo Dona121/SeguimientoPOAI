@@ -428,10 +428,14 @@ vienen, y no como llaves (la carga no crea rubros, fuentes ni proyectos).
   vigencia**; por ellas RUBRO_ID es parte de la llave.
 - Menu **CUIPO**: cortes (con RP, obligacion y pago totales) y filas, visibles con el
   permiso de ver cortes. Los roles del equipo no lo tienen.
+- **Fechas del corte.** La fecha de corte es la final del rango con que se descarga el
+  reporte, que empieza el 1 de enero (en una vigencia cerrada, el 31 de diciembre); la de
+  descarga, el dia en que se genero el archivo. El formulario exige que el corte caiga en
+  la vigencia y que la descarga no sea anterior al corte.
 
 **Con los archivos de `modelos-metas/ejecucion-gastos`** (2022 a 2026): 395, 463, 422, 400
 y 405 filas de detalle; los subtotales cuadran en los cinco. El RP de 2026 al 11 de
 noviembre (1.127.765.686.152,76) es el mismo del consolidado de compromisos de esa fecha.
 
-**Pruebas.** 400, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 13 nuevas).
+**Pruebas.** 402, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 15 nuevas).
 

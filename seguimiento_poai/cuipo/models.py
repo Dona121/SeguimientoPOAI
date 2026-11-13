@@ -25,11 +25,14 @@ class CorteEjecucionGastos(Fechas):
         ERROR = "E", "Con error"
 
     vigencia = models.IntegerField(choices=listado_vigencias)
-    fecha_corte = models.DateField(verbose_name="Fecha de corte",
-                                   help_text="Último día que cubre el reporte")
-    fecha_descarga = models.DateField(verbose_name="Fecha de descarga", default=timezone.localdate,
-                                      help_text="Lo registrado después en SIIFWEB con fecha anterior no queda "
-                                                "en el reporte: dos descargas del mismo corte pueden diferir")
+    fecha_corte = models.DateField(
+        verbose_name="Fecha de corte",
+        help_text="Fecha final del rango con que se descargó el reporte, que empieza el 1 de enero de la "
+                  "vigencia. Para una vigencia cerrada, el 31 de diciembre")
+    fecha_descarga = models.DateField(
+        verbose_name="Fecha de descarga", default=timezone.localdate,
+        help_text="Día en que se generó el archivo. Lo que se registra después en SIIFWEB con fecha anterior "
+                  "al corte no queda en el reporte: dos descargas del mismo corte pueden diferir")
     archivo = models.FileField(upload_to="cuipo/ejecucion_gastos/")
     hash = models.CharField(max_length=64, blank=True, verbose_name="Hash del archivo")
     filas = models.IntegerField(default=0, verbose_name="Filas de detalle")
@@ -45,8 +48,13 @@ class CorteEjecucionGastos(Fechas):
         ]
 
     def clean(self):
-        if self.vigencia and self.fecha_corte and self.fecha_corte.year < self.vigencia:
-            raise ValidationError({"fecha_corte": "La fecha de corte no puede ser anterior a la vigencia."})
+        errores = {}
+        if self.vigencia and self.fecha_corte and self.fecha_corte.year != self.vigencia:
+            errores["fecha_corte"] = f"La fecha de corte debe estar dentro de la vigencia {self.vigencia}."
+        if self.fecha_corte and self.fecha_descarga and self.fecha_descarga < self.fecha_corte:
+            errores["fecha_descarga"] = "El reporte no se pudo descargar antes de su fecha de corte."
+        if errores:
+            raise ValidationError(errores)
 
     def __str__(self):
         return f"Ejecución de gastos {self.vigencia} al {self.fecha_corte:%d/%m/%Y}"
