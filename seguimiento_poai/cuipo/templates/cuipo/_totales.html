@@ -1,0 +1,9 @@
+{% load humanize %}
+<section class="caja" id="totales"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="resumen">
+    <div><span class="dato">Filas que cuadran</span><br><b class="{% if totales.cuadran == totales.filas %}ok{% else %}mal{% endif %}" style="font-size:1.3rem">{{ totales.cuadran }} de {{ totales.filas }}</b></div>
+    <div><span class="dato">Compromisos SIIFWEB / distribuido</span><br><b>{{ totales.siifweb.0|floatformat:"2g" }}</b><br>{{ totales.distribuido.0|floatformat:"2g" }}</div>
+    <div><span class="dato">Obligaciones SIIFWEB / distribuido</span><br><b>{{ totales.siifweb.1|floatformat:"2g" }}</b><br>{{ totales.distribuido.1|floatformat:"2g" }}</div>
+    <div><span class="dato">Pagos SIIFWEB / distribuido</span><br><b>{{ totales.siifweb.2|floatformat:"2g" }}</b><br>{{ totales.distribuido.2|floatformat:"2g" }}</div>
+  </div>
+</section>

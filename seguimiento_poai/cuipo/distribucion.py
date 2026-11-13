@@ -17,6 +17,7 @@ politica se toman de esa linea (origen "antecedente"). Una distribucion que ya e
 toca.
 """
 from collections import Counter, defaultdict
+from decimal import ROUND_DOWN, Decimal
 
 from django.db import transaction
 
@@ -183,3 +184,246 @@ def cuadre(distribucion):
                           "diferencia": (fila.rp - c, fila.obligacion - o, fila.pago - p),
                           "cuadra": (fila.rp, fila.obligacion, fila.pago) == (c, o, p)})
     return resultado
+
+
+# ---------------------------------------------------------------------------
+# Edicion de la distribucion (la pantalla por BPIN, fase 4)
+# ---------------------------------------------------------------------------
+
+CAMPOS_VALOR = ("compromisos", "obligaciones", "pagos")
+CUALITATIVOS = ("cpc", "detalle_sectorial", "tercero", "politica_publica")
+
+
+def _modelo_cualitativo(campo):
+    from .models import TerceroCUIPO
+    return {"cpc": CPC, "detalle_sectorial": DetalleSectorial, "tercero": TerceroCUIPO,
+            "politica_publica": PoliticaPublica}[campo]
+
+
+def editable(distribucion):
+    if distribucion.estado != DistribucionBPIN.Estado.BORRADOR:
+        raise ValueError("La distribución no está en borrador: no se edita.")
+
+
+def repartir(total, pesos, decimales=2):
+    """Reparte `total` en proporcion a `pesos`, redondeado a `decimales`, sin perder un centavo.
+
+    Metodo del mayor residuo: cada parte toma su piso y las unidades que sobran van a las de
+    mayor residuo. La suma da exactamente el total.
+    """
+    unidad = Decimal(1).scaleb(-decimales)
+    suma = sum(pesos)
+    if not suma:
+        raise ValueError("No hay con qué repartir: los pesos suman cero.")
+    exactos = [Decimal(total) * Decimal(p) / Decimal(suma) for p in pesos]
+    partes = [e.quantize(unidad, rounding=ROUND_DOWN) for e in exactos]
+    sobran = int(((Decimal(total) - sum(partes)) / unidad).to_integral_value())
+    for i in sorted(range(len(pesos)), key=lambda i: exactos[i] - partes[i], reverse=True)[:sobran]:
+        partes[i] += unidad
+    return partes
+
+
+def origen_digitado(distribucion):
+    if distribucion.regla == DistribucionBPIN.Regla.PIIP:
+        return LineaCUIPO.OrigenValores.PIIP
+    return LineaCUIPO.OrigenValores.MANUAL
+
+
+def _fila_de(distribucion, fila_id):
+    fila = distribucion.filas().filter(pk=fila_id).first()
+    if fila is None:
+        raise ValueError("La fila no es de este BPIN en este corte.")
+    return fila
+
+
+def _producto_de(distribucion, producto_id):
+    producto = distribucion.productos.filter(pk=producto_id).first()
+    if producto is None:
+        raise ValueError("El producto no es de este BPIN.")
+    return producto
+
+
+def _vigencia(vigencia_id):
+    vigencia = VigenciaGasto.objects.filter(pk=vigencia_id, activo=True).first()
+    if vigencia is None:
+        raise ValueError("Vigencia del gasto inválida.")
+    return vigencia
+
+
+@transaction.atomic
+def asociar(distribucion, fila_id, producto_id, activo):
+    """Asocia o desasocia una fila con un producto. Desasociar borra sus lineas."""
+    editable(distribucion)
+    fila, producto = _fila_de(distribucion, fila_id), _producto_de(distribucion, producto_id)
+    if activo:
+        AsociacionFuenteProducto.objects.get_or_create(distribucion=distribucion, fila=fila, producto=producto)
+    else:
+        distribucion.asociaciones.filter(fila=fila, producto=producto).delete()
+        distribucion.lineas.filter(fila=fila, producto=producto).delete()
+    return fila
+
+
+@transaction.atomic
+def guardar_valor(distribucion, fila_id, producto_id, vigencia_id, campo, valor):
+    """Escribe C, O o P de la linea (fila, producto, vigencia); la crea si no existe."""
+    from siifweb.cargas import decimal
+    editable(distribucion)
+    if campo not in CAMPOS_VALOR:
+        raise ValueError(f"Campo desconocido: {campo}")
+    fila, producto, vigencia = _fila_de(distribucion, fila_id), _producto_de(distribucion, producto_id), _vigencia(vigencia_id)
+    cantidad = decimal(valor).quantize(Decimal("0.01"))
+    if cantidad < 0:
+        raise ValueError("El valor no puede ser negativo.")
+    AsociacionFuenteProducto.objects.get_or_create(distribucion=distribucion, fila=fila, producto=producto)
+    linea = distribucion.lineas.filter(fila=fila, producto=producto, vigencia_gasto=vigencia).first()
+    if linea is None:
+        linea = Cualitativos(distribucion.corte).linea(distribucion, fila, producto, vigencia)
+    setattr(linea, campo, cantidad)
+    linea.origen_valores = origen_digitado(distribucion)
+    linea.save()
+    return fila
+
+
+@transaction.atomic
+def agregar_vigencia(distribucion, fila_id, producto_id, vigencia_id):
+    """Una linea mas de la fila y el producto, en otra vigencia del gasto, en ceros."""
+    editable(distribucion)
+    fila, producto, vigencia = _fila_de(distribucion, fila_id), _producto_de(distribucion, producto_id), _vigencia(vigencia_id)
+    if distribucion.lineas.filter(fila=fila, producto=producto, vigencia_gasto=vigencia).exists():
+        raise ValueError(f"Ya hay una línea de ese producto con la vigencia {vigencia.codigo}.")
+    AsociacionFuenteProducto.objects.get_or_create(distribucion=distribucion, fila=fila, producto=producto)
+    Cualitativos(distribucion.corte).linea(distribucion, fila, producto, vigencia,
+                                           origen_valores=origen_digitado(distribucion)).save()
+    return fila
+
+
+@transaction.atomic
+def quitar_linea(distribucion, linea_id):
+    editable(distribucion)
+    linea = distribucion.lineas.select_related("fila").filter(pk=linea_id).first()
+    if linea is None:
+        raise ValueError("La línea no es de esta distribución.")
+    fila = linea.fila
+    linea.delete()
+    return fila
+
+
+@transaction.atomic
+def cambiar_cualitativo(distribucion, linea_id, campo, codigo):
+    """Pone el CPC, detalle sectorial, tercero o politica publica por su codigo (origen manual)."""
+    editable(distribucion)
+    if campo not in CUALITATIVOS:
+        raise ValueError(f"Campo desconocido: {campo}")
+    linea = distribucion.lineas.select_related("fila").filter(pk=linea_id).first()
+    if linea is None:
+        raise ValueError("La línea no es de esta distribución.")
+    codigo = (codigo or "").strip()
+    valor = None
+    if codigo:
+        valor = _modelo_cualitativo(campo).objects.filter(codigo=codigo).first()
+        if valor is None:
+            raise ValueError(f"{codigo}: no está en la lista CHIP.")
+        if not valor.activo:
+            raise ValueError(f"{codigo}: está inactivo en la lista CHIP.")
+    setattr(linea, campo, valor)
+    setattr(linea, f"origen_{campo}", LineaCUIPO.Origen.MANUAL if valor else "")
+    linea.save()
+    return linea.fila
+
+
+@transaction.atomic
+def proporcional_a_compromisos(distribucion):
+    """Obligaciones y pagos de cada fila, repartidos con la participacion de los compromisos
+    ya distribuidos en sus lineas. Las filas sin compromisos distribuidos quedan igual."""
+    editable(distribucion)
+    filas, omitidas = 0, []
+    for fila in distribucion.filas().order_by("rubro", "recurso", "centro_costo"):
+        lineas = list(distribucion.lineas.filter(fila=fila).order_by("pk"))
+        pesos = [linea.compromisos for linea in lineas]
+        if not lineas or not sum(pesos):
+            omitidas.append(f"{fila.rubro} · recurso {fila.recurso}")
+            continue
+        for linea, o, p in zip(lineas, repartir(fila.obligacion, pesos), repartir(fila.pago, pesos)):
+            linea.obligaciones, linea.pagos = o, p
+        LineaCUIPO.objects.bulk_update(lineas, ["obligaciones", "pagos"])
+        filas += 1
+    mensaje = f"Obligaciones y pagos repartidos con la participación de los compromisos en {filas} filas."
+    if omitidas:
+        mensaje += f" Sin compromisos distribuidos: {', '.join(omitidas)}."
+    return mensaje
+
+
+@transaction.atomic
+def todo_a_un_producto(distribucion, producto_id):
+    """El 100 % de cada fila al producto, en vigencia 1. Borra las demas lineas."""
+    editable(distribucion)
+    producto = _producto_de(distribucion, producto_id)
+    contexto = Cualitativos(distribucion.corte)
+    distribucion.lineas.all().delete()
+    distribucion.asociaciones.exclude(producto=producto).delete()
+    nuevas = []
+    for fila in distribucion.filas():
+        AsociacionFuenteProducto.objects.get_or_create(distribucion=distribucion, fila=fila, producto=producto)
+        nuevas.append(contexto.linea(distribucion, fila, producto, compromisos=fila.rp, obligaciones=fila.obligacion,
+                                     pagos=fila.pago, origen_valores=LineaCUIPO.OrigenValores.SIIFWEB))
+    LineaCUIPO.objects.bulk_create(nuevas)
+    return f"Todo al producto {producto.codigo}: {len(nuevas)} filas."
+
+
+def antecedente(distribucion):
+    """La distribucion por producto del mismo BPIN en el ultimo periodo enviado de la vigencia:
+    (distribucion anterior, [(codigo, descripcion, compromisos, participacion %)])."""
+    anterior = (DistribucionBPIN.objects.filter(bpin=distribucion.bpin, estado=DistribucionBPIN.Estado.ENVIADO,
+                                                corte__vigencia=distribucion.corte.vigencia,
+                                                corte__fecha_fin__lt=distribucion.corte.fecha_fin)
+                .select_related("corte").order_by("-corte__fecha_fin").first())
+    if anterior is None:
+        return None, []
+    por_producto, nombres = defaultdict(Decimal), {}
+    for linea in anterior.lineas.select_related("producto"):
+        por_producto[linea.producto.codigo] += linea.compromisos
+        nombres[linea.producto.codigo] = linea.producto.descripcion
+    total = sum(por_producto.values())
+    return anterior, [(codigo, nombres[codigo], valor, (valor / total * 100) if total else Decimal(0))
+                      for codigo, valor in sorted(por_producto.items())]
+
+
+def matriz(distribucion, solo_fila=None):
+    """Lo que pinta la pantalla: por fila, sus lineas (y una vacia por cada producto asociado
+    sin lineas), lo de SIIFWEB, lo distribuido y la diferencia."""
+    lineas = defaultdict(list)
+    consulta = distribucion.lineas.select_related("producto", "vigencia_gasto", "cpc", "detalle_sectorial",
+                                                  "tercero", "politica_publica")
+    for linea in consulta.order_by("producto__codigo", "vigencia_gasto__codigo"):
+        lineas[linea.fila_id].append(linea)
+    asociados = defaultdict(set)
+    for fila_id, producto_id in distribucion.asociaciones.values_list("fila_id", "producto_id"):
+        asociados[fila_id].add(producto_id)
+    productos = list(distribucion.productos.order_by("codigo"))
+    filas = distribucion.filas().order_by("rubro", "recurso", "centro_costo")
+    if solo_fila is not None:
+        filas = filas.filter(pk=solo_fila.pk)
+    resultado = []
+    for fila in filas:
+        propias = lineas.get(fila.pk, [])
+        con_linea = {linea.producto_id for linea in propias}
+        distribuido = tuple(sum((getattr(linea, c) for linea in propias), Decimal(0)) for c in CAMPOS_VALOR)
+        siifweb = (fila.rp, fila.obligacion, fila.pago)
+        diferencia = tuple(s - d for s, d in zip(siifweb, distribuido))
+        resultado.append({
+            "fila": fila, "lineas": propias,
+            "vacias": [p for p in productos if p.pk in asociados[fila.pk] and p.pk not in con_linea],
+            "asociados": [(p, p.pk in asociados[fila.pk]) for p in productos],
+            "siifweb": siifweb, "distribuido": distribuido, "diferencia": diferencia,
+            "cuadra": not any(diferencia)})
+    return resultado
+
+
+def totales(distribucion):
+    """Para el encabezado: SIIFWEB, distribuido y filas que cuadran."""
+    filas = matriz(distribucion)
+    suma = lambda clave, i: sum((f[clave][i] for f in filas), Decimal(0))
+    return {"siifweb": tuple(suma("siifweb", i) for i in range(3)),
+            "distribuido": tuple(suma("distribuido", i) for i in range(3)),
+            "diferencia": tuple(suma("diferencia", i) for i in range(3)),
+            "filas": len(filas), "cuadran": sum(f["cuadra"] for f in filas)}

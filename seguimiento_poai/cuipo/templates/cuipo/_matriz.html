@@ -1,0 +1,18 @@
+<section class="caja" id="matriz">
+  {% if mensaje %}<p class="nota ok">{{ mensaje }}</p>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <div class="tabla">
+    <table>
+      <thead>
+        <tr>
+          <th>Producto</th><th>Vigencia</th>
+          <th class="num">Compromisos</th><th class="num">Obligaciones</th><th class="num">Pagos</th>
+          <th>CPC</th><th>Detalle sectorial</th><th>Tercero</th><th>Política pública</th><th></th>
+        </tr>
+      </thead>
+      {% for d in filas %}{% include "cuipo/_fila.html" %}{% empty %}
+      <tbody><tr><td colspan="10" class="nota">Este BPIN no tiene filas que entren al CUIPO en el corte.</td></tr></tbody>
+      {% endfor %}
+    </table>
+  </div>
+</section>

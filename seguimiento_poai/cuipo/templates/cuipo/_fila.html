@@ -1,0 +1,79 @@
+{% load humanize l10n %}
+{% url 'admin:cuipo_distribuir_celda' dist.pk as u_celda %}{% url 'admin:cuipo_distribuir_asociar' dist.pk as u_asociar %}{% url 'admin:cuipo_distribuir_vigencia' dist.pk as u_vigencia %}{% url 'admin:cuipo_distribuir_quitar' dist.pk as u_quitar %}{% url 'admin:cuipo_distribuir_cualitativo' dist.pk as u_cual %}
+<tbody class="fila" id="fila-{{ d.fila.pk }}">
+  <tr class="cabeza">
+    <td colspan="2">
+      <b>{{ d.fila.rubro }}</b> · recurso {{ d.fila.recurso }} · CC {{ d.fila.centro_costo }}
+      <span class="desc" style="max-width:none">{{ d.fila.nombre_rubro|truncatechars:70 }} · {{ d.fila.nombre_recurso|truncatechars:60 }}</span>
+      <div style="margin-top:.3rem">
+        {% for p, activo in d.asociados %}
+        <label class="marcar" title="{{ p.descripcion }}"><input type="checkbox" name="activo" value="1"{% if activo %} checked{% endif %}{% if not editable %} disabled{% endif %}
+          hx-post="{{ u_asociar }}" hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ p.pk }}}' hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
+          {% if activo %}hx-confirm="Quitar el producto {{ p.codigo }} de esta fila borra sus líneas. ¿Seguir?"{% endif %}>{{ p.codigo }}</label>
+        {% endfor %}
+      </div>
+    </td>
+    {% for s in d.siifweb %}
+    <td class="num">
+      <span class="dato">SIIFWEB</span> {{ s|floatformat:"2g" }}<br>
+      {% with dif=d.diferencia|slice:forloop.counter|last %}<span class="{% if dif %}mal{% else %}ok{% endif %}">diferencia {{ dif|floatformat:"2g" }}</span>{% endwith %}
+    </td>
+    {% endfor %}
+    <td colspan="4"></td>
+    <td class="num" style="font-size:1rem">{% if d.cuadra %}<span class="ok" title="Cuadra con SIIFWEB">✔</span>{% else %}<span class="mal" title="No cuadra con SIIFWEB">✘</span>{% endif %}</td>
+  </tr>
+
+  {% for l in d.lineas %}
+  <tr>
+    <td><b>{{ l.producto.codigo }}</b><span class="desc">{{ l.producto.descripcion }}</span></td>
+    <td>{{ l.vigencia_gasto.codigo }}<span class="desc">{{ l.vigencia_gasto.descripcion|truncatechars:24 }}</span></td>
+    <td class="num"><input class="entrada valor" name="valor" value="{{ l.compromisos|unlocalize }}"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "compromisos"}'></td>
+    <td class="num"><input class="entrada valor" name="valor" value="{{ l.obligaciones|unlocalize }}"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "obligaciones"}'></td>
+    <td class="num"><input class="entrada valor" name="valor" value="{{ l.pagos|unlocalize }}"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "pagos"}'></td>
+    <td><input class="entrada codigo" name="codigo" value="{{ l.cpc.codigo|default:'' }}"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "cpc"}'>{% if l.origen_cpc %}<span class="origen {{ l.origen_cpc }}">{{ l.get_origen_cpc_display }}</span>{% endif %}<span class="desc" title="{{ l.cpc.descripcion|default:'' }}">{{ l.cpc.descripcion|default:'' }}</span></td>
+    <td><input class="entrada codigo" name="codigo" value="{{ l.detalle_sectorial.codigo|default:'' }}"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "detalle_sectorial"}'>{% if l.origen_detalle_sectorial %}<span class="origen {{ l.origen_detalle_sectorial }}">{{ l.get_origen_detalle_sectorial_display }}</span>{% endif %}<span class="desc" title="{{ l.detalle_sectorial.descripcion|default:'' }}">{{ l.detalle_sectorial.descripcion|default:'' }}</span></td>
+    <td><input class="entrada codigo" name="codigo" value="{{ l.tercero.codigo|default:'' }}"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "tercero"}'>{% if l.origen_tercero %}<span class="origen {{ l.origen_tercero }}">{{ l.get_origen_tercero_display }}</span>{% endif %}<span class="desc" title="{{ l.tercero.descripcion|default:'' }}">{{ l.tercero.descripcion|default:'' }}</span></td>
+    <td><input class="entrada codigo" name="codigo" value="{{ l.politica_publica.codigo|default:'' }}"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_cual }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"linea": {{ l.pk }}, "campo": "politica_publica"}'>{% if l.origen_politica_publica %}<span class="origen {{ l.origen_politica_publica }}">{{ l.get_origen_politica_publica_display }}</span>{% endif %}<span class="desc" title="{{ l.politica_publica.descripcion|default:'' }}">{{ l.politica_publica.descripcion|default:'' }}</span></td>
+    <td style="white-space:nowrap">
+      {% if editable %}
+      <select name="vigencia" title="Repartir esta fila y producto en otra vigencia del gasto" hx-post="{{ u_vigencia }}" hx-trigger="change"
+              hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}}'>
+        <option value="">+ vigencia</option>
+        {% for v in vigencias %}{% if v.pk != l.vigencia_gasto_id %}<option value="{{ v.pk }}">{{ v.codigo }} {{ v.descripcion|truncatechars:28 }}</option>{% endif %}{% endfor %}
+      </select>
+      <button class="boton gris" title="Quitar la línea" hx-post="{{ u_quitar }}" hx-vals='{"linea": {{ l.pk }}}'
+              hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML">×</button>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+
+  {% for p in d.vacias %}
+  <tr>
+    <td><b>{{ p.codigo }}</b><span class="desc">{{ p.descripcion }}</span></td>
+    <td>{{ vigencia_1.codigo }}<span class="desc">sin valores</span></td>
+    <td class="num"><input class="entrada valor" name="valor" value="" placeholder="0"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ p.pk }}, "vigencia": {{ vigencia_1.pk }}, "campo": "compromisos"}'></td>
+    <td class="num"><input class="entrada valor" name="valor" value="" placeholder="0"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ p.pk }}, "vigencia": {{ vigencia_1.pk }}, "campo": "obligaciones"}'></td>
+    <td class="num"><input class="entrada valor" name="valor" value="" placeholder="0"{% if not editable %} disabled{% endif %}
+      hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ p.pk }}, "vigencia": {{ vigencia_1.pk }}, "campo": "pagos"}'></td>
+    <td colspan="5" class="dato">Los cualitativos se llenan al digitar un valor.</td>
+  </tr>
+  {% endfor %}
+
+  {% if error %}<tr><td colspan="10" class="error">{{ error }}</td></tr>{% endif %}
+</tbody>

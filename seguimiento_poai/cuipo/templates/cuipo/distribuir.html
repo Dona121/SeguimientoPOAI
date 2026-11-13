@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+{% comment %}
+La pantalla por BPIN: asociar filas con productos, digitar o repartir C, O y P con la diferencia
+contra SIIFWEB en vivo, y los cualitativos de cada linea con su origen. Cada cambio se guarda al
+salir de la celda (HTMX, que unfold ya carga) y vuelve solo la fila con su cuadre; los totales se
+actualizan fuera de banda. Vistas en DistribucionBPINAdmin; logica en cuipo/distribucion.py.
+{% endcomment %}
+
+{% block title %}Distribuir {{ dist.bpin }} | POAI{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url 'admin:cuipo_distribucionbpin_changelist' %}?corte__id__exact={{ dist.corte_id }}" class="font-medium text-primary-600">Distribuciones por BPIN</a></li>
+      <li class="mx-2">/</li>
+      <li>{{ dist.bpin }}</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .ds { display:flex; flex-direction:column; gap:1.25rem; }
+  .ds .caja { background:#fff; border:1px solid var(--color-base-200); border-radius:6px; }
+  .dark .ds .caja { background:var(--color-base-900); border-color:var(--color-base-800); }
+  .ds .cab { padding:1rem 1.25rem; display:flex; flex-wrap:wrap; gap:.5rem 2rem; align-items:baseline; }
+  .ds .cab h2 { font-size:1.05rem; font-weight:600; }
+  .ds .dato { font-size:.8rem; color:var(--color-base-500); }
+  .ds .dato b { color:var(--color-base-700); font-weight:600; }
+  .ds .nota { font-size:.8rem; color:var(--color-base-500); padding:.6rem 1.25rem; }
+  .ds .aviso { font-size:.85rem; padding:.6rem 1.25rem; background:#fff7e6; color:#8a5300; border-radius:6px; }
+  .ds .error { font-size:.85rem; padding:.5rem 1rem; background:#fdecea; color:#b42318; }
+  .ds .ok { color:var(--color-primary-700); }
+  .ds .mal { color:#b42318; }
+  .ds .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ds .boton { display:inline-block; background:var(--color-primary-600); color:#fff; border-radius:6px;
+               padding:.4rem .8rem; font-size:.85rem; font-weight:500; cursor:pointer; }
+  .ds .boton:hover { background:var(--color-primary-700); }
+  .ds .boton.gris { background:var(--color-base-100); color:var(--color-base-700); border:1px solid var(--color-base-200); }
+  .ds select, .ds .entrada { border:1px solid var(--color-base-200); border-radius:5px; padding:.25rem .45rem;
+                             font-size:.8rem; background:#fff; color:var(--color-base-800); }
+  .ds .entrada.valor { width:9.5rem; text-align:right; font-variant-numeric:tabular-nums; }
+  .ds .entrada.codigo { width:6.5rem; }
+  .ds .entrada:focus { outline:2px solid var(--color-primary-600); outline-offset:-1px; border-color:transparent; }
+  .ds .tabla { overflow-x:auto; }
+  .ds table { width:100%; border-collapse:collapse; font-size:.8rem; }
+  .ds th { text-align:left; font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--color-base-500);
+           padding:.5rem .6rem; border-bottom:1px solid var(--color-base-200); white-space:nowrap; }
+  .ds td { padding:.35rem .6rem; border-bottom:1px solid var(--color-base-100); vertical-align:middle; }
+  .ds tbody.fila tr.cabeza td { background:var(--color-base-50); border-top:2px solid var(--color-base-200); }
+  .dark .ds tbody.fila tr.cabeza td { background:var(--color-base-800); }
+  .ds .origen { display:inline-block; font-size:.65rem; padding:.05rem .35rem; border-radius:9999px;
+                background:var(--color-base-100); color:var(--color-base-600); margin-left:.25rem; }
+  .ds .origen.manual { background:#e8f0fe; color:#1a56db; }
+  .ds .origen.antecedente { background:#f3e8ff; color:#7e22ce; }
+  .ds .desc { display:block; font-size:.68rem; color:var(--color-base-500); max-width:11rem; overflow:hidden;
+              text-overflow:ellipsis; white-space:nowrap; }
+  .ds .htmx-request { opacity:.6; }
+  .ds .marcar { display:inline-flex; align-items:center; gap:.3rem; margin-right:.7rem; white-space:nowrap; }
+  .ds .marcar input { accent-color:var(--color-primary-600); }
+  .ds .resumen { display:grid; gap:.5rem 1.5rem; grid-template-columns:repeat(auto-fill, minmax(15rem, 1fr)); padding:1rem 1.25rem; }
+</style>
+
+<div class="ds" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+
+  <section class="caja">
+    <div class="cab">
+      <h2>{{ dist.bpin }} · {{ nombre|default:"(sin nombre)" }}</h2>
+      <span class="dato">Corte <b>{{ dist.corte.vigencia }} al {{ dist.corte.fecha_fin|date:"d/m/Y" }}</b></span>
+      <span class="dato">Periodo <b>{{ dist.periodo }}</b></span>
+      <span class="dato">Regla <b>{{ dist.get_regla_display }}</b></span>
+      <span class="dato">Estado <b>{{ dist.get_estado_display }}</b> · <a class="ok" href="{% url 'admin:cuipo_distribucionbpin_change' dist.pk %}">cambiar estado</a></span>
+    </div>
+    <p class="nota">Productos del BPIN:
+      {% for p in productos %}<b>{{ p.codigo }}</b> {{ p.descripcion|truncatechars:70 }}{% if not forloop.last %} · {% endif %}{% empty %}ninguno en la lista CHIP{% endfor %}
+    </p>
+    {% if dist.observacion %}<p class="nota mal">{{ dist.observacion }}</p>{% endif %}
+    {% if not editable %}<p class="aviso">Solo lectura: la distribución está {{ dist.get_estado_display|lower }} o no tiene permiso para editarla.</p>{% endif %}
+  </section>
+
+  {% if antecedente %}
+  <section class="caja">
+    <p class="nota">Referencia: cómo se distribuyó este BPIN en el periodo {{ anterior.periodo }} (corte al {{ anterior.corte.fecha_fin|date:"d/m/Y" }}). No se copia.</p>
+    <div class="tabla"><table>
+      <tr><th>Producto</th><th class="num">Compromisos</th><th class="num">Participación</th></tr>
+      {% for codigo, descripcion, valor, porcentaje in antecedente %}
+      <tr><td><b>{{ codigo }}</b> {{ descripcion|truncatechars:80 }}</td><td class="num">{{ valor|floatformat:"2g" }}</td><td class="num">{{ porcentaje|floatformat:2 }} %</td></tr>
+      {% endfor %}
+    </table></div>
+  </section>
+  {% endif %}
+
+  {% include "cuipo/_totales.html" %}
+
+  {% if editable and productos %}
+  <section class="caja" style="padding:.8rem 1.25rem;display:flex;flex-wrap:wrap;gap:1rem;align-items:center">
+    <button class="boton" hx-post="{% url 'admin:cuipo_distribuir_proporcional' dist.pk %}" hx-target="#matriz" hx-swap="outerHTML">Proporcional a compromisos</button>
+    <span class="dato">O y P de cada fila con la participación de los compromisos ya digitados.</span>
+    <form hx-post="{% url 'admin:cuipo_distribuir_todo' dist.pk %}" hx-target="#matriz" hx-swap="outerHTML"
+          hx-confirm="Se borran las líneas actuales y todo va al producto elegido. ¿Seguir?" style="display:flex;gap:.5rem;align-items:center">
+      <select name="producto">{% for p in productos %}<option value="{{ p.pk }}">{{ p.codigo }}</option>{% endfor %}</select>
+      <button class="boton gris" type="submit">Todo a un producto</button>
+    </form>
+  </section>
+  {% endif %}
+
+  {% include "cuipo/_matriz.html" %}
+</div>
+{% endblock %}

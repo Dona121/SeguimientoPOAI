@@ -70,7 +70,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 477.
+  disco temporal). Hoy son 496.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -558,7 +558,36 @@ migración `cuipo/0004`, 19 pruebas en `cuipo/tests/test_distribucion.py`).
   - Los casos de la sección 6 dan la regla esperada; los de "varios productos, una fuente"
     quedan pendientes de digitar.
 
-**Fase 4 — Pantalla HTMX**
+**Fase 4 — Pantalla HTMX** — **hecha el 13/11** (rama `cuipo-fase4-pantalla`, sin migraciones, 19
+pruebas en `cuipo/tests/test_pantalla.py`).
+- **HTMX:** se usa el que unfold ya carga en todas las páginas del admin (htmx 2.0.4,
+  `unfold/js/htmx/htmx.js`); no se copió un `htmx.min.js` propio.
+- Pantalla `/admin/cuipo/distribucionbpin/<id>/distribuir/` (enlace "Distribuir" en la lista
+  de distribuciones y en cada distribución): encabezado (BPIN, nombre, corte, periodo, regla,
+  estado, productos), referencia del periodo anterior enviado (valor y participación por
+  producto, solo lectura), totales SIIFWEB / distribuido y filas que cuadran, botones
+  "Proporcional a compromisos" y "Todo a un producto", y la matriz: por fila, la casilla de
+  cada producto (asociar), lo de SIIFWEB y la diferencia en C, O y P, y una línea por
+  producto y vigencia del gasto con C, O y P editables, los cuatro cualitativos por código con
+  su descripción y su origen, "+ vigencia" para repartir en otra vigencia del gasto y "×"
+  para quitar la línea.
+- Cada cambio se guarda al salir de la celda y vuelve solo la fila con su cuadre; los totales
+  se actualizan fuera de banda (`hx-swap-oob`). Un error (valor negativo, código que no está
+  en la lista, inactivo) se muestra en la fila y no se guarda.
+- Lógica en `cuipo/distribucion.py`: `guardar_valor`, `asociar` (desasociar borra las líneas),
+  `agregar_vigencia`, `quitar_linea`, `cambiar_cualitativo`, `proporcional_a_compromisos`
+  (reparte O y P de cada fila con la participación de los compromisos digitados, al centavo,
+  por mayor residuo con `repartir()`), `todo_a_un_producto`, `antecedente` y `matriz`.
+  Lo digitado queda con origen PIIP si la regla es "varios productos, una fuente" y manual en
+  los demás casos; "Todo a un producto" deja origen SIIFWEB.
+- Solo se edita una distribución en borrador y con permisos de agregar, cambiar y borrar
+  líneas; sin permiso de ver distribuciones, 403.
+- Los cualitativos se digitan por código (con su descripción al lado) en vez de un
+  autocompletar: el CPC tiene 7.659 códigos y el código es lo que se conoce.
+- La lista de distribuciones vacía explica cómo se crean (con la precarga del corte).
+- No se probó en el navegador con datos locales: el corte local va al 11/11 y no tiene
+  periodo. Las pruebas cubren la pantalla y cada acción.
+
 - Archivos: vistas en `get_urls()` del admin de `DistribucionBPIN`, `cuipo/templates/cuipo/`
   (pantalla y parciales), `cuipo/static/cuipo/htmx.min.js`.
 - Aceptación:

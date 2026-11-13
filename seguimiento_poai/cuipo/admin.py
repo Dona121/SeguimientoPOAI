@@ -4,6 +4,8 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect
+from django.http import HttpResponse, HttpResponseBadRequest
+from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
@@ -472,14 +474,14 @@ class DistribucionBPINAdmin(ModelAdmin):
     compressed_fields = True
     list_fullwidth = True
     list_per_page = 100
-    list_display = ("bpin", "nombre_proyecto", "periodo", "regla", "estado", "n_lineas", "cuadra")
+    list_display = ("bpin", "nombre_proyecto", "periodo", "regla", "estado", "n_lineas", "cuadra", "enlace_distribuir")
     list_filter = (("corte", RelatedDropdownFilter), "regla", "estado")
     search_fields = ("bpin",)
     list_select_related = ("corte",)
     readonly_fields = ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion", "validado_por",
-                       "fecha_validacion", "cuadre_por_fila")
+                       "fecha_validacion", "cuadre_por_fila", "pantalla")
     fieldsets = (
-        (None, {"fields": ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion")}),
+        (None, {"fields": ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion", "pantalla")}),
         ("Estado", {"fields": ("estado", "validado_por", "fecha_validacion")}),
         ("Cuadre con SIIFWEB", {"fields": ("cuadre_por_fila",)}),
     )
@@ -488,6 +490,14 @@ class DistribucionBPINAdmin(ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+    def changelist_view(self, request, extra_context=None):
+        if request.method == "GET" and not DistribucionBPIN.objects.exists():
+            self.message_user(request, "Las distribuciones no se agregan a mano: se crean con la acción \"Precargar "
+                                       "la distribución del CUIPO\" en Cortes de ejecución de gastos, sobre un corte "
+                                       "del 1 de enero al cierre de un trimestre (31/03, 30/06, 30/09 o 31/12).",
+                              messages.INFO)
+        return super().changelist_view(request, extra_context)
 
     def save_model(self, request, obj, form, change):
         if "estado" in form.changed_data and obj.estado == DistribucionBPIN.Estado.VALIDADO:
@@ -506,6 +516,124 @@ class DistribucionBPINAdmin(ModelAdmin):
             linea.save()
         for borrada in formset.deleted_objects:
             borrada.delete()
+
+    # -- La pantalla por BPIN (HTMX; unfold ya carga htmx 2 en todas las paginas del admin) --
+
+    def get_urls(self):
+        def ruta(sufijo, vista, nombre):
+            return path(f"<int:pk>/distribuir/{sufijo}", self.admin_site.admin_view(vista),
+                        name=f"cuipo_distribuir{nombre}")
+        propias = [
+            ruta("", self.distribuir, ""),
+            ruta("asociar/", self.d_asociar, "_asociar"),
+            ruta("celda/", self.d_celda, "_celda"),
+            ruta("vigencia/", self.d_vigencia, "_vigencia"),
+            ruta("quitar/", self.d_quitar, "_quitar"),
+            ruta("cualitativo/", self.d_cualitativo, "_cualitativo"),
+            ruta("proporcional/", self.d_proporcional, "_proporcional"),
+            ruta("todo/", self.d_todo, "_todo"),
+        ]
+        return propias + super().get_urls()
+
+    def _distribucion(self, request, pk):
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        return get_object_or_404(DistribucionBPIN.objects.select_related("corte"), pk=pk)
+
+    def _puede_editar(self, request, dist):
+        return dist.estado == DistribucionBPIN.Estado.BORRADOR and all(
+            request.user.has_perm(f"cuipo.{p}_lineacuipo") for p in ("add", "change", "delete"))
+
+    def _contexto(self, request, dist, **extra):
+        return {"dist": dist, "editable": self._puede_editar(request, dist),
+                "vigencias": list(VigenciaGasto.objects.filter(activo=True).order_by("codigo")),
+                "vigencia_1": VigenciaGasto.objects.filter(codigo="1").first(),
+                "totales": distribucion.totales(dist), **extra}
+
+    def _parcial(self, request, dist, fila=None, mensaje="", error=""):
+        """La fila (o toda la matriz) y, fuera de banda, los totales."""
+        if fila is not None:
+            contexto = self._contexto(request, dist, d=distribucion.matriz(dist, solo_fila=fila)[0], error=error)
+            html = render_to_string("cuipo/_fila.html", contexto, request=request)
+        else:
+            contexto = self._contexto(request, dist, filas=distribucion.matriz(dist), mensaje=mensaje, error=error)
+            html = render_to_string("cuipo/_matriz.html", contexto, request=request)
+        html += render_to_string("cuipo/_totales.html", {**contexto, "oob": True}, request=request)
+        return HttpResponse(html)
+
+    def _editar(self, request, pk, accion, fila_de_respuesta=True):
+        """Corre una accion de edicion y responde con la fila o la matriz."""
+        dist = self._distribucion(request, pk)
+        if request.method != "POST":
+            return HttpResponseBadRequest("Solo POST")
+        if not self._puede_editar(request, dist):
+            raise PermissionDenied
+        try:
+            resultado = accion(dist)
+        except ValueError as error:
+            fila = dist.filas().filter(pk=request.POST.get("fila")).first() if fila_de_respuesta else None
+            if fila is None and request.POST.get("linea"):
+                linea = dist.lineas.filter(pk=request.POST["linea"]).select_related("fila").first()
+                fila = linea.fila if linea else None
+            return self._parcial(request, dist, fila=fila, error=str(error))
+        if fila_de_respuesta:
+            return self._parcial(request, dist, fila=resultado)
+        return self._parcial(request, dist, mensaje=resultado)
+
+    def distribuir(self, request, pk):
+        dist = self._distribucion(request, pk)
+        anterior, antecedente = distribucion.antecedente(dist)
+        from siifweb.models import FormulacionProyecto
+        formulacion = FormulacionProyecto.objects.filter(bpin=dist.bpin).first()
+        contexto = {
+            **self.admin_site.each_context(request),
+            "title": f"Distribuir {dist.bpin}",
+            **self._contexto(request, dist, filas=distribucion.matriz(dist)),
+            "nombre": "Inversión sin proyecto" if dist.bpin == "0" else (formulacion.nombre if formulacion else ""),
+            "productos": list(dist.productos.order_by("codigo")),
+            "anterior": anterior, "antecedente": antecedente,
+        }
+        return TemplateResponse(request, "cuipo/distribuir.html", contexto)
+
+    def d_asociar(self, request, pk):
+        return self._editar(request, pk, lambda d: distribucion.asociar(
+            d, request.POST.get("fila"), request.POST.get("producto"), bool(request.POST.get("activo"))))
+
+    def d_celda(self, request, pk):
+        return self._editar(request, pk, lambda d: distribucion.guardar_valor(
+            d, request.POST.get("fila"), request.POST.get("producto"), request.POST.get("vigencia"),
+            request.POST.get("campo"), request.POST.get("valor")))
+
+    def d_vigencia(self, request, pk):
+        return self._editar(request, pk, lambda d: distribucion.agregar_vigencia(
+            d, request.POST.get("fila"), request.POST.get("producto"), request.POST.get("vigencia")))
+
+    def d_quitar(self, request, pk):
+        return self._editar(request, pk, lambda d: distribucion.quitar_linea(d, request.POST.get("linea")))
+
+    def d_cualitativo(self, request, pk):
+        return self._editar(request, pk, lambda d: distribucion.cambiar_cualitativo(
+            d, request.POST.get("linea"), request.POST.get("campo"), request.POST.get("codigo")))
+
+    def d_proporcional(self, request, pk):
+        return self._editar(request, pk, distribucion.proporcional_a_compromisos, fila_de_respuesta=False)
+
+    def d_todo(self, request, pk):
+        return self._editar(request, pk, lambda d: distribucion.todo_a_un_producto(d, request.POST.get("producto")),
+                            fila_de_respuesta=False)
+
+    @display(description="Pantalla")
+    def distribuir_enlace(self, obj):
+        return format_html('<a href="{}" class="text-primary-600">Distribuir</a>',
+                           reverse("admin:cuipo_distribuir", args=(obj.pk,)))
+
+    @display(description="Distribuir")
+    def enlace_distribuir(self, obj):
+        return self.distribuir_enlace(obj)
+
+    @display(description="Pantalla de distribución")
+    def pantalla(self, obj):
+        return self.distribuir_enlace(obj)
 
     @action(description="Volver a precargar (solo borradores; borra lo digitado)", icon="restart_alt")
     def volver_a_precargar(self, request, queryset):

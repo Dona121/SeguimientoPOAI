@@ -544,3 +544,19 @@ Rama `cuipo-fase3-distribucion`, sobre `cuipo-fase2-reglas`.
   fila y las lineas editables mientras llega la pantalla de la fase 4.
 
 **Pruebas.** 477, todas pasan (`cuipo/tests/test_distribucion.py`, 19 nuevas).
+
+## 23. CUIPO, fase 4: pantalla de distribucion por BPIN (13 de noviembre)
+
+Rama `cuipo-fase4-pantalla`, sobre `cuipo-fase3-distribucion`. Sin migraciones.
+
+- Pantalla **Distribuir** de cada distribucion: matriz de filas por productos con la
+  diferencia contra SIIFWEB en vivo (HTMX, el que trae unfold), lineas por producto y
+  vigencia del gasto, cualitativos por codigo con su origen, y los botones "Proporcional a
+  compromisos" y "Todo a un producto". Muestra como referencia la distribucion enviada del
+  periodo anterior del mismo BPIN.
+- La logica de edicion va en `cuipo/distribucion.py`; el reparto proporcional cuadra al
+  centavo por el metodo del mayor residuo.
+- Solo se edita en borrador y con permisos sobre las lineas.
+- La lista de distribuciones vacia explica que se crean con la precarga del corte.
+
+**Pruebas.** 496, todas pasan (`cuipo/tests/test_pantalla.py`, 19 nuevas).
