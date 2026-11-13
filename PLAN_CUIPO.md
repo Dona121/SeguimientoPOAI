@@ -682,6 +682,12 @@ cuipo-fase2-reglas ← cuipo-fase3-distribucion ← cuipo-fase4-pantalla ← cui
 a `0004`.
 
 **Para usarlo en producción** (después de respaldar Supabase y subir la rama final):
+0. Catálogo PIIP (antes de cargar el PIIP), en Configuración → Municipios: renombrar
+   "San Antonio de Palmito" → "Palmito", "Toluviejo" → "San José De Toluviejo" y "Todo el
+   departamento" → "Todo el departamento de sucre"; crear Barranquilla, Garzón, San Andrés y
+   Santiago De Cali. Luego subir `ReporteSIIFWEB_20261111.xlsx` como "Información general
+   PIIP", procesarlo y homologar a mano los indicadores sin homologar que usan proyectos.
+   Dar los permisos del CUIPO a quien vaya a distribuir (no hay roles nuevos).
 1. CUIPO → Versiones de las listas CHIP: subir `Listas_Categoria_CUIPO_09-2026.xlsx`.
 2. Cargar los consolidados al día y, si hay uno nuevo, el exporte del PIIP.
 3. CUIPO → Cortes: cargar el corte 01/01–30/09/2026 (completo, 22 columnas).
