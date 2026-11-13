@@ -278,10 +278,24 @@ apunta al corte; así el CUIPO de septiembre se regenera aunque después se carg
 rubro 2.3, BPIN distinto de 0 y algún valor distinto de cero. Las de otra vigencia y las de
 2.3 sin BPIN quedan pendientes de decisión (sección 7).
 
-**Reproceso de un corte con distribución.** Hoy `ejecucion.importar()` borra y vuelve a
-crear las filas del corte; con `LineaCUIPO` apuntando a ellas con `PROTECT`, el borrado
-fallaría. Propuesta: si el corte ya tiene distribución, `procesar` lo rechaza con un mensaje
-claro, y para actualizar se carga un corte nuevo.
+**Reproceso de un corte con distribución (decidido: bloqueado).** Reprocesar es volver a
+importar un corte ya cargado (acción "Volver a procesar" o cambiar su archivo):
+`ejecucion.importar()` borra las filas del corte y las vuelve a crear. Si el corte ya tiene
+una distribución, `procesar` lo rechaza con un mensaje claro, sin intentar borrar. Para
+trabajar con datos más recientes se carga **otro corte** y sobre ese se distribuye; el corte
+de un CUIPO enviado no cambia nunca. Un corte sin distribución se puede reprocesar o borrar
+libremente.
+
+Como equivocarse sale caro (la distribución hecha sobre un corte no pasa sola a otro), dos
+ayudas:
+- Revisar el corte antes de distribuir: el importador ya verifica los subtotales; la
+  pantalla del corte puede mostrar además sus totales frente al corte anterior de la misma
+  vigencia.
+- **Copiar una distribución de un corte a otro**: llevar las asociaciones y proporciones
+  por producto de cada fila al corte nuevo, cruzando por (`rubro_id_siifweb`, `recurso`,
+  `centro_costo`, `proyecto`), recalcular los valores con las cifras nuevas y marcar las
+  filas que cambiaron o son nuevas para revisarlas. Sirve también para arrancar el trimestre
+  siguiente.
 
 **Precarga automática por BPIN** (las reglas del Power Query):
 - 1 producto: el 100 % de cada fila va a ese producto.
@@ -371,7 +385,10 @@ lo ven quienes tienen el permiso de ver cortes.
   `cuipo/ejecucion.py`, migración.
 - Aceptación:
   - La suma de las líneas de cada fila da su C, O y P.
-  - Un corte con distribución no se reprocesa y lo dice.
+  - Un corte con distribución no se reprocesa ni se borra, y lo dice; sus filas quedan
+    intactas.
+  - Copiar la distribución a un corte nuevo conserva las proporciones por producto y marca
+    las filas que cambiaron o son nuevas.
   - Los tres casos de la sección 6 dan la regla esperada.
 
 **Fase 4 — Pantalla HTMX**
@@ -451,15 +468,13 @@ La fila del recurso 159 se registró después del 30/09: no estará en el corte 
    ¿van al CUIPO, con qué BPIN y con qué producto (¿0 - NO APLICA?)?
 6. **BPIN sin formulación PIIP** (9 de 128 en 2026): ¿se asignan productos a mano sin
    validar que pertenezcan al BPIN?
-7. **Reproceso de un corte con distribución.** ¿Se bloquea (propuesto) o se actualizan las
-   filas por su llave?
-8. **Reservas (vigencia de gasto 2).** ¿SIIFWEB tiene un reporte de ejecución de reservas
+7. **Reservas (vigencia de gasto 2).** ¿SIIFWEB tiene un reporte de ejecución de reservas
    por centro de costo y fondo? El consolidado de reservas no trae centro de costo.
-9. **Filas del árbol de otra vigencia** (2023: 27 filas, 22 con BPIN, obligación 16.890 M):
+8. **Filas del árbol de otra vigencia** (2023: 27 filas, 22 con BPIN, obligación 16.890 M):
    ¿qué son (reservas, cuentas por pagar) y van al CUIPO?
-10. **Alcance del plano.** ¿Solo el 2.3 dentro del plano de presupuesto, o el formato D
+9. **Alcance del plano.** ¿Solo el 2.3 dentro del plano de presupuesto, o el formato D
     completo desde el corte?
-11. **Periodo.** Confirmar la codificación (`10909` = julio a septiembre) y si una
+10. **Periodo.** Confirmar la codificación (`10909` = julio a septiembre) y si una
     distribución se puede copiar al trimestre siguiente como punto de partida.
-12. **Rama `centro-costo-compromisos`.** ¿Se conserva (corrige el centro de costo de los RP
+11. **Rama `centro-costo-compromisos`.** ¿Se conserva (corrige el centro de costo de los RP
     con varias líneas) o se descarta?
