@@ -649,13 +649,15 @@ El catalogo del plan de desarrollo no admite productos nuevos (cambiarlo pasa po
 Asamblea), y los proyectos se formulan en PIIP con el catalogo MGA completo. Por eso hay
 un catalogo aparte, en el modulo **Catalogo PIIP** del menu:
 
-- **Catalogo MGA territorial** (`SectorCatalogo`, `ProgramaCatalogo`, `ProductoCatalogo`,
+- **Catalogo MGA de los proyectos** (`SectorCatalogo`, `ProgramaCatalogo`, `ProductoCatalogo`,
   `IndicadorCatalogo`): la migracion `0021` carga del `CatalogoProductoMGA_junio_2025.xlsx`
-  los indicadores con "Es Territorial" = "Si" (5.739, de 2.462 productos), mas los que no
-  son territoriales pero usa algun proyecto (los de bomberos, 370800900 y 370801300). Se
-  genera con `modelos-metas/generar_migracion_catalogo_territorial.py`. Solo de consulta.
+  solo los indicadores que usan los proyectos de la tabla `InfoGeneral` (190, con sus 187
+  productos), validados por codigo contra el catalogo, sean territoriales o no (los de
+  bomberos, 370800900 y 370801300, no lo son). Sectores y programas van todos los
+  territoriales. Se genera con `modelos-metas/generar_migracion_catalogo_territorial.py`.
+  Solo de consulta; la vista de indicadores dice si cada uno esta homologado.
 - **Homologacion de indicadores**: indicador del catalogo -> indicador del plan
-  (`IndicadorMGA`). La `0021` crea las que coinciden por codigo (375); las demas las asigna
+  (`IndicadorMGA`). La `0021` crea las que coinciden por codigo (163); las demas las asigna
   el equipo. En Indicadores, los filtros "Lo usa algun proyecto" y "Sin homologar" dejan
   los que faltan.
 - **Formulacion de proyectos**: `FormulacionProyecto` (uno a uno con el proyecto: programa,

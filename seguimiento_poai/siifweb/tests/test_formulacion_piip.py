@@ -52,11 +52,14 @@ def carga_piip(filas):
     return registro
 
 
-class CatalogoTerritorial(TestCase):
+class CatalogoDeLosProyectos(TestCase):
     """Lo que deja la migracion 0021."""
 
-    def test_trae_los_territoriales_y_las_excepciones_de_bomberos(self):
-        self.assertGreater(IndicadorCatalogo.objects.filter(es_territorial=True).count(), 5000)
+    def test_trae_solo_los_indicadores_de_los_proyectos(self):
+        # Los 190 codigos de InfoGeneral, no los 5.739 territoriales del catalogo
+        self.assertEqual(IndicadorCatalogo.objects.count(), 190)
+        self.assertEqual(ProductoCatalogo.objects.count(), 187)
+        # Validados por codigo contra el catalogo: entran aunque no sean territoriales
         self.assertEqual(set(IndicadorCatalogo.objects.filter(es_territorial=False).values_list("codigo", flat=True)),
                          {"370800900", "370801300"})
 

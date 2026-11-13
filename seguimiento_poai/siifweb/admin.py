@@ -2565,10 +2565,10 @@ class Homologado(admin.SimpleListFilter):
 
 @admin.register(IndicadorCatalogo)
 class IndicadorCatalogoAdmin(CatalogoTerritorial):
-    """Con "Lo usa algun proyecto" y "Sin homologar" quedan los que el equipo debe
-    homologar a mano con un indicador del plan."""
+    """Solo los indicadores de los proyectos formulados en PIIP. Con "Sin homologar"
+    quedan los que el equipo debe homologar a mano con un indicador del plan."""
     list_display = ("codigo", "nombre_corto", "producto", "unidad_medida", "es_territorial",
-                    "plan", "n_proyectos")
+                    "homologado", "plan", "n_proyectos")
     list_filter = (UsadoEnProyectos, Homologado, "es_territorial", ("producto__programa__sector", RelatedDropdownFilter))
     list_select_related = ("producto", "unidad_medida")
 
@@ -2577,6 +2577,10 @@ class IndicadorCatalogoAdmin(CatalogoTerritorial):
                 .annotate(n=Count("en_proyectos", distinct=True))
                 .prefetch_related(Prefetch("homologaciones",
                                            queryset=HomologacionIndicador.objects.select_related("indicador_pdd"))))
+
+    @display(description="Homologado", boolean=True)
+    def homologado(self, obj):
+        return bool(obj.homologaciones.all())
 
     @display(description="Plan de desarrollo")
     def plan(self, obj):

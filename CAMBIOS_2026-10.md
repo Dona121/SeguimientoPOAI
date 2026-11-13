@@ -351,10 +351,12 @@ comprometido.
 
 ## 16. Catalogo PIIP y formulacion de los proyectos (12 de noviembre)
 
-- Catalogo MGA territorial aparte del del plan: migraciones `0020` (modelos) y `0021`
-  (datos: 20 sectores, 75 programas, 2.464 productos, 5.741 indicadores, con las dos
-  excepciones de bomberos), homologacion por codigo con el plan (375) y departamento de
-  Sucre para los municipios existentes. `0022`: el hash de la carga es unico por tipo.
+- Catalogo MGA aparte del del plan: migraciones `0020` (modelos) y `0021` (datos: 20
+  sectores y 75 programas territoriales, y solo los 190 indicadores que usan los proyectos
+  de `InfoGeneral`, con sus 187 productos, validados por codigo contra el catalogo),
+  homologacion por codigo con el plan (163) y departamento de Sucre para los municipios
+  existentes. `0022`: el hash de la carga es unico por tipo. La vista de indicadores
+  muestra si cada uno esta homologado.
 - Modelos `Departamento`, `HomologacionIndicador`, `FormulacionProyecto`,
   `IndicadorProyecto` y `MetaVigenciaIndicador`; `Municipio` apunta a su departamento.
 - Carga **Informacion general PIIP** (tabla `InfoGeneral`): solo BPIN con documentos en
