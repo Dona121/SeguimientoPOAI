@@ -16,7 +16,7 @@ from .models import CorteEjecucionGastos, FilaEjecucionGastos
 class CorteEjecucionGastosForm(forms.ModelForm):
     class Meta:
         model = CorteEjecucionGastos
-        fields = ("vigencia", "fecha_corte", "fecha_descarga", "archivo")
+        fields = ("vigencia", "fecha_inicio", "fecha_fin", "fecha_descarga", "archivo")
 
     def clean(self):
         datos = super().clean()
@@ -36,13 +36,13 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
     form = CorteEjecucionGastosForm
     compressed_fields = True
     list_fullwidth = True
-    list_display = ("__str__", "vigencia", "fecha_corte", "fecha_descarga", "estado_badge", "filas",
+    list_display = ("__str__", "vigencia", "fecha_inicio", "fecha_fin", "fecha_descarga", "estado_badge", "filas",
                     "rp", "obligacion", "pago", "ver_filas")
     list_filter = ("vigencia", ("estado", ChoicesDropdownFilter))
     readonly_fields = ("estado", "filas", "mensaje", "hash", "fecha_creacion", "fecha_actualizacion")
     actions = ("volver_a_procesar",)
     fieldsets = (
-        ("Reporte", {"fields": ("vigencia", "fecha_corte", "fecha_descarga", "archivo"),
+        ("Reporte", {"fields": ("vigencia", ("fecha_inicio", "fecha_fin"), "fecha_descarga", "archivo"),
                      "description": "Ejecución presupuestal del gasto por centro de costo y fondo "
                                     "(estado_ppto_gasto_gobatl_fyccw) de una vigencia, con todas sus columnas. "
                                     "Se importa al guardar."}),

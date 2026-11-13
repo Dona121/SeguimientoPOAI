@@ -370,7 +370,7 @@ texto, tal como vienen en el reporte de SIIFWEB, sin llaves a los catálogos.
 
 | modelo | llave natural | relaciones |
 |---|---|---|
-| `CorteEjecucionGastos` | (`vigencia`, `fecha_corte`) | archivo, `hash`, estado y mensaje de la carga |
+| `CorteEjecucionGastos` | (`vigencia`, `fecha_inicio`, `fecha_fin`) | `fecha_descarga`, archivo, `hash`, estado y mensaje de la carga |
 | `FilaEjecucionGastos` | (`corte`, `rubro_id_siifweb`, `recurso`, `centro_costo`, `proyecto`) | → `CorteEjecucionGastos` (CASCADE) |
 
 `FilaEjecucionGastos` guarda el detalle del reporte (filas con recurso): `rubro`, `recurso`,

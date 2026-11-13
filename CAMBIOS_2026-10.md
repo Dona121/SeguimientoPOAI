@@ -412,9 +412,9 @@ Sus datos solo los usa el CUIPO: no alimentan la ficha, el tablero ni los catalo
 `siifweb`, por eso rubro, recurso, centro de costo y proyecto van como texto, tal como
 vienen, y no como llaves (la carga no crea rubros, fuentes ni proyectos).
 
-- `CorteEjecucionGastos`: vigencia, fecha de corte, fecha de descarga, archivo, hash,
-  estado y mensaje. Uno por vigencia y fecha de corte; cada corte se conserva (cargar
-  octubre no toca septiembre). Se importa al guardarlo en el admin; la accion "Volver a
+- `CorteEjecucionGastos`: vigencia, fecha de inicio y de fin del corte, fecha de
+  descarga, archivo, hash, estado y mensaje. Uno por vigencia y rango; cada corte se
+  conserva (cargar octubre no toca septiembre). Se importa al guardarlo en el admin; la accion "Volver a
   procesar" lo repite.
 - `FilaEjecucionGastos`: el detalle del reporte (las filas con recurso) con todas sus
   columnas menos DISPONIBLE: RUBRO_ID, rubro, recurso, centro de costo y proyecto con sus
@@ -428,14 +428,16 @@ vienen, y no como llaves (la carga no crea rubros, fuentes ni proyectos).
   vigencia**; por ellas RUBRO_ID es parte de la llave.
 - Menu **CUIPO**: cortes (con RP, obligacion y pago totales) y filas, visibles con el
   permiso de ver cortes. Los roles del equipo no lo tienen.
-- **Fechas del corte.** La fecha de corte es la final del rango con que se descarga el
-  reporte, que empieza el 1 de enero (en una vigencia cerrada, el 31 de diciembre); la de
-  descarga, el dia en que se genero el archivo. El formulario exige que el corte caiga en
-  la vigencia y que la descarga no sea anterior al corte.
+- **Fechas del corte.** Inicio y fin son el rango con que se descarga el reporte (para
+  el CUIPO, que es acumulado, desde el 1 de enero; en una vigencia cerrada, hasta el 31 de
+  diciembre); la de descarga, el dia en que se genero el archivo. El formulario exige que
+  inicio y fin caigan en la vigencia, que el fin no sea anterior al inicio y que la
+  descarga no sea anterior al fin.
+- **Para el CUIPO se usa este reporte**, no la agrupacion del consolidado de compromisos.
 
 **Con los archivos de `modelos-metas/ejecucion-gastos`** (2022 a 2026): 395, 463, 422, 400
 y 405 filas de detalle; los subtotales cuadran en los cinco. El RP de 2026 al 11 de
 noviembre (1.127.765.686.152,76) es el mismo del consolidado de compromisos de esa fecha.
 
-**Pruebas.** 402, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 15 nuevas).
+**Pruebas.** 404, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 17 nuevas).
 

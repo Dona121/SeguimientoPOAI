@@ -13,7 +13,7 @@ from siifweb.models import Fechas, listado_vigencias
 
 
 class CorteEjecucionGastos(Fechas):
-    """Un reporte de ejecucion de gastos con su fecha de corte.
+    """Un reporte de ejecucion de gastos con el rango de fechas con que se descargo.
 
     Cada corte se conserva: cargar el de octubre no toca el de septiembre, y el CUIPO de
     un trimestre se puede volver a generar con el mismo insumo.
@@ -25,10 +25,14 @@ class CorteEjecucionGastos(Fechas):
         ERROR = "E", "Con error"
 
     vigencia = models.IntegerField(choices=listado_vigencias)
-    fecha_corte = models.DateField(
-        verbose_name="Fecha de corte",
-        help_text="Fecha final del rango con que se descargó el reporte, que empieza el 1 de enero de la "
-                  "vigencia. Para una vigencia cerrada, el 31 de diciembre")
+    fecha_inicio = models.DateField(
+        verbose_name="Fecha de inicio del corte",
+        help_text="Fecha inicial del rango con que se descargó el reporte. Para el CUIPO, que es acumulado, "
+                  "el 1 de enero de la vigencia")
+    fecha_fin = models.DateField(
+        verbose_name="Fecha de fin del corte",
+        help_text="Fecha final del rango con que se descargó el reporte. Para una vigencia cerrada, el 31 de "
+                  "diciembre")
     fecha_descarga = models.DateField(
         verbose_name="Fecha de descarga", default=timezone.localdate,
         help_text="Día en que se generó el archivo. Lo que se registra después en SIIFWEB con fecha anterior "
@@ -42,22 +46,27 @@ class CorteEjecucionGastos(Fechas):
     class Meta:
         verbose_name = "Corte de ejecución de gastos"
         verbose_name_plural = "Cortes de ejecución de gastos"
-        ordering = ("-vigencia", "-fecha_corte")
+        ordering = ("-vigencia", "-fecha_fin", "-fecha_inicio")
         constraints = [
-            models.UniqueConstraint(fields=["vigencia", "fecha_corte"], name="un_corte_por_vigencia_y_fecha"),
+            models.UniqueConstraint(fields=["vigencia", "fecha_inicio", "fecha_fin"],
+                                    name="un_corte_por_vigencia_y_rango"),
         ]
 
     def clean(self):
         errores = {}
-        if self.vigencia and self.fecha_corte and self.fecha_corte.year != self.vigencia:
-            errores["fecha_corte"] = f"La fecha de corte debe estar dentro de la vigencia {self.vigencia}."
-        if self.fecha_corte and self.fecha_descarga and self.fecha_descarga < self.fecha_corte:
-            errores["fecha_descarga"] = "El reporte no se pudo descargar antes de su fecha de corte."
+        for campo in ("fecha_inicio", "fecha_fin"):
+            valor = getattr(self, campo)
+            if self.vigencia and valor and valor.year != self.vigencia:
+                errores[campo] = f"La fecha debe estar dentro de la vigencia {self.vigencia}."
+        if self.fecha_inicio and self.fecha_fin and self.fecha_inicio > self.fecha_fin:
+            errores["fecha_fin"] = "La fecha de fin no puede ser anterior a la de inicio."
+        if self.fecha_fin and self.fecha_descarga and self.fecha_descarga < self.fecha_fin:
+            errores["fecha_descarga"] = "El reporte no se pudo descargar antes de la fecha de fin del corte."
         if errores:
             raise ValidationError(errores)
 
     def __str__(self):
-        return f"Ejecución de gastos {self.vigencia} al {self.fecha_corte:%d/%m/%Y}"
+        return f"Ejecución de gastos {self.vigencia} del {self.fecha_inicio:%d/%m/%Y} al {self.fecha_fin:%d/%m/%Y}"
 
 
 class FilaEjecucionGastos(Fechas):
