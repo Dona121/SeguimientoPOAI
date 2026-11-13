@@ -69,7 +69,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 408.
+  disco temporal). Hoy son 428.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -120,8 +120,8 @@ main ← formulacion-piip ← cuipo-ejecucion-gastos ← piip-control-siifweb
   dependencias de `siifweb`).
 - `piip-control-siifweb`: formulación de todos los BPIN del PIIP con semáforo de SIIFWEB
   (migración `siifweb/0022`).
-- Las fases del CUIPO siguen sobre esta cadena, en ramas nuevas a partir de
-  `piip-control-siifweb`.
+- Las fases del CUIPO siguen sobre esta cadena, una rama por fase: `cuipo-fase1-listas`
+  (sobre `piip-control-siifweb`) y las siguientes encima.
 
 **Hecho el 13/11 (fase 0):** se descartó la rama `centro-costo-compromisos` (centro de costo
 por línea en `CompromisoImputacion`, migración `siifweb/0022` de entonces): se hizo cuando el
@@ -444,7 +444,25 @@ como `siifweb/0009`. El menú "CUIPO" hoy solo lo ven quienes tienen el permiso 
      importa).
   4. Revisar la vista de pendientes y distribuir.
 
-**Fase 1 — Catálogos e importador de listas**
+**Fase 1 — Catálogos e importador de listas** — **hecha el 13/11** (rama
+`cuipo-fase1-listas`, migración `cuipo/0002`, 20 pruebas en `cuipo/tests/test_listas.py`).
+Importada en local la versión 09-2026: 3.075 conceptos (79 con CPC), 231 fuentes, 30
+secciones, 6 vigencias del gasto, 5.072 productos (con el 0), 7.659 CPC, 167 detalles
+sectoriales, 2 situaciones de fondos, 87 políticas públicas y 5.736 terceros; importarla de
+nuevo no cambia nada. Ajustes frente a lo previsto:
+- `ProductoCUIPO.aplica_territoriales` es texto, no booleano: la columna "Aplica a Entidades
+  Territoriales" viene vacía en 5.067 productos y dice "Nuevo" en 4. Se guarda como viene.
+- Se guardan también `notas` del concepto, `sector` y `programa` del producto, `seccion` y
+  `division` del CPC, y `grupo` y `sector` del detalle sectorial.
+- `version` de cada código es la **última versión que lo trajo**; `VersionListas` guarda
+  además estado, mensaje y hash, y no se puede borrar mientras algún código la cite.
+- El comando no sube el archivo al almacenamiento (en local es el bucket de producción); la
+  versión creada por comando queda sin archivo. Desde el admin sí se guarda.
+- Los CPC numéricos del archivo real ya tienen 5 o 7 dígitos; el relleno con ceros (4 → 5,
+  6 → 7) queda para versiones futuras.
+- Menú: "Versiones de las listas CHIP" en la sección CUIPO y una sección nueva "Listas CHIP"
+  con los diez catálogos, en solo lectura (no se agregan, editan ni borran a mano).
+
 - Archivos: `cuipo/models.py` (`VersionListas`, base abstracta, 10 modelos con
   `ProductoCUIPO` y `TerceroCUIPO`), `cuipo/listas.py`,
   `cuipo/management/commands/importar_listas_cuipo.py`, acción en `cuipo/admin.py`

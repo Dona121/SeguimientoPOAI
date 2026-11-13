@@ -473,3 +473,30 @@ costo por linea en `CompromisoImputacion`): se hizo cuando el CUIPO se iba a arm
 el consolidado de compromisos, y el reporte oficial de ejecucion ya trae el centro de costo
 por fila. La cadena queda `main <- formulacion-piip <- cuipo-ejecucion-gastos <-
 piip-control-siifweb`, y la migracion de la formulacion paso a ser la `0022`.
+
+## 20. CUIPO, fase 1: listas CHIP (13 de noviembre)
+
+Rama `cuipo-fase1-listas`, sobre `piip-control-siifweb`. Primera fase del plan del CUIPO
+(`PLAN_CUIPO.md`), que desde hoy implementa el asistente por fases.
+
+- Diez catalogos CHIP en la app `cuipo` (conceptos, fuentes, secciones presupuestales,
+  vigencias del gasto, productos MGA, CPC, detalles sectoriales, situaciones de fondos,
+  politicas publicas y terceros) sobre una base comun: codigo unico como texto exacto,
+  descripcion, activo y la ultima version que lo trajo. Los dos que chocaban de nombre con
+  `siifweb` llevan sufijo: `ProductoCUIPO` y `TerceroCUIPO`.
+- `VersionListas` y el importador `cuipo/listas.py`: lee las once hojas de
+  `Listas_Categoria_CUIPO_MM-AAAA.xlsx`, crea lo nuevo, actualiza lo que cambio y deja
+  inactivo lo que ya no viene; todo en una transaccion. Valida hojas, columnas, codigos
+  repetidos, nivel S/D y largo del CPC (1, 5 o 7). La hoja Conceptos_CPC marca
+  `requiere_cpc`; el producto `0 - NO APLICA` se crea aunque la hoja no lo traiga.
+- Se importa desde el admin (al guardar la version; accion "Volver a importar") o con
+  `manage.py importar_listas_cuipo <archivo> --version 09-2026`, que no sube el archivo.
+- Menu: "Versiones de las listas CHIP" en CUIPO y la seccion "Listas CHIP", en solo lectura.
+- Migracion `cuipo/0002`.
+
+**En la base local**, version 09-2026: 3.075 conceptos (79 con CPC), 231 fuentes, 30
+secciones, 6 vigencias, 5.072 productos, 7.659 CPC, 167 detalles sectoriales, 2
+situaciones de fondos, 87 politicas publicas y 5.736 terceros, en 4 segundos. Importarla
+otra vez no cambia nada.
+
+**Pruebas.** 428, todas pasan (`cuipo/tests/test_listas.py`, 20 nuevas).

@@ -379,3 +379,18 @@ texto, tal como vienen en el reporte de SIIFWEB, sin llaves a los catálogos.
 apropiación inicial, adición, disminución, crédito, contracrédito, aplazamientos,
 desaplazamientos, apropiación definitiva, solicitud en trámite, CDP, RP, obligación y pago.
 Los subtotales del árbol no se guardan; la carga verifica que cuadren con el detalle.
+
+### Listas CHIP (app `cuipo`, fase 1 del CUIPO)
+
+| modelo | llave natural | campos propios |
+|---|---|---|
+| `VersionListas` | `nombre` ("09-2026") | archivo (opcional), hash, `cargado_por` → `auth.User`, estado, mensaje |
+| `ConceptoCUIPO` | `codigo` | `nivel` (S/D), `habilitado_departamentos`, `requiere_cpc`, `notas` |
+| `FuenteCUIPO`, `SeccionPresupuestal`, `VigenciaGasto`, `SituacionFondos`, `PoliticaPublica`, `TerceroCUIPO` | `codigo` | — |
+| `ProductoCUIPO` | `codigo` | `sector`, `programa`, `aplica_territoriales` (texto) |
+| `CPC` | `codigo` (largo 1, 5 o 7) | `seccion`, `division` |
+| `DetalleSectorial` | `codigo` | `grupo`, `sector` |
+
+Todos los catálogos heredan de `CatalogoCHIP` (abstracta): `codigo` único como texto exacto,
+`descripcion`, `activo` y `version` → `VersionListas` (PROTECT; la última versión que trajo el
+código). Lo que deja de venir queda inactivo; nada se borra.

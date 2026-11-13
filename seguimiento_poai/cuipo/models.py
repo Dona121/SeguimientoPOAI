@@ -114,3 +114,140 @@ class FilaEjecucionGastos(Fechas):
 
     def __str__(self):
         return f"{self.rubro} · {self.recurso} · CC {self.centro_costo} · {self.proyecto}"
+
+
+# ---------------------------------------------------------------------------
+# Listas CHIP del CUIPO (Listas_Categoria_CUIPO_MM-AAAA.xlsx)
+# ---------------------------------------------------------------------------
+
+class VersionListas(Fechas):
+    """Una version de las listas de la categoria CUIPO que publica la Contaduria.
+
+    Cada importacion actualiza los catalogos por codigo: lo nuevo se crea, lo que cambia se
+    actualiza y lo que ya no viene queda inactivo (nunca se borra, porque una distribucion
+    vieja puede estar usandolo).
+    """
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "P", "Pendiente"
+        PROCESADO = "OK", "Procesado"
+        ERROR = "E", "Con error"
+
+    nombre = models.CharField(max_length=20, unique=True, help_text='Por ejemplo "09-2026"')
+    archivo = models.FileField(upload_to="cuipo/listas/", blank=True,
+                               help_text="Listas_Categoria_CUIPO_MM-AAAA.xlsx de la Contaduría")
+    hash = models.CharField(max_length=64, blank=True, verbose_name="Hash del archivo")
+    cargado_por = models.ForeignKey("auth.User", on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="versiones_listas_cuipo", verbose_name="Cargado por")
+    estado = models.CharField(max_length=2, choices=Estado.choices, default=Estado.PENDIENTE)
+    mensaje = models.TextField(blank=True, verbose_name="Resultado de la importación")
+
+    class Meta:
+        verbose_name = "Versión de las listas CHIP"
+        verbose_name_plural = "Versiones de las listas CHIP"
+        ordering = ("-fecha_creacion",)
+
+    def __str__(self):
+        return f"Listas CUIPO {self.nombre}"
+
+
+class CatalogoCHIP(Fechas):
+    """Base de las listas CHIP: codigo exacto como texto, descripcion y si sigue vigente."""
+    codigo = models.CharField(max_length=40, unique=True)
+    descripcion = models.TextField(verbose_name="Descripción")
+    activo = models.BooleanField(default=True, help_text="Vino en la última versión importada")
+    version = models.ForeignKey(VersionListas, on_delete=models.PROTECT, related_name="+",
+                                verbose_name="Versión", help_text="Última versión que lo trajo")
+
+    class Meta:
+        abstract = True
+        ordering = ("codigo",)
+
+    def __str__(self):
+        return f"{self.codigo} - {self.descripcion}"
+
+
+class ConceptoCUIPO(CatalogoCHIP):
+    class Nivel(models.TextChoices):
+        SUMA = "S", "Suma (agrupa)"
+        DETALLE = "D", "Detalle"
+
+    nivel = models.CharField(max_length=1, choices=Nivel.choices)
+    habilitado_departamentos = models.BooleanField(
+        default=False, verbose_name="Habilitado para departamentos", help_text='Columna "438 - DEPARTAMENTOS"')
+    requiere_cpc = models.BooleanField(default=False, verbose_name="Requiere CPC",
+                                       help_text='Está en la hoja "Conceptos_CPC"')
+    notas = models.TextField(blank=True)
+
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Concepto CUIPO"
+        verbose_name_plural = "Conceptos CUIPO"
+
+
+class FuenteCUIPO(CatalogoCHIP):
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Fuente CUIPO"
+        verbose_name_plural = "Fuentes CUIPO"
+
+
+class SeccionPresupuestal(CatalogoCHIP):
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Sección presupuestal"
+        verbose_name_plural = "Secciones presupuestales"
+
+
+class VigenciaGasto(CatalogoCHIP):
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Vigencia del gasto"
+        verbose_name_plural = "Vigencias del gasto"
+
+
+class ProductoCUIPO(CatalogoCHIP):
+    """Producto MGA de la lista CHIP. Lleva sufijo para no confundirse con siifweb.ProductoMGA."""
+    sector = models.CharField(max_length=255, blank=True)
+    programa = models.TextField(blank=True)
+    aplica_territoriales = models.CharField(
+        max_length=50, blank=True, verbose_name="Aplica a entidades territoriales",
+        help_text="Como viene en la lista: en la de 09-2026 solo dice \"Nuevo\" en 4 productos")
+
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Producto MGA (CHIP)"
+        verbose_name_plural = "Productos MGA (CHIP)"
+
+
+class CPC(CatalogoCHIP):
+    seccion = models.CharField(max_length=255, blank=True, verbose_name="Sección")
+    division = models.CharField(max_length=255, blank=True, verbose_name="División")
+
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "CPC"
+        verbose_name_plural = "CPC"
+
+
+class DetalleSectorial(CatalogoCHIP):
+    grupo = models.CharField(max_length=255, blank=True, verbose_name="Grupo concepto")
+    sector = models.CharField(max_length=255, blank=True)
+
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Detalle sectorial"
+        verbose_name_plural = "Detalles sectoriales"
+
+
+class SituacionFondos(CatalogoCHIP):
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Situación de fondos"
+        verbose_name_plural = "Situaciones de fondos"
+
+
+class PoliticaPublica(CatalogoCHIP):
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Política pública"
+        verbose_name_plural = "Políticas públicas"
+
+
+class TerceroCUIPO(CatalogoCHIP):
+    """Tercero de la lista CHIP. Lleva sufijo para no confundirse con siifweb.Tercero."""
+
+    class Meta(CatalogoCHIP.Meta):
+        verbose_name = "Tercero CUIPO"
+        verbose_name_plural = "Terceros CUIPO"

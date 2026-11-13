@@ -7,10 +7,13 @@ from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import ChoicesDropdownFilter, RelatedDropdownFilter
 from unfold.decorators import action, display
 
+from siifweb import cargas
 from siifweb.admin import SoloLectura, hash_archivo, pesos
 
-from . import ejecucion
-from .models import CorteEjecucionGastos, FilaEjecucionGastos
+from . import ejecucion, listas
+from .models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, FilaEjecucionGastos, FuenteCUIPO,
+                     PoliticaPublica, ProductoCUIPO, SeccionPresupuestal, SituacionFondos, TerceroCUIPO,
+                     VersionListas, VigenciaGasto)
 
 
 class CorteEjecucionGastosForm(forms.ModelForm):
@@ -108,3 +111,115 @@ class FilaEjecucionGastosAdmin(SoloLectura):
     @display(description="Nombre del rubro", ordering="nombre_rubro")
     def nombre_rubro_corto(self, obj):
         return obj.nombre_rubro if len(obj.nombre_rubro) <= 60 else obj.nombre_rubro[:60].rstrip() + "..."
+
+
+# ---------------------------------------------------------------------------
+# Listas CHIP
+# ---------------------------------------------------------------------------
+
+class VersionListasForm(forms.ModelForm):
+    class Meta:
+        model = VersionListas
+        fields = ("nombre", "archivo")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["archivo"].required = True
+
+    def clean(self):
+        datos = super().clean()
+        archivo = datos.get("archivo")
+        if archivo and hasattr(archivo, "chunks"):
+            digest = hash_archivo(archivo)
+            previa = VersionListas.objects.filter(hash=digest).exclude(pk=self.instance.pk).first()
+            if previa:
+                raise forms.ValidationError(f"Este archivo ya está importado como '{previa}'.")
+            self.instance.hash = digest
+        return datos
+
+
+@admin.register(VersionListas)
+class VersionListasAdmin(ModelAdmin):
+    """Las listas CHIP que publica la Contaduria. Al guardar una version se importa."""
+    form = VersionListasForm
+    compressed_fields = True
+    list_fullwidth = True
+    list_display = ("nombre", "fecha_creacion", "cargado_por", "estado_badge", "mensaje")
+    readonly_fields = ("estado", "mensaje", "hash", "cargado_por", "fecha_creacion", "fecha_actualizacion")
+    actions = ("volver_a_importar",)
+    fieldsets = (
+        ("Listas", {"fields": ("nombre", "archivo"),
+                    "description": "Listas_Categoria_CUIPO_MM-AAAA.xlsx de la Contaduría. Se importa al guardar: "
+                                   "lo nuevo se crea, lo que cambió se actualiza y lo que ya no viene queda "
+                                   "inactivo."}),
+        ("Resultado de la importación", {"fields": ("estado", "mensaje", "cargado_por", "hash")}),
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.cargado_por = request.user
+        super().save_model(request, obj, form, change)
+        if not change or "archivo" in form.changed_data:
+            self._importar(request, obj)
+
+    def _importar(self, request, version):
+        if not version.archivo:
+            self.message_user(request, f"{version}: no tiene archivo para importar.", messages.ERROR)
+            return
+        bien = listas.procesar(version, cargas.stream(version.archivo))
+        self.message_user(request, f"{version}: {version.mensaje}", messages.SUCCESS if bien else messages.ERROR)
+
+    @action(description="Volver a importar las versiones seleccionadas", icon="play_arrow")
+    def volver_a_importar(self, request, queryset):
+        for version in queryset.order_by("fecha_creacion"):
+            self._importar(request, version)
+
+    @display(description="Estado", label={"Pendiente": "warning", "Procesado": "success", "Con error": "danger"})
+    def estado_badge(self, obj):
+        return obj.get_estado_display()
+
+
+class CatalogoCHIPAdmin(SoloLectura):
+    """Las listas se mantienen importando una version nueva, no a mano."""
+    list_display = ("codigo", "descripcion_corta", "activo", "version")
+    list_filter = ("activo", ("version", RelatedDropdownFilter))
+    search_fields = ("codigo", "descripcion")
+    list_select_related = ("version",)
+    list_per_page = 100
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @display(description="Descripción", ordering="descripcion")
+    def descripcion_corta(self, obj):
+        return obj.descripcion if len(obj.descripcion) <= 90 else obj.descripcion[:90].rstrip() + "..."
+
+
+@admin.register(ConceptoCUIPO)
+class ConceptoCUIPOAdmin(CatalogoCHIPAdmin):
+    list_display = ("codigo", "descripcion_corta", "nivel", "habilitado_departamentos", "requiere_cpc", "activo")
+    list_filter = ("nivel", "habilitado_departamentos", "requiere_cpc", "activo")
+
+
+@admin.register(ProductoCUIPO)
+class ProductoCUIPOAdmin(CatalogoCHIPAdmin):
+    list_display = ("codigo", "descripcion_corta", "sector", "aplica_territoriales", "activo")
+    list_filter = ("activo", "sector")
+    search_fields = ("codigo", "descripcion", "programa")
+
+
+@admin.register(CPC)
+class CPCAdmin(CatalogoCHIPAdmin):
+    list_display = ("codigo", "descripcion_corta", "seccion", "activo")
+    list_filter = ("activo", "seccion")
+
+
+@admin.register(DetalleSectorial)
+class DetalleSectorialAdmin(CatalogoCHIPAdmin):
+    list_display = ("codigo", "descripcion_corta", "grupo", "sector", "activo")
+    list_filter = ("activo", "sector")
+
+
+for _modelo in (FuenteCUIPO, SeccionPresupuestal, VigenciaGasto, SituacionFondos, PoliticaPublica, TerceroCUIPO):
+    admin.site.register(_modelo, CatalogoCHIPAdmin)
+
