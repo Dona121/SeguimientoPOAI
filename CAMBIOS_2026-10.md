@@ -349,19 +349,58 @@ pagado de cada fuente en el proyecto, con su total. Cada etapa se suma en su pro
 consulta y se cruza por la fuente, para que varias obligaciones de un RP no dupliquen lo
 comprometido.
 
-## 16. Catalogo PIIP y formulacion de los proyectos (12 de noviembre)
+## 16. Catalogo PIIP y Ficha PIIP (12 de noviembre)
 
-- Catalogo PIIP aparte del del plan, solo con producto e indicador: migraciones `0020`
-  (modelos, mas el hash de la carga unico por tipo) y `0021` (los 190 indicadores que usan
-  los proyectos de `InfoGeneral`, con sus 187 productos, validados por codigo contra el
-  catalogo MGA). Cada indicador se vincula con el indicador del plan (163 por codigo) y de
-  alla salen producto, programa y sector del plan. Departamento de Sucre para los
-  municipios existentes.
-- Modelos `Departamento`, `FormulacionProyecto`, `IndicadorProyecto` y
-  `MetaVigenciaIndicador`; `Municipio` apunta a su departamento.
-- Carga **Informacion general PIIP** (tabla `InfoGeneral`): solo BPIN con documentos en
-  SIIFWEB; valida cada indicador por codigo y crea el que falte con sus metas; homologa por
-  codigo los que queden sin homologar. En la base local: 364 proyectos, 436 indicadores y
-  519 metas; 124 BPIN quedan fuera por no tener ejecucion.
-- Modulo **Catalogo PIIP** en el menu (formulacion, productos e indicadores, editables) y
-  pestana **Ficha PIIP** en la ficha: lo del PIIP y la linea del plan homologada.
+Rama `formulacion-piip`, sin subir. Detalle completo en `CATALOGO_PIIP.md`.
+
+**Que se pidio.** Que la ficha del proyecto muestre lo formulado en el PIIP (sector,
+programa, vigencias, objetivo general, problema, descripcion, poblaciones, region,
+departamento, municipios y, por producto e indicador, objetivo especifico, etapa, UMP,
+UMI, tipo, acumula, meta total y metas por vigencia), tomado de la tabla `InfoGeneral`
+del libro `ReporteSIIFWEB_*.xlsx`.
+
+**Como quedo.**
+
+- Catalogo PIIP aparte del catalogo del plan, porque este no admite productos nuevos sin
+  pasar por la Asamblea. Solo producto e indicador (`ProductoCatalogo`,
+  `IndicadorCatalogo`) y solo los que usan los proyectos: 190 indicadores y 187 productos,
+  validados por codigo contra el catalogo MGA de junio de 2025 en la migracion `0021`.
+- Cada indicador del catalogo apunta a un indicador del plan (`indicador_pdd`); de alla
+  salen el producto, el programa y el sector del plan. La `0021` homologo 163 por codigo;
+  los demas se homologan a mano en la ficha del indicador. La carga y el admin homologan
+  por codigo los que queden sin homologar; una homologacion manual no la cambia nadie mas.
+- La ficha PIIP de cada proyecto: `FormulacionProyecto` (uno a uno con `Proyecto`; sector y
+  programa como texto del PIIP), `IndicadorProyecto` (el producto sale del indicador) y
+  `MetaVigenciaIndicador`. Solo para BPIN con algun documento en SIIFWEB: sin ejecucion no
+  hay trazabilidad presupuestal.
+- `Departamento` (con region) y `Municipio.departamento`. Los municipios existentes quedan
+  en Sucre.
+- Carga **Informacion general PIIP**: atomica; reemplaza la ficha de cada BPIN que trae el
+  archivo; valida cada indicador por codigo y crea el que falte (con su producto) y sus
+  metas; avisa lo creado, los BPIN omitidos, los municipios no reconocidos y las metas
+  contradictorias.
+- `CargaReporte.hash` unico por tipo de reporte: el mismo libro se carga como SECOP II y
+  como PIIP.
+- Menu **Catalogo PIIP** (Formulacion de proyectos, Productos, Indicadores), solo para
+  administradores. Pestana **Ficha PIIP** en la ficha, en el orden de `InfoGeneral`, con la
+  linea del plan homologado al final, aunque coincida.
+
+**En la base local.** 364 proyectos cargados, 436 indicadores y 519 metas; 124 BPIN del
+PIIP sin ejecucion en SIIFWEB quedan fuera; 18 indicadores usados quedan por homologar a
+mano; 4 municipios de fuera de Sucre por crear en el admin.
+
+**Lo que se descarto en el camino.** Cargar el catalogo MGA territorial completo (5.739
+indicadores, la mayoria sin uso); guardar sector y programa en el catalogo PIIP (salen del
+plan); un modelo de homologacion aparte (es un campo del indicador); una tabla de
+productos del proyecto (el producto sale del indicador); el campo "producto principal".
+
+**Pruebas.** 385, todas pasan (`test_formulacion_piip.py` es nuevo).
+
+## 17. Produccion con DEBUG=False (12 de noviembre)
+
+En produccion no se podia poner `DEBUG=False`: toda pagina caia con `Missing staticfiles
+manifest entry`. El `collectstatic` corria en el `preDeployCommand` de Railway, que se
+ejecuta en un contenedor aparte cuyo disco no llega al que atiende; con `DEBUG=True`
+Django no consulta el manifiesto de WhiteNoise y por eso funcionaba. Ahora corre en el
+`buildCommand` y queda en la imagen; el `preDeployCommand` solo hace `migrate`. Subido a
+`main` (`202e619`) y desplegado.

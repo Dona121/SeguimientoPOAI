@@ -643,51 +643,28 @@ corre en un contenedor aparte y lo que escribe en disco no llega al que atiende.
 `DEBUG=False` el manifiesto de WhiteNoise tiene que estar en la imagen; si falta, toda
 pagina cae con `Missing staticfiles manifest entry`.
 
-## Catalogo PIIP y formulacion de los proyectos
+## Catalogo PIIP y Ficha PIIP
 
-El catalogo del plan de desarrollo no admite productos nuevos (cambiarlo pasa por la
-Asamblea), y los proyectos se formulan en PIIP con el catalogo MGA completo. Por eso sus
-productos e indicadores van aparte, en el modulo **Catalogo PIIP** del menu:
+El detalle completo (modelos, relaciones, que hace la carga, que se valida y que no, que se
+edita, que pasa solo) esta en `../CATALOGO_PIIP.md`. En resumen:
 
-- **Productos** (`ProductoCatalogo`) e **Indicadores** (`IndicadorCatalogo`): solo los que
-  usan los proyectos. La migracion `0021` carga los 190 indicadores de la tabla
-  `InfoGeneral` (con sus 187 productos), validados por codigo contra el
-  `CatalogoProductoMGA_junio_2025.xlsx`; se genera con
-  `modelos-metas/generar_migracion_catalogo_territorial.py`. Se editan en el admin.
-- Cada indicador se **vincula con un indicador del plan** (`indicador_pdd`). De alla salen
-  el producto, el programa y el sector del plan: el catalogo PIIP no guarda programa ni
-  sector. La homologacion es automatica por codigo (la `0021` hizo 163; luego la hacen la
-  carga y el admin para el que quede sin homologar) o a mano en la ficha del indicador, con
-  su observacion. La lista de indicadores dice si cada uno esta homologado, si fue por
-  codigo, y filtra los que faltan.
-- **Formulacion de proyectos**: `FormulacionProyecto` (uno a uno con el proyecto: sector y
-  programa como los trae el PIIP, vigencias de inicio y fin, objetivo general, problema,
-  descripcion, poblaciones y municipios), `IndicadorProyecto` (indicador del catalogo,
-  objetivo especifico, etapa, UMI, tipo, acumula y meta total; el
-  producto sale del indicador) y `MetaVigenciaIndicador`.
-
-Se llena con la carga **Informacion general PIIP**, que lee la tabla de Excel `InfoGeneral`
-(hoja `IndicadoresPIIP` del libro `ReporteSIIFWEB_*.xlsx`, el mismo de SECOP II: el hash
-del archivo es unico por tipo de reporte, asi que el libro se carga una vez para cada uno).
-
-- Solo entran los BPIN que tienen algun documento en SIIFWEB (CDP, RP, obligacion, reserva
-  o contrato): sin ejecucion no hay traza presupuestal. Los demas se listan en el mensaje.
-- Cada BPIN del archivo reemplaza su formulacion anterior; los que no trae no se tocan.
-- Cada indicador se valida contra el catalogo por su codigo. El que no esta se crea con los
-  datos del PIIP (y su producto si tampoco esta), se asocia al proyecto con sus metas y se
-  lista en el mensaje. Lo que ya esta en el catalogo no se cambia.
-- Los indicadores sin homologar se homologan por codigo con el plan si su codigo esta alla;
-  una homologacion hecha a mano no se cambia.
-- Los municipios se cruzan por nombre (sin tildes ni mayusculas); los que no estan en el
-  admin se avisan. Un municipio sin departamento lo toma del PIIP.
-- Un indicador repetido bajo dos objetivos especificos queda una vez, con los dos
-  objetivos, y su meta no se duplica.
-
-En la ficha del proyecto, la pestana **Ficha PIIP** muestra los datos generales y la
-tabla de indicadores, un dato por columna: el producto y el indicador como los trae el
-PIIP; si esta homologado, la linea del plan (sector, programa, producto e indicador) aunque
-coincida, para ver que quedo bien homologado, y si fue por codigo o a mano; y las metas
-por vigencia en columnas.
+- El catalogo del plan de desarrollo no admite productos nuevos (pasa por la Asamblea), asi
+  que los productos e indicadores con que se formulan los proyectos van aparte, en el
+  modulo **Catalogo PIIP**: `ProductoCatalogo` e `IndicadorCatalogo`, solo los que usan los
+  proyectos (la `0021` carga los 190 de `InfoGeneral`, validados por codigo contra el
+  catalogo MGA). Se editan en el admin.
+- Cada indicador apunta a un indicador del plan (`indicador_pdd`): de alla salen producto,
+  programa y sector del plan. Se homologa solo por codigo (migracion, carga y admin, y solo
+  si esta sin homologar) o a mano en la ficha del indicador.
+- `FormulacionProyecto` (uno a uno con el proyecto), `IndicadorProyecto` y
+  `MetaVigenciaIndicador` guardan la ficha PIIP de cada proyecto. Se llenan con la carga
+  **Informacion general PIIP** (tabla `InfoGeneral`), solo para BPIN con documentos en
+  SIIFWEB; cada indicador se valida contra el catalogo por su codigo y el que falta se crea
+  con sus metas.
+- `Departamento` nuevo, y `Municipio` apunta a el. El hash de la carga es unico por tipo de
+  reporte, porque SECOP II y PIIP salen del mismo libro.
+- En la ficha del proyecto, la pestana **Ficha PIIP** muestra los datos generales y los
+  indicadores en el orden de `InfoGeneral`, y al final la linea del plan homologado.
 
 ## Reportes
 

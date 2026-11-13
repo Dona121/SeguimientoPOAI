@@ -345,3 +345,20 @@ CargaReporte ← (referido opcionalmente por toda fila de datos)
 6. `Contrato` + actas + imputaciones — el módulo contractual (histórico).
 7. Bitácora, ingresos, planeación, carga — cuando los necesites.
 ```
+
+---
+
+## 9. Catálogo PIIP y formulación de los proyectos (noviembre de 2026)
+
+Tablas agregadas después de este diccionario. El detalle (campos, relaciones, borrados,
+carga y validaciones) está en `CATALOGO_PIIP.md`.
+
+| Tabla | Llave natural | Relaciones |
+|---|---|---|
+| `ProductoCatalogo` | `codigo` | → `MedidoATravesDe` |
+| `IndicadorCatalogo` | `codigo` | → `ProductoCatalogo`, → `UnidadMedida`, → `IndicadorMGA` (homologación con el plan) |
+| `FormulacionProyecto` | uno a uno con `Proyecto` | → `CargaReporte`, ↔ `Municipio` |
+| `IndicadorProyecto` | (`formulacion`, `indicador`) | → `FormulacionProyecto`, → `IndicadorCatalogo` |
+| `MetaVigenciaIndicador` | (`indicador_proyecto`, `vigencia`) | → `IndicadorProyecto` |
+| `Departamento` | `nombre` | ← `Municipio.departamento` |
+
