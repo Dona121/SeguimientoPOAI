@@ -253,14 +253,16 @@
       <table class="w-full text-sm indicadores-piip">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr class="grupos">
-            <th colspan="5">PIIP</th>
+            <th colspan="7">PIIP</th>
             <th colspan="6" class="plan">Plan de desarrollo (homologado)</th>
-            <th colspan="{{ piip_vigencias|length|add:7 }}">Formulación</th>
+            <th colspan="{{ piip_vigencias|length|add:5 }}">Formulación</th>
           </tr>
           <tr>
             <th>Objetivo específico</th>
             <th>Código producto</th>
             <th>Producto</th>
+            <th>Producto principal</th>
+            <th>UMP</th>
             <th>Código indicador</th>
             <th>Indicador</th>
             <th class="plan">Sector</th>
@@ -269,9 +271,7 @@
             <th class="plan">Producto</th>
             <th class="plan">Código indicador</th>
             <th class="plan">Indicador</th>
-            <th>Producto principal</th>
             <th>Etapa</th>
-            <th>UMP</th>
             <th>Tipo indicador</th>
             <th>UMI</th>
             <th>Acumula</th>
@@ -285,6 +285,8 @@
             <td class="largo">{{ i.objetivo_especifico|default:"—"|linebreaksbr }}</td>
             <td class="font-mono">{{ i.indicador.producto.codigo }}</td>
             <td class="largo">{{ i.indicador.producto.nombre }}</td>
+            <td>{% if i.producto_principal %}Sí{% else %}No{% endif %}</td>
+            <td>{{ i.indicador.producto.medido_a_traves_de|default:"—" }}</td>
             <td class="font-mono">{{ i.indicador.codigo }}</td>
             <td class="largo">{{ i.indicador.nombre }}</td>
             {% with p=i.indicador.indicador_pdd %}
@@ -302,9 +304,7 @@
             <td class="plan text-base-500" colspan="6">Sin homologar</td>
             {% endif %}
             {% endwith %}
-            <td>{% if i.producto_principal %}Sí{% else %}No{% endif %}</td>
             <td>{{ i.get_etapa_display|default:"—" }}</td>
-            <td>{{ i.indicador.producto.medido_a_traves_de|default:"—" }}</td>
             <td>{{ i.get_tipo_display|default:"—" }}</td>
             <td>{{ i.unidad_medida|default:"—" }}</td>
             <td>{% if i.acumula is None %}—{% elif i.acumula %}Sí{% else %}No{% endif %}</td>
