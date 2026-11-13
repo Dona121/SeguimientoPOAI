@@ -147,6 +147,9 @@ class Pantalla(TestCase):
         self.assertNotContains(respuesta, "Proporcional a compromisos")     # el reparto es manual
         self.assertContains(respuesta, "2.3.2.02.02.009")
         self.assertContains(respuesta, 'id="elegir"')
+        largo = "Servicio de apoyo financiero para la implementación de proyectos en materia educativa y de bienestar"
+        ProductoCUIPO.objects.filter(codigo="2201048").update(descripcion=largo)
+        self.assertContains(self.client.get(self.url), largo, count=None)      # el nombre completo, sin recortar
         self.assertContains(respuesta, 'id="fila-')
         self.assertContains(respuesta, "X-CSRFToken")
         self.assertContains(self.client.get(reverse("admin:cuipo_distribucionbpin_changelist")), self.url)

@@ -583,7 +583,8 @@ Rama `cuipo-fase6-plano`, sobre `cuipo-fase5-validaciones`. Sin migraciones.
 - Pantalla Distribuir: se quitaron "Proporcional a compromisos" y "Todo a un producto" (el
   reparto es manual); los cualitativos se eligen en una ventana con buscador y la
   descripcion completa; cada fila muestra rubro, recurso y centro de costo con sus nombres
-  completos y su concepto, fuente CUIPO y seccion.
+  completos y su concepto, fuente CUIPO y seccion; los productos con su nombre completo; y
+  en globos de ayuda, las reglas de validacion y que significa cada estado.
 - `cuipo/plano.py`: el bloque D_EJECUCION_DE_GASTOS de la inversion (encabezado, lineas de 15
   campos, resumenes por prefijo, enteros con mayor residuo por fila, agrupacion, sin ceros,
   orden vigencia -> seccion -> codigo) y su integracion en el plano completo de presupuesto

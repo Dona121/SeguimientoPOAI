@@ -591,6 +591,9 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   (`distribuir/elegir/`). Solo ofrece códigos activos y muestra hasta 60 coincidencias. Se
   probó antes con listas desplegables, pero los nombres largos no se leían.
 - La lista de distribuciones vacía explica cómo se crean (con la precarga del corte).
+- Ayudas en globo (el mismo de la ficha del proyecto): junto a "Validación", las reglas que
+  impiden validar; junto al estado, qué significa borrador, validada y enviada. Los nombres de
+  los productos van completos (encabezado, líneas y referencia del periodo anterior).
 - No se probó en el navegador con datos locales: el corte local va al 11/11 y no tiene
   periodo. Las pruebas cubren la pantalla y cada acción.
 

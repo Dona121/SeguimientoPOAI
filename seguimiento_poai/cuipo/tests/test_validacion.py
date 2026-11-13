@@ -139,7 +139,10 @@ class EnLaPantallaYElAdmin(Base):
         self.estado = reverse("admin:cuipo_distribuir_estado", args=(self.d.pk,))
 
     def test_validar_desde_la_pantalla(self):
-        self.assertContains(self.client.get(self.pantalla), "Validación: sin errores.")
+        html = self.client.get(self.pantalla).content.decode()
+        self.assertIn(": sin errores.", html)
+        self.assertIn('aria-label="Qué se valida"', html)                    # las reglas, en un globo
+        self.assertIn('aria-label="Estados de la distribución"', html)
         respuesta = self.client.post(self.estado, {"estado": "validado"}, follow=True)
         self.assertContains(respuesta, "La distribución quedó validado")
         self.assertContains(respuesta, "Marcar enviada")

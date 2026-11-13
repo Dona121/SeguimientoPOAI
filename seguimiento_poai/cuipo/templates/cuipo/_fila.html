@@ -33,7 +33,7 @@
 
   {% for l in d.lineas %}
   <tr>
-    <td><b>{{ l.producto.codigo }}</b><span class="desc">{{ l.producto.descripcion }}</span></td>
+    <td class="producto"><b>{{ l.producto.codigo }}</b><span class="nombre">{{ l.producto.descripcion }}</span></td>
     <td>{{ l.vigencia_gasto.codigo }}<span class="desc">{{ l.vigencia_gasto.descripcion|truncatechars:24 }}</span></td>
     <td class="num"><input class="entrada valor" name="valor" value="{{ l.compromisos|unlocalize }}"{% if not editable %} disabled{% endif %}
       hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
@@ -64,7 +64,7 @@
 
   {% for p in d.vacias %}
   <tr>
-    <td><b>{{ p.codigo }}</b><span class="desc">{{ p.descripcion }}</span></td>
+    <td class="producto"><b>{{ p.codigo }}</b><span class="nombre">{{ p.descripcion }}</span></td>
     <td>{{ vigencia_1.codigo }}<span class="desc">sin valores</span></td>
     <td class="num"><input class="entrada valor" name="valor" value="" placeholder="0"{% if not editable %} disabled{% endif %}
       hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"

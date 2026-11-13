@@ -1,10 +1,10 @@
 <section class="caja" id="validacion"{% if oob %} hx-swap-oob="true"{% endif %}>
   {% if validacion.valida and not validacion.advertencias %}
-  <p class="nota ok">Validación: sin errores.{% if dist.estado == "borrador" %} Se puede validar.{% endif %}</p>
+  <p class="nota ok">Validación{% include "siifweb/_ayuda.html" with etiqueta="Qué se valida" texto="Para validar no puede haber errores. Cada fila debe sumar al centavo su valor de SIIFWEB en compromisos, obligaciones y pagos. En cada línea: nada negativo, obligaciones no mayores que compromisos y pagos no mayores que obligaciones. El producto debe ser del proyecto según el PIIP. CPC, detalle sectorial, tercero y política pública no pueden quedar vacíos ni estar inactivos en las listas CHIP. La fila debe tener concepto y fuente CUIPO (rubro y recurso homologados). Solo avisa, sin bloquear: CPC 0 en un concepto que exige CPC." %}: sin errores.{% if dist.estado == "borrador" %} Se puede validar.{% endif %}</p>
   {% else %}
   <details{% if validacion.errores|length <= 8 %} open{% endif %} style="padding:.6rem 1.25rem">
     <summary style="cursor:pointer;font-size:.85rem">
-      Validación: <b class="{% if validacion.errores %}mal{% else %}ok{% endif %}">{{ validacion.errores|length }} errores</b>
+      Validación{% include "siifweb/_ayuda.html" with etiqueta="Qué se valida" texto="Para validar no puede haber errores. Cada fila debe sumar al centavo su valor de SIIFWEB en compromisos, obligaciones y pagos. En cada línea: nada negativo, obligaciones no mayores que compromisos y pagos no mayores que obligaciones. El producto debe ser del proyecto según el PIIP. CPC, detalle sectorial, tercero y política pública no pueden quedar vacíos ni estar inactivos en las listas CHIP. La fila debe tener concepto y fuente CUIPO (rubro y recurso homologados). Solo avisa, sin bloquear: CPC 0 en un concepto que exige CPC." %}: <b class="{% if validacion.errores %}mal{% else %}ok{% endif %}">{{ validacion.errores|length }} errores</b>
       y {{ validacion.advertencias|length }} advertencias
     </summary>
     <ul style="margin:.5rem 0 0 1rem;font-size:.8rem;list-style:disc">
