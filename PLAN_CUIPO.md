@@ -69,7 +69,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 410.
+  disco temporal). Hoy son 408.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -110,25 +110,24 @@ El flujo es:
 
 **Ramas (ninguna subida a `main`)**
 
-Cadena actual:
-
 ```
-main ← formulacion-piip ← centro-costo-compromisos ← cuipo-ejecucion-gastos ← piip-control-siifweb
+main ← formulacion-piip ← cuipo-ejecucion-gastos ← piip-control-siifweb
 ```
 
 - `formulacion-piip`: catálogo PIIP y formulación de los proyectos (productos por BPIN).
   Migraciones `siifweb/0020` y `0021`.
-- `centro-costo-compromisos`: centro de costo por línea en `CompromisoImputacion`
-  (migración `siifweb/0022`). **Se descarta**: se hizo cuando el CUIPO se iba a armar desde el
-  consolidado de compromisos, y el reporte oficial de ejecución ya trae el centro de costo
-  por fila.
 - `cuipo-ejecucion-gastos`: la app `cuipo` con el importador (migración `cuipo/0001`, sin
   dependencias de `siifweb`).
 - `piip-control-siifweb`: formulación de todos los BPIN del PIIP con semáforo de SIIFWEB
-  (migración `siifweb/0023`, que hoy depende de la `0022` que se descarta).
+  (migración `siifweb/0022`).
+- Las fases del CUIPO siguen sobre esta cadena, en ramas nuevas a partir de
+  `piip-control-siifweb`.
 
-Cadena objetivo: `main ← formulacion-piip ← cuipo-ejecucion-gastos ← piip-control-siifweb`.
-Pasos (fase 0):
+**Hecho el 13/11 (fase 0):** se descartó la rama `centro-costo-compromisos` (centro de costo
+por línea en `CompromisoImputacion`, migración `siifweb/0022` de entonces): se hizo cuando el
+CUIPO se iba a armar desde el consolidado de compromisos, y el reporte oficial ya trae el
+centro de costo por fila. Pasos que se siguieron, por si hay que repetir algo parecido:
+
 1. Revisar que ningún código de `cuipo` use el centro de costo de `CompromisoImputacion`.
 2. En la base local, revertir `siifweb/0023` y `0022` (`migrate siifweb 0021`) antes de cambiar
    el código. Para revertir la `0023` hay que borrar antes las formulaciones sin proyecto (la
@@ -432,9 +431,11 @@ como `siifweb/0009`. El menú "CUIPO" hoy solo lo ven quienes tienen el permiso 
 - Hecho en local (13/11): consolidados de 2026 al 11/11 cargados y carga del PIIP (id 209)
   reprocesada con todos los BPIN: 488 formulaciones; los 101 BPIN de 2.3 con ejecución tienen
   productos. Respaldo previo: `db_antes_consolidados_1111.sqlite3`.
-- Falta: descartar la rama `centro-costo-compromisos` (pasos en la sección 2), desplegar
-  `formulacion-piip`, `cuipo-ejecucion-gastos` y `piip-control-siifweb` (respaldo previo) y
-  descargar el corte oficial 01/01–30/09/2026 completo.
+- Hecho (13/11): descartada la rama `centro-costo-compromisos` y renumerada la migración de
+  la formulación como `siifweb/0022` (sección 2). Respaldo previo de la base local:
+  `db_antes_fase0.sqlite3`.
+- Falta: desplegar `formulacion-piip`, `cuipo-ejecucion-gastos` y `piip-control-siifweb`
+  (respaldo previo de Supabase) y descargar el corte oficial 01/01–30/09/2026 completo.
 - **Rutina en cada trimestre, antes de distribuir:**
   1. Cargar el corte de ejecución del trimestre.
   2. Cargar los consolidados al día (CDP, compromisos, obligaciones), para que existan los

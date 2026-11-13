@@ -404,7 +404,7 @@ ejecuta en un contenedor aparte cuyo disco no llega al que atiende; con `DEBUG=T
 Django no consulta el manifiesto de WhiteNoise y por eso funcionaba. Ahora corre en el
 `buildCommand` y queda en la imagen; el `preDeployCommand` solo hace `migrate`. Subido a
 `main` (`202e619`) y desplegado.
-## 19. Corte de ejecucion de gastos para el CUIPO (13 de noviembre)
+## 18. Corte de ejecucion de gastos para el CUIPO (13 de noviembre)
 
 App nueva **`cuipo`**, con el importador del reporte "Ejecucion presupuestal del gasto por
 centro de costo y fondo" de SIIFWEB (`estado_ppto_gasto_gobatl_fyccw_Vigencia{v}_Fecha{f}`).
@@ -439,9 +439,9 @@ vienen, y no como llaves (la carga no crea rubros, fuentes ni proyectos).
 y 405 filas de detalle; los subtotales cuadran en los cinco. El RP de 2026 al 11 de
 noviembre (1.127.765.686.152,76) es el mismo del consolidado de compromisos de esa fecha.
 
-**Pruebas.** 404, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 17 nuevas).
+**Pruebas.** 402, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 17 nuevas).
 
-## 20. Formulacion PIIP de todos los BPIN, con semaforo de SIIFWEB (13 de noviembre)
+## 19. Formulacion PIIP de todos los BPIN, con semaforo de SIIFWEB (13 de noviembre)
 
 Rama `piip-control-siifweb`. Para controlar que proyectos del PIIP estan en SIIFWEB y
 cuales no:
@@ -459,11 +459,17 @@ cuales no:
 - Lista de formulaciones: columna **BPIN en SIIFWEB** con semaforo (verde si el BPIN tiene
   algun CDP, RP, obligacion, reserva o contrato; rojo "No esta" si solo esta en el PIIP),
   filtro "En SIIFWEB", filtro por indicador y busqueda por codigo de indicador.
-- Migracion `0023`: agrega los campos y llena BPIN y nombre de las formulaciones existentes
+- Migracion `0022`: agrega los campos y llena BPIN y nombre de las formulaciones existentes
   desde su proyecto.
 
 **En la base local** (PIIP del 11/11 y consolidados al 11/11): 488 formulaciones, 368 en
 verde y 120 en rojo (10 de ellas enlazadas a un proyecto que existe sin documentos). La
 carga no creo indicadores nuevos; los indicadores usados sin homologar pasan de 18 a 27.
 
-**Pruebas.** 410, todas pasan (`test_formulacion_piip.py`, 6 nuevas).
+**Pruebas.** 408, todas pasan (`test_formulacion_piip.py`, 6 nuevas).
+
+**Ramas (13 de noviembre).** Se descarto la rama `centro-costo-compromisos` (centro de
+costo por linea en `CompromisoImputacion`): se hizo cuando el CUIPO se iba a armar desde
+el consolidado de compromisos, y el reporte oficial de ejecucion ya trae el centro de costo
+por fila. La cadena queda `main <- formulacion-piip <- cuipo-ejecucion-gastos <-
+piip-control-siifweb`, y la migracion de la formulacion paso a ser la `0022`.

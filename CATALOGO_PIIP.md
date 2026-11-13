@@ -218,7 +218,7 @@ una señal sobre los indicadores PDD de la meta, ajena a este módulo.
 
 ## 9. Enlace entre la formulación y el proyecto de SIIFWEB
 
-Desde el 13 de noviembre (rama `piip-control-siifweb`, migración `0023`) la carga del PIIP
+Desde el 13 de noviembre (rama `piip-control-siifweb`, migración `0022`) la carga del PIIP
 crea la formulación de **todos** los BPIN, estén o no en SIIFWEB, para poder controlar
 cuáles están y cuáles no.
 
@@ -318,7 +318,8 @@ verde y 120 en rojo (10 de ellas enlazadas a un proyecto sin documentos).
 
 ## 11. Pendiente para producción
 
-1. Respaldar Supabase y subir las ramas (aplica `0020`, `0021`, `0022` y `0023`).
+1. Respaldar Supabase y subir las ramas (aplica `0020`, `0021` y `0022` de `siifweb` y
+   `0001` de `cuipo`).
 2. En el admin de producción, igualar los nombres de municipio a los del PIIP (en local se
    cambiaron: "Todo el departamento de sucre", "San Luis De Sincé", "San José De
    Toluviejo", "San Juan De Betulia", "Palmito") y crear los de fuera de Sucre que use
@@ -335,4 +336,4 @@ reemplazo por BPIN, indicador bajo dos objetivos, municipios, indicador y produc
 crean con sus metas, homologación por código sin tocar la manual), el mismo libro para
 SECOP y PIIP, la pestaña de la ficha, la ficha del indicador en el admin, la lista de
 formulaciones (semáforo, filtros "En SIIFWEB" e indicador, búsqueda por código de
-indicador) y la sección del menú. La suite completa tiene 410 pruebas.
+indicador) y la sección del menú. La suite completa tiene 408 pruebas.

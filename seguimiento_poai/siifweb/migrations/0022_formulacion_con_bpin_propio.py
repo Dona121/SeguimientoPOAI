@@ -21,7 +21,7 @@ def desde_el_proyecto(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("siifweb", "0022_centro_costo_en_imputacion_del_compromiso"),
+        ("siifweb", "0021_datos_catalogo_piip"),
     ]
 
     operations = [
