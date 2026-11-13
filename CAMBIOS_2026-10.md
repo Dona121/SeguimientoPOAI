@@ -609,4 +609,9 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
 - El enlace a las distribuciones pasa al menu **Seguimiento** como "Distribuciones por BPIN
   CUIPO" (sigue pidiendo el permiso de ver distribuciones: los roles del equipo no lo ven).
 
-**Pruebas.** 541, todas pasan (150 del CUIPO).
+- Las homologaciones de fuente del T3 (62) pasan al boton de reglas iniciales de la pantalla
+  de pendientes (`derivacion.FUENTES_T3_2026`); se quita el importador de semillas
+  (`cuipo/semillas.py`, el comando `cargar_semillas_cuipo` y la carga del libro), porque es
+  una carga de una sola vez.
+
+**Pruebas.** 536, todas pasan (145 del CUIPO).

@@ -18,7 +18,7 @@ from unfold.decorators import action, display
 from siifweb import cargas
 from siifweb.admin import SoloLectura, hash_archivo, pesos
 
-from . import derivacion, distribucion, ejecucion, listas, plano, semillas, validacion
+from . import derivacion, distribucion, ejecucion, listas, plano, validacion
 from .models import periodo_de as derivacion_periodo
 from .models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, DistribucionBPIN,
                      FilaEjecucionGastos, FuenteCUIPO, HomologacionFuente, LineaCUIPO, HomologacionRubro, PoliticaPublica, ProductoCUIPO, ReglaSeccion,
@@ -106,15 +106,8 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
             raise PermissionDenied
         corte = get_object_or_404(CorteEjecucionGastos, pk=pk)
         puede_crear = all(request.user.has_perm(f"cuipo.add_{m}") for m in
-                          ("reglaseccion", "reglatercero", "homologacionrubro", "reglasituacionfondos"))
-        puede_sembrar = all(request.user.has_perm(f"cuipo.add_{m}") for m in ("homologacionfuente", "homologacionrubro"))
-        if request.method == "POST" and request.FILES.get("semillas") and puede_sembrar:
-            # El archivo se lee en memoria y no se guarda (en local el almacenamiento es produccion)
-            try:
-                self.message_user(request, "Semillas: " + semillas.cargar(request.FILES["semillas"]), messages.SUCCESS)
-            except Exception as error:
-                self.message_user(request, f"Semillas: {error}", messages.ERROR)
-            return redirect("admin:cuipo_corte_pendientes", pk=corte.pk)
+                          ("reglaseccion", "reglatercero", "homologacionrubro", "reglasituacionfondos",
+                           "homologacionfuente"))
         if request.method == "POST" and request.POST.get("reglas_iniciales") and puede_crear:
             with transaction.atomic():
                 creadas, omitidas = derivacion.crear_reglas_iniciales()
@@ -131,7 +124,6 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
             "otros_cortes": CorteEjecucionGastos.objects.filter(estado=CorteEjecucionGastos.Estado.PROCESADO)
                             .exclude(pk=corte.pk).order_by("-vigencia", "-fecha_fin")[:10],
             "puede_crear_reglas": puede_crear,
-            "puede_sembrar": puede_sembrar,
         }
         return TemplateResponse(request, "cuipo/pendientes.html", contexto)
 

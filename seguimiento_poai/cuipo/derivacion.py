@@ -219,8 +219,31 @@ def pendientes(corte):
 
 
 # ---------------------------------------------------------------------------
-# Reglas iniciales (las que trae el plan)
+# Reglas iniciales (las que trae el plan y las homologaciones validadas en el T3)
 # ---------------------------------------------------------------------------
+
+# Recurso SIIFWEB -> fuente CUIPO, validadas por presupuesto para el CUIPO del T3 2026
+# (Semillas_CUIPO_T3_2026.xlsx). Se cargan una sola vez, con el boton de las reglas iniciales.
+VIGENCIA_DE_LAS_SEMILLAS = 2026
+FUENTES_T3_2026 = [
+    ("1", "1.2.1.0.00"), ("3", "1.2.4.1.01"), ("6", "1.2.4.2.02"), ("7", "1.2.3.3.04"), ("9", "1.2.3.3.04"),
+    ("10", "1.2.4.2.04"), ("11", "1.2.4.6.00"), ("17", "1.3.3.1.00"), ("19", "1.3.3.7.02"),
+    ("33", "1.3.3.3.19"), ("34", "1.2.3.4.01"), ("37", "1.3.3.5.04"), ("38", "1.3.3.2.00"),
+    ("41", "1.3.3.5.03"), ("43", "1.3.3.6.01"), ("52", "1.3.2.3.11"), ("54", "1.2.3.2.06"),
+    ("55", "1.2.3.1.08"), ("56", "1.2.3.1.10"), ("57", "1.2.3.1.18"), ("59", "1.2.2.0.00"),
+    ("60", "1.2.2.0.00"), ("63", "1.2.3.1.15"), ("66", "1.3.3.2.00"), ("67", "1.3.3.2.00"),
+    ("68", "1.3.3.2.00"), ("71", "1.3.3.7.04"), ("76", "1.3.3.2.00"), ("82", "1.3.3.3.16"),
+    ("89", "1.3.3.3.20"), ("90", "1.2.3.1.19"), ("94", "1.2.2.0.00"), ("96", "1.2.3.1.19"),
+    ("98", "1.2.3.1.19"), ("100", "1.2.3.1.19"), ("101", "1.2.3.1.19"), ("103", "1.2.3.1.19"),
+    ("105", "1.3.3.3.20"), ("107", "1.3.3.3.20"), ("108", "1.3.3.3.20"), ("112", "1.3.3.2.00"),
+    ("113", "1.3.3.2.00"), ("114", "1.3.3.2.00"), ("120", "1.3.3.11.10"), ("121", "1.3.3.3.20"),
+    ("122", "1.3.3.3.20"), ("123", "1.2.3.3.04"), ("127", "1.2.2.0.00"), ("128", "1.2.3.1.19"),
+    ("129", "1.2.3.1.19"), ("131", "1.2.3.1.19"), ("132", "1.2.3.1.19"), ("134", "1.3.2.3.01"),
+    ("143", "1.3.2.3.01"), ("144", "1.3.3.2.00"), ("149", "1.3.2.3.01"), ("150", "1.2.3.3.04"),
+    ("152", "1.2.3.3.04"), ("154", "1.2.3.3.04"), ("157", "1.2.3.3.04"), ("158", "1.3.3.7.04"),
+    ("159", "1.3.1.1.10"),
+]
+VALIDADAS_POR = "Validada por presupuesto para el CUIPO del T3 2026"
 
 REGLAS_INICIALES = {
     "secciones": [("2", "22.0"), ("3", "21.0")],
@@ -234,12 +257,13 @@ REGLAS_INICIALES = {
 
 
 def crear_reglas_iniciales():
-    """Crea las reglas del plan que falten. Devuelve (creadas, omitidas con su motivo).
+    """Crea las reglas del plan y las homologaciones de fuente del T3 que falten. Devuelve
+    (creadas, omitidas con su motivo).
 
-    Necesita las listas CHIP importadas y los rubros y centros de costo de SIIFWEB; lo que no
-    encuentre lo omite y lo dice. No cambia reglas existentes.
+    Necesita las listas CHIP importadas y los rubros, recursos y centros de costo de SIIFWEB;
+    lo que no encuentre lo omite y lo dice. No cambia reglas ni homologaciones existentes.
     """
-    from siifweb.models import CentroCosto, Rubro
+    from siifweb.models import CentroCosto, Fuente, Rubro
 
     creadas, omitidas = [], []
 
@@ -271,4 +295,14 @@ def crear_reglas_iniciales():
                                                                             fuente_cuipo=fuente).exists():
             creadas.append(str(ReglaSituacionFondos.objects.create(prefijo_rubro=prefijo, fuente_cuipo=fuente,
                                                                    situacion=situacion)))
+    nuevas_fuentes = 0
+    for recurso_cod, fue in FUENTES_T3_2026:
+        recurso, fuente = buscar(Fuente, recurso_cod, "recurso"), buscar(FuenteCUIPO, fue, "fuente CUIPO")
+        if recurso and fuente and not HomologacionFuente.objects.filter(
+                fuente_siifweb=recurso, vigencia=VIGENCIA_DE_LAS_SEMILLAS).exists():
+            HomologacionFuente.objects.create(fuente_siifweb=recurso, fuente_cuipo=fuente,
+                                              vigencia=VIGENCIA_DE_LAS_SEMILLAS, observacion=VALIDADAS_POR)
+            nuevas_fuentes += 1
+    if nuevas_fuentes:
+        creadas.append(f"{nuevas_fuentes} homologaciones de fuente del T3 {VIGENCIA_DE_LAS_SEMILLAS}")
     return creadas, list(dict.fromkeys(omitidas))

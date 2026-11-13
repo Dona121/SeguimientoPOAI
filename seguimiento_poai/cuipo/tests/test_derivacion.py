@@ -204,6 +204,22 @@ class Pendientes(TestCase):
         d = derivacion.derivar(self.corte.filas_ejecucion.get(recurso="108"))
         self.assertEqual((d.concepto.codigo, d.tercero.codigo), ("2.3.3.05.09.099", "220170001"))
 
+    def test_trae_las_homologaciones_de_fuente_del_t3(self):
+        """Las 62 que valido presupuesto; aqui solo existen algunos recursos y fuentes."""
+        homologar("1", "1.2.4.1.01")        # una que ya estaba con otro valor: no se cambia
+        url = reverse("admin:cuipo_corte_pendientes", args=(self.corte.pk,))
+        respuesta = self.client.post(url, {"reglas_iniciales": "1"}, follow=True)
+        self.assertContains(respuesta, "2 homologaciones de fuente del T3 2026")
+        self.assertEqual(dict(HomologacionFuente.objects.values_list("fuente_siifweb__codigo", "fuente_cuipo__codigo")),
+                         {"1": "1.2.4.1.01", "3": "1.2.4.1.01", "108": "1.3.3.3.20"})
+        self.assertEqual(HomologacionFuente.objects.get(fuente_siifweb__codigo="108").observacion,
+                         "Validada por presupuesto para el CUIPO del T3 2026")
+        self.assertContains(respuesta, "fuente CUIPO 1.2.3.3.04 no existe")          # la del recurso 7
+        self.client.post(url, {"reglas_iniciales": "1"})
+        self.assertEqual(HomologacionFuente.objects.count(), 3)
+        self.assertEqual(len(derivacion.FUENTES_T3_2026), 62)
+        self.assertTrue(derivacion.derivar(self.corte.filas_ejecucion.get(recurso="108")).completa)
+
 
 class AdminDeLasReglas(TestCase):
     def setUp(self):

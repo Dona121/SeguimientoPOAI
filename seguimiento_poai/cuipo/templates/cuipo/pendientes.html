@@ -135,21 +135,10 @@ CorteEjecucionGastosAdmin.pendientes y los datos salen de cuipo.derivacion.pendi
     {% else %}<p class="vacio">Todos los centros de costo tienen regla de sección.</p>{% endif %}
   </section>
 
-  {% if puede_sembrar %}
-  <section class="caja">
-    <h2><span>Cargar semillas de homologación</span></h2>
-    <p class="nota">Un libro con las hojas HomologacionFuente (recurso_siifweb, fuente_cuipo, vigencia) y HomologacionRubro (rubro_siifweb, concepto_cuipo), como <i>Semillas_CUIPO_T3_2026.xlsx</i>. Solo crea lo que falta y avisa lo que ya existe con otro valor. El archivo no se guarda.</p>
-    <form method="post" enctype="multipart/form-data" style="padding:1rem 1.25rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap">{% csrf_token %}
-      <input type="file" name="semillas" accept=".xlsx" required>
-      <button type="submit" class="boton">Cargar semillas</button>
-    </form>
-  </section>
-  {% endif %}
-
   {% if puede_crear_reglas %}
   <section class="caja">
     <h2><span>Reglas iniciales del plan</span></h2>
-    <p class="nota">Crea las que falten: secciones 22.0 (centro de costo 2) y 21.0 (centro de costo 3); terceros ICBF, SENA, ESAP y MEN por rubro; Inder, Fondo Mixto, Aguas de Sucre y Universidad de Sucre por centro de costo; 2.3.3.05.09.054 → 2.3.3.05.09.099; y situación S para 2.3.1.01.02.001 a 003 con 1.2.4.1.01. No cambia las que ya existen.</p>
+    <p class="nota">Crea las que falten: secciones 22.0 (centro de costo 2) y 21.0 (centro de costo 3); terceros ICBF, SENA, ESAP y MEN por rubro; Inder, Fondo Mixto, Aguas de Sucre y Universidad de Sucre por centro de costo; 2.3.3.05.09.054 → 2.3.3.05.09.099; situación S para 2.3.1.01.02.001 a 003 con 1.2.4.1.01; y las 62 homologaciones de recurso a fuente CUIPO que presupuesto validó en el CUIPO del T3 2026. No cambia las que ya existen.</p>
     <form method="post" style="padding:1rem 1.25rem">{% csrf_token %}
       <button type="submit" name="reglas_iniciales" value="1" class="boton">Crear las reglas que falten</button>
     </form>

@@ -71,7 +71,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 541.
+  disco temporal). Hoy son 536.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -498,11 +498,12 @@ migración `cuipo/0003`, 24 pruebas en `cuipo/tests/test_derivacion.py`).
 - Admin: en cada fuente CUIPO, una tabla para registrar los recursos que la usan (guarda quién
   y cuándo validó); las cinco tablas en el menú CUIPO; el autocompletar solo ofrece códigos
   activos de las listas.
-- **Semillas** (`cuipo/semillas.py`): carga las homologaciones validadas de un CUIPO enviado
-  desde `modelos-metas/Semillas_CUIPO_T3_2026.xlsx` (hojas HomologacionFuente y
-  HomologacionRubro), con `manage.py cargar_semillas_cuipo <archivo>` o subiendo el libro en
-  la pantalla de pendientes (no se guarda). Solo crea lo que falta; lo que existe con otro
-  valor no lo cambia y lo avisa; un código inexistente aborta sin dejar nada.
+- **Homologaciones del T3:** las 62 de recurso a fuente CUIPO que presupuesto validó para el
+  CUIPO del T3 2026 (`modelos-metas/Semillas_CUIPO_T3_2026.xlsx`) están escritas en
+  `derivacion.FUENTES_T3_2026` y las crea el botón de las reglas iniciales, una sola vez (lo
+  que ya existe no se toca; la del rubro ya estaba entre las reglas iniciales). Primero se hizo
+  un importador del libro (`cuipo/semillas.py`, con comando y carga en pendientes); se quitó el
+  13/11 porque es una carga de una sola vez.
 - En local, con el corte al 11/11, las reglas iniciales y las semillas del T3 (62 recursos y 1
   rubro): de 224 filas, 217 se derivan completas. Faltan 7 recursos que no vienen en las
   semillas: 110, 125, 130, 160, 166, 35 y 91 (una fila cada uno). 202600000018441 deriva
@@ -691,8 +692,9 @@ a `0004`.
 1. CUIPO → Versiones de las listas CHIP: subir `Listas_Categoria_CUIPO_09-2026.xlsx`.
 2. Cargar los consolidados al día y, si hay uno nuevo, el exporte del PIIP.
 3. CUIPO → Cortes: cargar el corte 01/01–30/09/2026 (completo, 22 columnas).
-4. CUIPO → Pendientes: cargar `Semillas_CUIPO_T3_2026.xlsx`, crear las reglas iniciales y
-   homologar los recursos que falten (110, 125, 130, 160, 166, 35 y 91 al 11/11).
+4. CUIPO → Pendientes: "Crear las reglas que falten" (las 14 del plan y las 62 homologaciones
+   de fuente del T3) y homologar los recursos que falten (110, 125, 130, 160, 166, 35 y 91 al
+   11/11).
 5. Cortes: acción "Precargar la distribución del CUIPO".
 6. Seguimiento → Distribuciones por BPIN CUIPO → Distribuir: digitar, elegir cualitativos y
    validar. (El enlace está en el menú Seguimiento desde el 13/11, a pedido del usuario.)
