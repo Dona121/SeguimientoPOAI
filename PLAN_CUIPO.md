@@ -71,7 +71,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 534.
+  disco temporal). Hoy son 536.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -588,7 +588,9 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   al pasar el cursor) y su origen, con un botón **Elegir** que abre una ventana con buscador
   (por código o por palabras de la descripción) y la lista de opciones con la descripción
   completa; clic en una opción la guarda y cierra; Esc o clic fuera cierra
-  (`distribuir/elegir/`). Solo ofrece códigos activos y muestra hasta 60 coincidencias. Se
+  (`distribuir/elegir/`). La vigencia del gasto usa la misma ventana: "Elegir" en la línea la
+  cambia (`cambiar_vigencia`, sin repetir vigencia para la misma fila y producto) y
+  "+ vigencia" agrega una línea en una vigencia que la fila y el producto todavía no tienen. Solo ofrece códigos activos y muestra hasta 60 coincidencias. Se
   probó antes con listas desplegables, pero los nombres largos no se leían.
 - La lista de distribuciones vacía explica cómo se crean (con la precarga del corte).
 - Ayudas en globo (el mismo de la ficha del proyecto): junto a "Validación", las reglas que

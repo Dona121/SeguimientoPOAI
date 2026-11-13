@@ -34,7 +34,7 @@
   {% for l in d.lineas %}
   <tr>
     <td class="producto"><b>{{ l.producto.codigo }}</b><span class="nombre">{{ l.producto.descripcion }}</span></td>
-    <td>{{ l.vigencia_gasto.codigo }}<span class="desc">{{ l.vigencia_gasto.descripcion|truncatechars:24 }}</span></td>
+    {% include "cuipo/_cualitativo.html" with campo="vigencia_gasto" valor=l.vigencia_gasto origen="" origen_texto="" %}
     <td class="num"><input class="entrada valor" name="valor" value="{{ l.compromisos|unlocalize }}"{% if not editable %} disabled{% endif %}
       hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
       hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "compromisos"}'></td>
@@ -50,11 +50,9 @@
     {% include "cuipo/_cualitativo.html" with campo="politica_publica" valor=l.politica_publica origen=l.origen_politica_publica origen_texto=l.get_origen_politica_publica_display %}
     <td style="white-space:nowrap">
       {% if editable %}
-      <select name="vigencia" title="Repartir esta fila y producto en otra vigencia del gasto" hx-post="{{ u_vigencia }}" hx-trigger="change"
-              hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML" hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}}'>
-        <option value="">+ vigencia</option>
-        {% for v in vigencias %}{% if v.pk != l.vigencia_gasto_id %}<option value="{{ v.pk }}">{{ v.codigo }} {{ v.descripcion|truncatechars:28 }}</option>{% endif %}{% endfor %}
-      </select>
+      <button type="button" class="boton gris" title="Repartir esta fila y producto en otra vigencia del gasto"
+              hx-get="{{ u_elegir }}?campo=vigencia_gasto&fila={{ d.fila.pk }}&producto={{ l.producto_id }}"
+              hx-target="#elegir" hx-swap="innerHTML">+ vigencia</button>
       <button class="boton gris" title="Quitar la línea" hx-post="{{ u_quitar }}" hx-vals='{"linea": {{ l.pk }}}'
               hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML">×</button>
       {% endif %}

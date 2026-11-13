@@ -298,6 +298,26 @@ def agregar_vigencia(distribucion, fila_id, producto_id, vigencia_id):
 
 
 @transaction.atomic
+def cambiar_vigencia(distribucion, linea_id, codigo):
+    """Pasa la linea a otra vigencia del gasto (por su codigo)."""
+    editable(distribucion)
+    linea = distribucion.lineas.select_related("fila").filter(pk=linea_id).first()
+    if linea is None:
+        raise ValueError("La línea no es de esta distribución.")
+    vigencia = VigenciaGasto.objects.filter(codigo=(codigo or "").strip()).first()
+    if vigencia is None:
+        raise ValueError(f"{codigo}: no está en la lista de vigencias del gasto.")
+    if not vigencia.activo:
+        raise ValueError(f"{codigo}: está inactiva en la lista CHIP.")
+    if distribucion.lineas.filter(fila=linea.fila, producto=linea.producto_id, vigencia_gasto=vigencia).exclude(
+            pk=linea.pk).exists():
+        raise ValueError(f"Ya hay una línea de ese producto con la vigencia {vigencia.codigo}.")
+    linea.vigencia_gasto = vigencia
+    linea.save()
+    return linea.fila
+
+
+@transaction.atomic
 def quitar_linea(distribucion, linea_id):
     editable(distribucion)
     linea = distribucion.lineas.select_related("fila").filter(pk=linea_id).first()

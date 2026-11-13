@@ -219,3 +219,29 @@ class ElegirCualitativos(Base):
         self.assertEqual(respuesta.status_code, 200)
         self.linea.refresh_from_db()
         self.assertEqual((self.linea.cpc, self.linea.origen_cpc), (CPC.objects.get(codigo="85999"), "manual"))
+
+    def test_cambiar_la_vigencia_de_la_linea_con_el_buscador(self):
+        respuesta = self.client.get(self.url, {"campo": "vigencia_gasto", "linea": self.linea.pk})
+        self.assertContains(respuesta, "Elegir vigencia del gasto")
+        self.assertContains(respuesta, "VIGENCIAS FUTURAS - VIGENCIA ACTUAL")
+        self.client.post(reverse("admin:cuipo_distribuir_cualitativo", args=(self.d.pk,)),
+                         {"linea": self.linea.pk, "campo": "vigencia_gasto", "codigo": "4"})
+        self.linea.refresh_from_db()
+        self.assertEqual(self.linea.vigencia_gasto.codigo, "4")
+
+    def test_repartir_en_otra_vigencia_con_el_buscador(self):
+        datos = {"campo": "vigencia_gasto", "fila": self.linea.fila_id, "producto": self.linea.producto_id}
+        respuesta = self.client.get(self.url, datos)
+        self.assertContains(respuesta, "Repartir en otra vigencia del gasto")
+        self.assertContains(respuesta, "<b>4</b>")
+        self.assertNotContains(respuesta, "<b>1</b>")                    # ya la tiene
+        self.client.post(reverse("admin:cuipo_distribuir_vigencia", args=(self.d.pk,)),
+                         {**datos, "vigencia": VigenciaGasto.objects.get(codigo="4").pk})
+        self.assertEqual(sorted(self.d.lineas.values_list("vigencia_gasto__codigo", flat=True)), ["1", "4"])
+        self.assertContains(self.client.get(self.url, datos), "No hay opciones disponibles")
+        # La linea en 4 no puede pasar a 1: ya hay una
+        respuesta = self.client.post(reverse("admin:cuipo_distribuir_cualitativo", args=(self.d.pk,)),
+                                     {"linea": self.d.lineas.get(vigencia_gasto__codigo="4").pk,
+                                      "campo": "vigencia_gasto", "codigo": "1"})
+        self.assertContains(respuesta, "Ya hay una línea de ese producto con la vigencia 1")
+

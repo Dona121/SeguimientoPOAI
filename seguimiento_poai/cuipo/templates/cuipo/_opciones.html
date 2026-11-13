@@ -1,23 +1,24 @@
-{% url 'admin:cuipo_distribuir_cualitativo' dist.pk as u_cual %}
+{% url 'admin:cuipo_distribuir_cualitativo' dist.pk as u_cual %}{% url 'admin:cuipo_distribuir_vigencia' dist.pk as u_vigencia %}
 {% if actual %}
 <p class="dato" style="margin:.2rem 0 .4rem">Actual: <b>{{ actual.codigo }}</b> {{ actual.descripcion }}</p>
 {% endif %}
 {% for o in opciones %}
 <button type="button" class="opcion{% if actual and o.pk == actual.pk %} actual{% endif %}"{% if not editable %} disabled{% endif %}
-        hx-post="{{ u_cual }}" hx-vals='{"linea": {{ linea.pk }}, "campo": "{{ campo }}", "codigo": "{{ o.codigo|escapejs }}"}'
-        hx-target="#fila-{{ linea.fila_id }}" hx-swap="outerHTML"
+        {% if accion == "agregar" %}hx-post="{{ u_vigencia }}" hx-vals='{"fila": {{ fila.pk }}, "producto": {{ producto.pk }}, "vigencia": {{ o.pk }}}'
+        {% else %}hx-post="{{ u_cual }}" hx-vals='{"linea": {{ linea.pk }}, "campo": "{{ campo }}", "codigo": "{{ o.codigo|escapejs }}"}'{% endif %}
+        hx-target="#fila-{{ fila.pk }}" hx-swap="outerHTML"
         hx-on::after-request="document.getElementById('elegir').innerHTML = ''">
   <b>{{ o.codigo }}</b><span>{{ o.descripcion }}</span>
 </button>
 {% empty %}
-<p class="nota">Nada coincide con «{{ texto }}».</p>
+<p class="nota">{% if texto %}Nada coincide con «{{ texto }}».{% else %}No hay opciones disponibles.{% endif %}</p>
 {% endfor %}
 {% if total > opciones|length %}
 <p class="nota">Se muestran {{ opciones|length }} de {{ total }}. Escriba para acotar.</p>
 {% endif %}
-{% if actual and editable %}
+{% if actual and editable and campo != "vigencia_gasto" %}
 <button type="button" class="opcion" hx-post="{{ u_cual }}" hx-vals='{"linea": {{ linea.pk }}, "campo": "{{ campo }}", "codigo": ""}'
-        hx-target="#fila-{{ linea.fila_id }}" hx-swap="outerHTML"
+        hx-target="#fila-{{ fila.pk }}" hx-swap="outerHTML"
         hx-on::after-request="document.getElementById('elegir').innerHTML = ''">
   <b>—</b><span>Dejar vacío</span>
 </button>

@@ -649,7 +649,6 @@ class DistribucionBPINAdmin(ModelAdmin):
 
     def _contexto(self, request, dist, **extra):
         return {"dist": dist, "editable": self._puede_editar(request, dist),
-                "vigencias": list(VigenciaGasto.objects.filter(activo=True).order_by("codigo")),
                 "vigencia_1": VigenciaGasto.objects.filter(codigo="1").first(),
                 "totales": distribucion.totales(dist), "validacion": validacion.validar_distribucion(dist),
                 "puede_cambiar_estado": request.user.has_perm("cuipo.change_distribucionbpin"), **extra}
@@ -701,23 +700,36 @@ class DistribucionBPINAdmin(ModelAdmin):
         return TemplateResponse(request, "cuipo/distribuir.html", contexto)
 
     ELEGIBLES = {"cpc": ("CPC", CPC), "detalle_sectorial": ("detalle sectorial", DetalleSectorial),
-                 "tercero": ("tercero", TerceroCUIPO), "politica_publica": ("política pública", PoliticaPublica)}
+                 "tercero": ("tercero", TerceroCUIPO), "politica_publica": ("política pública", PoliticaPublica),
+                 "vigencia_gasto": ("vigencia del gasto", VigenciaGasto)}
 
     def d_elegir(self, request, pk):
-        """La ventana para elegir un cualitativo de la linea: buscador y lista con la descripcion
-        completa. Con solo=resultados devuelve solo la lista (al escribir en el buscador)."""
+        """La ventana para elegir un cualitativo o la vigencia del gasto de la linea: buscador y
+        lista con la descripcion completa. Con solo=resultados devuelve solo la lista (al escribir
+        en el buscador). Con fila y producto (sin linea) es para agregar una linea en otra
+        vigencia del gasto: solo ofrece las que esa fila y producto todavia no tienen."""
         dist = self._distribucion(request, pk)
         if request.GET.get("campo") not in self.ELEGIBLES:
             return HttpResponseBadRequest("Campo desconocido")
         campo = request.GET["campo"]
         titulo, modelo = self.ELEGIBLES[campo]
-        linea = get_object_or_404(dist.lineas.select_related("fila", "producto", campo), pk=request.GET.get("linea"))
         texto = (request.GET.get("codigo") or "").strip()
         opciones = modelo.objects.filter(activo=True)
+        if request.GET.get("linea"):
+            linea = get_object_or_404(dist.lineas.select_related("fila", "producto", campo), pk=request.GET["linea"])
+            fila, producto, actual, accion = linea.fila, linea.producto, getattr(linea, campo), "cambiar"
+        elif campo == "vigencia_gasto":
+            linea, actual, accion = None, None, "agregar"
+            fila = get_object_or_404(dist.filas(), pk=request.GET.get("fila"))
+            producto = get_object_or_404(dist.productos.all(), pk=request.GET.get("producto"))
+            opciones = opciones.exclude(lineas__distribucion=dist, lineas__fila=fila, lineas__producto=producto)
+        else:
+            return HttpResponseBadRequest("Falta la línea")
         for palabra in texto.split():
             opciones = opciones.filter(Q(codigo__startswith=palabra) | Q(descripcion__icontains=palabra))
         total = opciones.count()
-        contexto = {"dist": dist, "linea": linea, "campo": campo, "titulo": titulo, "actual": getattr(linea, campo),
+        contexto = {"dist": dist, "linea": linea, "fila": fila, "producto": producto, "campo": campo,
+                    "titulo": titulo, "actual": actual, "accion": accion,
                     "opciones": opciones.order_by("codigo")[:60], "total": total, "texto": texto,
                     "editable": self._puede_editar(request, dist)}
         plantilla = "cuipo/_opciones.html" if request.GET.get("solo") == "resultados" else "cuipo/_elegir.html"
@@ -754,6 +766,9 @@ class DistribucionBPINAdmin(ModelAdmin):
         return self._editar(request, pk, lambda d: distribucion.quitar_linea(d, request.POST.get("linea")))
 
     def d_cualitativo(self, request, pk):
+        if request.POST.get("campo") == "vigencia_gasto":
+            return self._editar(request, pk, lambda d: distribucion.cambiar_vigencia(
+                d, request.POST.get("linea"), request.POST.get("codigo")))
         return self._editar(request, pk, lambda d: distribucion.cambiar_cualitativo(
             d, request.POST.get("linea"), request.POST.get("campo"), request.POST.get("codigo")))
 

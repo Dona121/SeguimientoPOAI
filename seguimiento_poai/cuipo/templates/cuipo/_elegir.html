@@ -1,20 +1,21 @@
 {% comment %}
-La ventana para elegir el CPC, detalle sectorial, tercero o politica publica de una linea: buscador
-y lista con la descripcion completa. Clic en una opcion la guarda y cierra; clic fuera o Esc cierra.
+La ventana para elegir el CPC, detalle sectorial, tercero, politica publica o vigencia del gasto de
+una linea (o la vigencia de una linea nueva de la fila y el producto, accion "agregar"): buscador y
+lista con la descripcion completa. Clic en una opcion la guarda y cierra; clic fuera o Esc cierra.
 {% endcomment %}
 {% url 'admin:cuipo_distribuir_elegir' dist.pk as u_elegir %}
 <div class="fondo" onclick="if (event.target === this) { document.getElementById('elegir').innerHTML = ''; }">
   <div class="ventana" role="dialog" aria-label="Elegir {{ titulo }}">
     <div class="cab">
       <div>
-        <b>Elegir {{ titulo }}</b>
-        <span class="dato">· {{ linea.fila.rubro }} · recurso {{ linea.fila.recurso }} · producto {{ linea.producto.codigo }}</span>
+        <b>{% if accion == "agregar" %}Repartir en otra {{ titulo }}{% else %}Elegir {{ titulo }}{% endif %}</b>
+        <span class="dato">· {{ fila.rubro }} · recurso {{ fila.recurso }} · producto {{ producto.codigo }}</span>
       </div>
       <button type="button" class="boton gris" onclick="document.getElementById('elegir').innerHTML = ''">Cerrar</button>
     </div>
     <input class="entrada buscar" name="codigo" type="search" autocomplete="off" autofocus
            placeholder="Buscar por código o por palabras de la descripción"
-           hx-get="{{ u_elegir }}?campo={{ campo }}&linea={{ linea.pk }}&solo=resultados"
+           hx-get="{{ u_elegir }}?campo={{ campo }}{% if linea %}&linea={{ linea.pk }}{% else %}&fila={{ fila.pk }}&producto={{ producto.pk }}{% endif %}&solo=resultados"
            hx-trigger="input changed delay:250ms" hx-target="#elegir-resultados" hx-sync="this:replace">
     <div class="lista" id="elegir-resultados">{% include "cuipo/_opciones.html" %}</div>
   </div>
