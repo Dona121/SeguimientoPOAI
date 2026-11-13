@@ -2,7 +2,8 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q, Sum
+from django.db.models import Count, Exists, OuterRef, Q, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
@@ -12,7 +13,7 @@ from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin, TabularInline
-from unfold.contrib.filters.admin import ChoicesDropdownFilter, RelatedDropdownFilter
+from unfold.contrib.filters.admin import ChoicesDropdownFilter, DropdownFilter, RelatedDropdownFilter
 from unfold.decorators import action, display
 
 from siifweb import cargas
@@ -583,15 +584,42 @@ class LineaCUIPOInline(TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
+class ConteoFilter(DropdownFilter):
+    """Filtro por una cantidad anotada en el queryset del admin; las opciones son las que hay."""
+    campo = None
+
+    def lookups(self, request, model_admin):
+        valores = (model_admin.get_queryset(request).order_by().values_list(self.campo, flat=True).distinct())
+        return [(str(v), str(v)) for v in sorted(set(valores))]
+
+    def queryset(self, request, queryset):
+        if self.value() and self.value().isdigit():
+            return queryset.filter(**{self.campo: int(self.value())})
+        return queryset
+
+
+class FilasFilter(ConteoFilter):
+    title = "filas"
+    parameter_name = "filas"
+    campo = "filas_n"
+
+
+class ProgramadosFilter(ConteoFilter):
+    title = "productos programados"
+    parameter_name = "programados"
+    campo = "programados_n"
+
+
 @admin.register(DistribucionBPIN)
 class DistribucionBPINAdmin(ModelAdmin):
     """La distribucion de cada BPIN entre sus productos. La crea la precarga del corte."""
     compressed_fields = True
     list_fullwidth = True
     list_per_page = 100
-    list_display = ("bpin", "nombre_proyecto", "periodo", "regla", "estado", "n_lineas", "cuadra", "enlace_distribuir")
+    list_display = ("bpin", "nombre_proyecto", "periodo", "n_filas", "n_programados", "regla", "estado", "n_lineas",
+                    "cuadra", "enlace_distribuir")
     list_filter_submit = True
-    list_filter = (("corte", RelatedDropdownFilter), "regla", "estado")
+    list_filter = (("corte", RelatedDropdownFilter), "regla", "estado", FilasFilter, ProgramadosFilter)
     search_fields = ("bpin",)
     list_select_related = ("corte",)
     readonly_fields = ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion", "validado_por",
@@ -608,6 +636,23 @@ class DistribucionBPINAdmin(ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+    def get_queryset(self, request):
+        """Filas del corte del BPIN que entran al CUIPO (las de derivacion.filas_cuipo) y productos
+        del PIIP con meta distinta de cero en la vigencia del corte (los que se distribuyen)."""
+        from siifweb.models import MetaVigenciaIndicador
+        filas = (FilaEjecucionGastos.objects
+                 .filter(corte=OuterRef("corte"), proyecto=OuterRef("bpin"), de_otra_vigencia=False,
+                         rubro__startswith="2.3.")
+                 .filter(~Q(rp=0) | ~Q(obligacion=0) | ~Q(pago=0))
+                 .order_by().values("proyecto").annotate(n=Count("pk")).values("n"))
+        programados = (MetaVigenciaIndicador.objects
+                       .filter(indicador_proyecto__formulacion__bpin=OuterRef("bpin"), vigencia=OuterRef("corte__vigencia"))
+                       .exclude(meta=0)
+                       .order_by().values("indicador_proyecto__formulacion__bpin")
+                       .annotate(n=Count("indicador_proyecto__indicador__producto", distinct=True)).values("n"))
+        return super().get_queryset(request).annotate(
+            filas_n=Coalesce(Subquery(filas), 0), programados_n=Coalesce(Subquery(programados), 0))
 
     def changelist_view(self, request, extra_context=None):
         if request.method == "GET" and not DistribucionBPIN.objects.exists():
@@ -860,6 +905,17 @@ class DistribucionBPINAdmin(ModelAdmin):
         f = FormulacionProyecto.objects.filter(bpin=obj.bpin).only("nombre").first()
         nombre = f.nombre if f else ""
         return nombre if len(nombre) <= 70 else nombre[:70].rstrip() + "..."
+
+    @display(description="Filas", ordering="filas_n")
+    def n_filas(self, obj):
+        """Registros del corte de este BPIN. Con varios productos, uno se digita desde el PIIP y
+        varios son manuales."""
+        return obj.filas_n
+
+    @display(description="Productos programados", ordering="programados_n")
+    def n_programados(self, obj):
+        """Productos del PIIP con meta en la vigencia del corte. El BPIN 0 va al producto 0."""
+        return "—" if obj.bpin == "0" else obj.programados_n
 
     @display(description="Líneas")
     def n_lineas(self, obj):

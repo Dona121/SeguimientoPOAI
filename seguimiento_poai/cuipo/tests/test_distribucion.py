@@ -60,6 +60,24 @@ class ProductosProgramados(TestCase):
         self.assertEqual((d.regla, d.observacion), (DistribucionBPIN.Regla.SIN_PRODUCTOS,
                                                      "Ningún producto del PIIP tiene meta programada en 2026."))
 
+    def test_columnas_filas_y_productos_programados(self):
+        formular("202500000049907", "2201006", "2201048", metas={"2201006": {2026: 10},
+                                                                  "2201048": {2026: 0, 2027: 5}})
+        self.precargar(fila(101, "2.3.2.02.02.009", Decimal("100"), "3", "2", "202500000049907"),
+                       fila(102, "2.3.2.01.01.001.02.08", Decimal("50"), "3", "2", "202500000049907"),
+                       fila(103, "2.3.3.05.09.054", Decimal("0"), "3", "2", "202500000049907"))   # sin valores
+        self.client.force_login(User.objects.create_superuser("admin", "a@a.co", "x"))
+        url = reverse("admin:cuipo_distribucionbpin_changelist")
+        respuesta = self.client.get(url, {"o": "4"})
+        self.assertEqual(respuesta.status_code, 200)
+        [d] = respuesta.context["cl"].result_list
+        self.assertEqual((d.filas_n, d.programados_n), (2, 1))
+        self.assertContains(respuesta, "Productos programados")
+        for filtro, cuantas in (({"filas": "2"}, 1), ({"filas": "1"}, 0), ({"programados": "1"}, 1),
+                                ({"programados": "2"}, 0)):
+            with self.subTest(filtro=filtro):
+                self.assertEqual(self.client.get(url, filtro).context["cl"].result_count, cuantas)
+
     def test_una_fuente_en_varios_rubros_es_manual(self):
         formular("202500000049907", "2201006", "2201048")
         d = self.precargar(fila(101, "2.3.2.02.02.009", Decimal("100"), "3", "2", "202500000049907"),

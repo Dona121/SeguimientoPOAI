@@ -639,5 +639,8 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
 - La regla de la precarga cuenta **registros** del corte y no fuentes: varios productos y un
   registro queda por digitar desde AporteProductos; varios registros, manual. Migracion
   `cuipo.0005` (solo cambia las etiquetas de la regla; no toca datos).
+- **Distribuciones por BPIN CUIPO** trae las columnas **Filas** (registros del corte del BPIN que
+  entran al CUIPO) y **Productos programados** (del PIIP con meta en la vigencia del corte), que
+  se pueden ordenar y filtrar; las opciones del filtro son las cantidades que hay.
 
-**Pruebas.** 546, todas pasan (155 del CUIPO).
+**Pruebas.** 547, todas pasan (156 del CUIPO).
