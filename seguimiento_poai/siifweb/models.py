@@ -1348,6 +1348,22 @@ class HomologacionIndicador(Fechas):
     def __str__(self):
         return f"{self.indicador.codigo} -> {self.indicador_pdd.codigo}"
 
+    @classmethod
+    def homologar_por_codigo(cls, indicadores):
+        """Homologa cada indicador sin homologacion con los del plan de su mismo codigo.
+
+        Solo toca los que no tienen ninguna: si el equipo cambio una por codigo por una
+        manual, no se vuelve a crear. Devuelve cuantas creo.
+        """
+        sin = {i.pk: i.codigo for i in indicadores if i.pk and not i.homologaciones.exists()}
+        del_plan = {}
+        for pk, codigo in IndicadorMGA.objects.filter(codigo__in=set(sin.values())).values_list("pk", "codigo"):
+            del_plan.setdefault(codigo, []).append(pk)
+        nuevas = [cls(indicador_id=pk, indicador_pdd_id=pdd, por_codigo=True)
+                  for pk, codigo in sin.items() for pdd in del_plan.get(codigo, [])]
+        cls.objects.bulk_create(nuevas)
+        return len(nuevas)
+
 
 class FormulacionProyecto(Fechas):
     """Lo que el proyecto formulo en PIIP: datos generales e indicadores con sus metas.

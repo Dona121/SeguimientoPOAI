@@ -24,9 +24,10 @@ from openpyxl import load_workbook
 from .models import (BpinProceso, Cdp, CdpImputacion, CentroCosto, Compromiso,
                      CompromisoImputacion, Contrato, ContratoSecop,
                      ContratoActa, ContratoImputacion, Departamento, FormulacionProyecto, Fuente,
-                     IndicadorCatalogo, IndicadorProyecto, MetaVigenciaIndicador, Municipio, Obligacion,
-                     ObligacionImputacion, OrdenGasto, ProcesoSecop, ProductoCatalogo, ProgramaCatalogo,
-                     Proyecto, Reserva, ReservaImputacion, Rubro, SectorCatalogo, Tercero)
+                     HomologacionIndicador, IndicadorCatalogo, IndicadorProyecto, MetaVigenciaIndicador,
+                     Municipio, Obligacion, ObligacionImputacion, OrdenGasto, ProcesoSecop,
+                     ProductoCatalogo, ProgramaCatalogo, Proyecto, Reserva, ReservaImputacion, Rubro,
+                     SectorCatalogo, Tercero)
 
 CERO = Decimal("0")
 
@@ -780,10 +781,12 @@ def bpines_con_ejecucion(bpines):
 
 
 class CatalogoPIIP:
-    """El catalogo MGA territorial y los municipios, en memoria para la carga.
+    """El catalogo MGA de los proyectos y los municipios, en memoria para la carga.
 
-    Un indicador que no esta en el catalogo se crea con los nombres que trae el PIIP (y
-    su producto, programa y sector si tampoco estan), sin marca de territorial, y se avisa.
+    Valida cada indicador del proyecto contra el catalogo por su codigo. El que no esta se
+    crea con los datos del PIIP (y su producto, programa y sector si tampoco estan), se
+    asocia al proyecto con sus metas como cualquier otro y se lista en el mensaje. Lo que
+    ya esta en el catalogo no se cambia: lo mantiene el equipo en el admin.
     """
 
     def __init__(self):
@@ -793,7 +796,13 @@ class CatalogoPIIP:
         # Los nombres con coma ("Bogota, D.C.") se reconocen antes de partir la lista
         self.con_coma = sorted((m.nombre for m in self.municipios.values() if "," in m.nombre),
                                key=len, reverse=True)
-        self.creados, self.municipios_sin_cruce, self.departamentos_asignados = [], set(), set()
+        self.municipios_sin_cruce, self.departamentos_asignados = set(), set()
+        # Lo que esta carga creo porque no estaba, con los BPIN que lo traian
+        self.creados = defaultdict(set)   # ("indicador", "170201200") -> {BPIN}
+
+    def _anotar(self, tipo, codigo, f):
+        if (tipo, codigo) in self.creados:
+            self.creados[(tipo, codigo)].add(texto(f.get("BPIN")))
 
     def programa(self, f):
         codigo, _, nombre = texto(f["Programa"]).partition(" - ")
@@ -801,11 +810,16 @@ class CatalogoPIIP:
         if not codigo:
             return None
         if codigo not in self.programas:
-            sector, _ = SectorCatalogo.objects.get_or_create(
-                codigo=codigo[:2], defaults={"nombre": texto(f.get("SectorProyecto"))})
+            sector = SectorCatalogo.objects.filter(codigo=codigo[:2]).first()
+            if sector is None:
+                sector = SectorCatalogo.objects.create(
+                    codigo=codigo[:2], nombre=texto(f.get("SectorProyecto")) or codigo[:2])
+                self.creados[("sector", sector.codigo)] = set()
             self.programas[codigo] = ProgramaCatalogo.objects.create(
                 codigo=codigo, sector=sector, nombre=nombre.strip() or codigo)
-            self.creados.append(f"programa {codigo}")
+            self.creados[("programa", codigo)] = set()
+        self._anotar("sector", codigo[:2], f)
+        self._anotar("programa", codigo, f)
         return self.programas[codigo]
 
     def indicador(self, f):
@@ -814,16 +828,26 @@ class CatalogoPIIP:
             cod_producto = texto(f["CodigoProducto"])
             producto = ProductoCatalogo.objects.filter(codigo=cod_producto).first()
             if producto is None:
-                programa = self.programa({"Programa": cod_producto[:4],
+                # El programa del producto son sus cuatro primeros digitos
+                programa = self.programa({"Programa": cod_producto[:4], "BPIN": f.get("BPIN"),
                                           "SectorProyecto": f.get("SectorProyecto")})
-                nombre = texto(f["Producto"]).replace(PRINCIPAL, "").strip()
-                producto = ProductoCatalogo.objects.create(codigo=cod_producto, programa=programa,
-                                                           nombre=nombre)
-                self.creados.append(f"producto {cod_producto}")
+                producto = ProductoCatalogo.objects.create(
+                    codigo=cod_producto, programa=programa,
+                    nombre=texto(f["Producto"]).replace(PRINCIPAL, "").strip() or cod_producto)
+                self.creados[("producto", cod_producto)] = set()
             self.indicadores[codigo] = IndicadorCatalogo.objects.create(
-                codigo=codigo, producto=producto, nombre=texto(f["Indicador"]))
-            self.creados.append(f"indicador {codigo}")
+                codigo=codigo, producto=producto, nombre=texto(f["Indicador"]) or codigo)
+            self.creados[("indicador", codigo)] = set()
+        self._anotar("producto", texto(f["CodigoProducto"]), f)
+        self._anotar("indicador", codigo, f)
         return self.indicadores[codigo]
+
+    def resumen_creados(self):
+        """'indicador 170201200 (BPIN 2025...); producto 1702012 (BPIN ...)'."""
+        orden = {"indicador": 0, "producto": 1, "programa": 2, "sector": 3}
+        return "; ".join(f"{tipo} {codigo} (BPIN {', '.join(sorted(b for b in bpines if b))})"
+                         for (tipo, codigo), bpines in sorted(self.creados.items(),
+                                                              key=lambda x: (orden[x[0][0]], x[0][1])))
 
     def municipios_de(self, f):
         lista = texto(f["Municipios"])
@@ -874,6 +898,7 @@ def cargar_piip(carga):
 
     n_indicadores = n_metas = 0
     avisos = []
+    usados = set()
     for bpin, grupo in sorted(por_bpin.items()):
         if bpin not in con_ejecucion:
             continue
@@ -900,10 +925,12 @@ def cargar_piip(carga):
                 por_indicador[texto(fila["CodigoIndicador"])].append(fila)
         for codigo, filas_ind in por_indicador.items():
             g = filas_ind[0]
+            del_catalogo = cat.indicador(g)
+            usados.add(del_catalogo)
             objetivos = list(dict.fromkeys(texto(x["ObjetivoEspecifico"]) for x in filas_ind
                                            if texto(x["ObjetivoEspecifico"])))
             indicador = IndicadorProyecto.objects.create(
-                formulacion=formulacion, indicador=cat.indicador(g),
+                formulacion=formulacion, indicador=del_catalogo,
                 objetivo_especifico="\n".join(objetivos),
                 producto_principal=any(PRINCIPAL in texto(x["Producto"]) for x in filas_ind),
                 etapa=ETAPAS.get(sin_tildes(g["Etapa"]), ""),
@@ -928,7 +955,13 @@ def cargar_piip(carga):
                 for v, m in sorted(metas.items())])
             n_metas += len(metas)
 
+    homologados = HomologacionIndicador.homologar_por_codigo(usados)
+
     partes = [f"{len(con_ejecucion)} proyectos, {n_indicadores} indicadores, {n_metas} metas por vigencia"]
+    if cat.creados:
+        partes.append("no estaban en el catalogo y se crearon: " + cat.resumen_creados())
+    if homologados:
+        partes.append(f"{homologados} homologaciones nuevas por codigo con el plan")
     if omitidos:
         partes.append(f"{len(omitidos)} BPIN sin ejecucion en SIIFWEB, no se cargan: "
                       f"{', '.join(omitidos[:20])}{' ...' if len(omitidos) > 20 else ''}")
@@ -936,8 +969,6 @@ def cargar_piip(carga):
         partes.append(f"municipios que no estan en el admin: {', '.join(sorted(cat.municipios_sin_cruce))}")
     if cat.departamentos_asignados:
         partes.append(f"departamento tomado del PIIP para: {', '.join(sorted(cat.departamentos_asignados))}")
-    if cat.creados:
-        partes.append(f"no estaban en el catalogo MGA territorial y se crearon: {', '.join(cat.creados)}")
     partes += avisos
     return len(filas), " | ".join(partes)
 

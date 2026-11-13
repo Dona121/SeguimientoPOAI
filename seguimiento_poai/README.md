@@ -676,8 +676,15 @@ del archivo es unico por tipo de reporte, asi que el libro se carga una vez para
   o contrato): sin ejecucion no hay traza presupuestal. Los demas se listan en el mensaje.
 - Cada BPIN del archivo reemplaza su formulacion anterior; los que no trae no se tocan.
 - Los municipios se cruzan por nombre (sin tildes ni mayusculas); los que no estan en el
-  admin se avisan. Un municipio sin departamento lo toma del PIIP. Un indicador fuera del
-  catalogo se crea con los nombres del PIIP y se avisa.
+  admin se avisan. Un municipio sin departamento lo toma del PIIP.
+- Cada indicador del proyecto se valida contra el catalogo por su codigo. El que no esta se
+  crea con los datos del PIIP (y su producto, programa y sector si tampoco estan), se asocia
+  al proyecto con sus metas y se lista en el mensaje. Lo que ya esta en el catalogo no se
+  cambia.
+- Homologacion por codigo: en cada carga, los indicadores usados que no tengan ninguna
+  homologacion se homologan con los del plan de su mismo codigo; lo mismo al agregar un
+  indicador en el admin o cambiarle el codigo. Al que ya tiene una (por codigo o manual) no
+  se le agrega otra.
 - Un indicador repetido bajo dos objetivos especificos queda una vez, con los dos
   objetivos, y su meta no se duplica.
 
@@ -852,7 +859,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-377 pruebas en quince modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+382 pruebas en quince modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |

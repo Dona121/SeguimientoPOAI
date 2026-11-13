@@ -2599,6 +2599,13 @@ class IndicadorCatalogoAdmin(CatalogoTerritorial):
     autocomplete_fields = ("producto", "unidad_medida")
     inlines = (HomologacionInline,)
 
+    def save_related(self, request, form, formsets, change):
+        # Despues de la tabla de homologacion: si quedo sin ninguna y su codigo esta en el
+        # plan, se homologa por codigo (al agregarlo o al cambiarle el codigo)
+        super().save_related(request, form, formsets, change)
+        if HomologacionIndicador.homologar_por_codigo([form.instance]):
+            messages.info(request, "Se homologó por código con el indicador del plan que tiene su mismo código.")
+
     def get_queryset(self, request):
         return (super().get_queryset(request)
                 .annotate(n=Count("en_proyectos", distinct=True))
