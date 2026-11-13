@@ -71,7 +71,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 540.
+  disco temporal). Hoy son 541.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -688,7 +688,8 @@ a `0004`.
 4. CUIPO → Pendientes: cargar `Semillas_CUIPO_T3_2026.xlsx`, crear las reglas iniciales y
    homologar los recursos que falten (110, 125, 130, 160, 166, 35 y 91 al 11/11).
 5. Cortes: acción "Precargar la distribución del CUIPO".
-6. Distribuciones por BPIN → Distribuir: digitar, elegir cualitativos y validar.
+6. Seguimiento → Distribuciones por BPIN CUIPO → Distribuir: digitar, elegir cualitativos y
+   validar. (El enlace está en el menú Seguimiento desde el 13/11, a pedido del usuario.)
 7. Cortes → Plano: descargar el bloque o integrarlo en el plano de presupuesto; después de
    enviar a CHIP, "Marcar enviadas las validadas".
 

@@ -606,4 +606,7 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
 - Con esta fase quedan hechas las siete del plan del CUIPO (`PLAN_CUIPO.md`, seccion 5, con
   los pasos para usarlo en produccion).
 
-**Pruebas.** 540, todas pasan (149 del CUIPO).
+- El enlace a las distribuciones pasa al menu **Seguimiento** como "Distribuciones por BPIN
+  CUIPO" (sigue pidiendo el permiso de ver distribuciones: los roles del equipo no lo ven).
+
+**Pruebas.** 541, todas pasan (150 del CUIPO).

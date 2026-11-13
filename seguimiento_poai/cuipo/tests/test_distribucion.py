@@ -231,3 +231,19 @@ class AdminDeLaDistribucion(TestCase):
         respuesta = self.client.get(reverse("admin:cuipo_distribucionbpin_changelist"))
         self.assertContains(respuesta, "202600000018441")
         self.assertContains(respuesta, "Inversión sin proyecto")
+
+
+class EnElMenu(TestCase):
+    def test_distribuciones_van_en_seguimiento_con_sufijo_cuipo(self):
+        from django.conf import settings
+        from django.contrib.auth.models import Group
+        seguimiento = next(g for g in settings.UNFOLD["SIDEBAR"]["navigation"] if g["title"] == "Seguimiento")
+        [item] = [i for i in seguimiento["items"] if str(i["link"]) == reverse("admin:cuipo_distribucionbpin_changelist")]
+        self.assertEqual(item["title"], "Distribuciones por BPIN CUIPO")
+        cuipo = next(g for g in settings.UNFOLD["SIDEBAR"]["navigation"] if g["title"] == "CUIPO")
+        self.assertNotIn(item["link"], [i["link"] for i in cuipo["items"]])
+        for rol in ("Seguimiento", "Consulta"):            # sin permisos del CUIPO no lo ven
+            usuario = User.objects.create_user(f"u_{rol}", "x@b.co", "clave", is_staff=True)
+            usuario.groups.add(Group.objects.get(name=rol))
+            self.assertFalse(item["permission"](type("Peticion", (), {"user": usuario})()))
+

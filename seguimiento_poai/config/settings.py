@@ -371,6 +371,10 @@ UNFOLD = {
                     {"title": "Programación de proyectos", "icon": "assignment",
                      "link": reverse_lazy("admin:siifweb_programacionproyectos_changelist"),
                      "permission": _con_permiso("siifweb.view_programacionproyectos")},
+                    # Del modulo CUIPO, junto al seguimiento: aqui se distribuye y valida cada BPIN
+                    {"title": "Distribuciones por BPIN CUIPO", "icon": "call_split",
+                     "link": reverse_lazy("admin:cuipo_distribucionbpin_changelist"),
+                     "permission": _con_permiso("cuipo.view_distribucionbpin")},
                 ],
             },
             {
@@ -522,9 +526,6 @@ UNFOLD = {
                     {"title": "Pendientes", "icon": "pending_actions",
                      "link": reverse_lazy("admin:cuipo_pendientes"),
                      "permission": _con_permiso("cuipo.view_corteejecuciongastos")},
-                    {"title": "Distribuciones por BPIN", "icon": "call_split",
-                     "link": reverse_lazy("admin:cuipo_distribucionbpin_changelist"),
-                     "permission": _con_permiso("cuipo.view_distribucionbpin")},
                     {"title": "Homologación de fuentes", "icon": "swap_horiz",
                      "link": reverse_lazy("admin:cuipo_homologacionfuente_changelist"),
                      "permission": _con_permiso("cuipo.view_homologacionfuente")},
