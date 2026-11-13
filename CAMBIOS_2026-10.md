@@ -627,5 +627,7 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   ejecucion de gastos** trae la columna **Productos PIIP** (Si / No / No aplica para el BPIN 0),
   segun la tabla InfoGeneral, con su filtro. Sus valores (apropiacion definitiva, CDP, RP,
   obligacion y pago) van en formato de moneda, como en las demas listas.
+- Boton para aplicar los filtros ("Apply Filters") en las listas del CUIPO con filtros
+  desplegables y en Fuentes y Rubros.
 
 **Pruebas.** 541, todas pasan (150 del CUIPO).

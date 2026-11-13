@@ -1355,6 +1355,7 @@ class RubroAdmin(ModelAdmin):
     homologacion o por su mismo codigo (activo y habilitado para departamentos)."""
     compressed_fields = True
     list_display = ("codigo", "nombre", "tipo", "homologado", "concepto_cuipo")
+    list_filter_submit = True
     list_filter = (HomologadoCUIPO, RubroEnElCorte, ("tipo", ChoicesDropdownFilter))
     search_fields = ("codigo", "nombre")
 
@@ -1385,6 +1386,7 @@ class FuenteAdmin(ModelAdmin):
     se esta reportando (la del ultimo corte que cierra trimestre)."""
     compressed_fields = True
     list_display = ("codigo", "nombre", "homologado", "fuente_cuipo")
+    list_filter_submit = True
     list_filter = (HomologadoCUIPO, RecursoEnElCorte)
     search_fields = ("codigo", "nombre")
 

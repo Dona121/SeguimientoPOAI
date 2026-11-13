@@ -54,6 +54,7 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
     list_fullwidth = True
     list_display = ("__str__", "vigencia", "fecha_inicio", "fecha_fin", "fecha_descarga", "estado_badge", "filas",
                     "rp", "obligacion", "pago", "ver_filas", "ver_pendientes", "n_distribuciones", "ver_plano")
+    list_filter_submit = True
     list_filter = ("vigencia", ("estado", ChoicesDropdownFilter))
     readonly_fields = ("estado", "filas", "mensaje", "hash", "fecha_creacion", "fecha_actualizacion")
     actions = ("volver_a_procesar", "precargar_distribucion")
@@ -283,6 +284,7 @@ class FilaEjecucionGastosAdmin(SoloLectura):
     list_display = ("rubro", "nombre_rubro_corto", "recurso", "centro_costo", "proyecto", "productos_piip",
                     "apropiacion_definitiva_pesos", "cdp_pesos", "rp_pesos", "obligacion_pesos", "pago_pesos",
                     "de_otra_vigencia")
+    list_filter_submit = True
     list_filter = (("corte", RelatedDropdownFilter), "corte__vigencia", ConProductosPIIP, "de_otra_vigencia")
 
     def get_queryset(self, request):
@@ -400,6 +402,7 @@ class VersionListasAdmin(ModelAdmin):
 class CatalogoCHIPAdmin(SoloLectura):
     """Las listas se mantienen importando una version nueva, no a mano."""
     list_display = ("codigo", "descripcion_corta", "activo", "version")
+    list_filter_submit = True
     list_filter = ("activo", ("version", RelatedDropdownFilter))
     search_fields = ("codigo", "descripcion")
     list_select_related = ("version",)
@@ -503,6 +506,7 @@ class ReglaAdmin(ModelAdmin):
 @admin.register(HomologacionFuente)
 class HomologacionFuenteAdmin(ReglaAdmin):
     list_display = ("vigencia", "recurso", "nombre_recurso", "fuente_cuipo", "validado_por", "fecha_validacion")
+    list_filter_submit = True
     list_filter = ("vigencia", ("fuente_cuipo", RelatedDropdownFilter))
     search_fields = ("fuente_siifweb__codigo", "fuente_siifweb__nombre", "fuente_cuipo__codigo",
                      "fuente_cuipo__descripcion")
@@ -602,6 +606,7 @@ class DistribucionBPINAdmin(ModelAdmin):
     list_fullwidth = True
     list_per_page = 100
     list_display = ("bpin", "nombre_proyecto", "periodo", "regla", "estado", "n_lineas", "cuadra", "enlace_distribuir")
+    list_filter_submit = True
     list_filter = (("corte", RelatedDropdownFilter), "regla", "estado")
     search_fields = ("bpin",)
     list_select_related = ("corte",)
