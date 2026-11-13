@@ -12,8 +12,8 @@ from cuipo import semillas
 from cuipo.models import FuenteCUIPO, HomologacionFuente, HomologacionRubro
 from siifweb.models import Fuente
 
-from .test_derivacion import corte_con, listas
-from .test_ejecucion_gastos import fila
+from .fabricas import corte_con, fila, listas
+
 
 VALIDADO = "Presupuesto (CUIPO T3 2026)"
 

@@ -1,7 +1,5 @@
 """Homologaciones y reglas: de la fila de ejecucion a los codigos CHIP (fase 2 del CUIPO)."""
-from datetime import date, timedelta
 from decimal import Decimal
-from itertools import count
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -11,57 +9,11 @@ from django.urls import reverse
 
 from cuipo import derivacion
 from cuipo.models import (ConceptoCUIPO, FuenteCUIPO, HomologacionFuente, HomologacionRubro, ReglaSeccion,
-                          ReglaSituacionFondos, ReglaTercero, SeccionPresupuestal, SituacionFondos, TerceroCUIPO,
-                          VersionListas)
+                          ReglaSituacionFondos, ReglaTercero, SeccionPresupuestal, SituacionFondos, TerceroCUIPO)
 from siifweb.models import CentroCosto, Fuente, Rubro
 
-from .test_ejecucion_gastos import cortar, fila
+from .fabricas import corte_con, fila, homologar, listas
 
-
-def listas():
-    """Lo minimo de las listas CHIP y de los catalogos de SIIFWEB para derivar."""
-    v = VersionListas.objects.create(nombre="09-2026")
-    for codigo, habilitado in (("2.3.2.02.02.009", True), ("2.3.3.05.09.054", False), ("2.3.3.05.09.099", True),
-                               ("2.3.1.01.02.001", True), ("2.3.1.01.02.006", True),
-                               ("2.3.2.01.01.001.02.08", True)):
-        ConceptoCUIPO.objects.create(codigo=codigo, descripcion=f"Concepto {codigo}", nivel="D",
-                                     habilitado_departamentos=habilitado, version=v)
-    for codigo in ("1.2.1.0.00", "1.2.4.1.01", "1.3.3.3.20", "1.2.3.3.03"):
-        FuenteCUIPO.objects.create(codigo=codigo, descripcion=f"Fuente {codigo}", version=v)
-    for codigo in ("16.0", "21.0", "22.0"):
-        SeccionPresupuestal.objects.create(codigo=codigo, descripcion=f"Sección {codigo}", version=v)
-    for codigo in ("C", "S"):
-        SituacionFondos.objects.create(codigo=codigo, descripcion=f"Situación {codigo}", version=v)
-    for codigo in ("1", "220170001", "23900000", "128470000"):
-        TerceroCUIPO.objects.create(codigo=codigo, descripcion=f"Tercero {codigo}", version=v)
-    for codigo in ("1", "3", "7", "108", "114"):
-        Fuente.objects.create(codigo=codigo, nombre=f"Recurso {codigo}")
-    for codigo in ("2.3.2.02.02.009", "2.3.3.05.09.054", "2.3.1.01.02.001", "2.3.1.01.02.006",
-                   "2.3.2.01.01.001.02.08"):
-        Rubro.objects.create(codigo=codigo, nombre=f"Rubro {codigo}")
-    for codigo in ("2", "3", "10", "11", "16"):
-        CentroCosto.objects.create(codigo=codigo, nombre=f"Centro {codigo}")
-    return v
-
-
-_dias = count()
-
-
-def corte_con(detalle, vigencia=2026, fecha_fin=None):
-    """Un corte cuyo unico subtotal es la raiz 2: cuadra con cualquier detalle. Cada corte de
-    una prueba termina un dia antes que el anterior, para no repetir el rango."""
-    columnas = ["APROPIACION_INICIAL", "ADICION", "DISMINUCION", "CREDITO", "CONTRACREDITO", "APLAZAMIENTOS",
-                "DESAPLAZAMIENTOS", "APROPIACION_DEFINITIVA", "SOLICITUD_TRAMITE", "CDP", "RP", "OBLIGACION", "PAGO"]
-    raiz = fila(100, "2", 0, **{c: sum(f[c] for f in detalle) for c in columnas})
-    fin = fecha_fin or date(vigencia, 9, 30) - timedelta(days=next(_dias) % 200)
-    corte = cortar([raiz, *detalle], vigencia=vigencia, fecha_fin=fin)
-    assert corte.estado == corte.Estado.PROCESADO, corte.mensaje
-    return corte
-
-
-def homologar(recurso, fuente, vigencia=2026):
-    return HomologacionFuente.objects.create(fuente_siifweb=Fuente.objects.get(codigo=recurso),
-                                             fuente_cuipo=FuenteCUIPO.objects.get(codigo=fuente), vigencia=vigencia)
 
 
 class Derivar(TestCase):

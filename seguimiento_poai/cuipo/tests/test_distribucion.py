@@ -12,60 +12,10 @@ from django.urls import reverse
 from cuipo import distribucion, ejecucion
 from cuipo.models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, DistribucionBPIN,
                           HomologacionRubro, LineaCUIPO,
-                          PoliticaPublica, ProductoCUIPO, ReglaTercero, TerceroCUIPO, VersionListas, VigenciaGasto,
-                          periodo_de)
-from siifweb.models import (CentroCosto, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
-                            ProductoCatalogo, Rubro)
+                          ProductoCUIPO, ReglaTercero, TerceroCUIPO, VersionListas, VigenciaGasto, periodo_de)
+from siifweb.models import (CentroCosto, Rubro)
 
-from .test_derivacion import corte_con, homologar, listas
-from .test_ejecucion_gastos import fila
-
-PRODUCTOS = ("0", "2201006", "2201048", "1906005", "1906030", "4502034", "4502038", "3301053")
-
-
-def listas_distribucion():
-    v = listas()
-    for codigo in PRODUCTOS:
-        ProductoCUIPO.objects.create(codigo=codigo, descripcion="NO APLICA" if codigo == "0" else f"Producto {codigo}",
-                                     version=v)
-    for codigo, texto in (("1", "VIGENCIA ACTUAL"), ("4", "VIGENCIAS FUTURAS - VIGENCIA ACTUAL")):
-        VigenciaGasto.objects.create(codigo=codigo, descripcion=texto, version=v)
-    CPC.objects.create(codigo="0", descripcion="No aplica", version=v)
-    CPC.objects.create(codigo="85999", descripcion="Otros servicios", version=v)
-    DetalleSectorial.objects.create(codigo="0", descripcion="NO APLICA", version=v)
-    PoliticaPublica.objects.create(codigo="0", descripcion="NO APLICA", version=v)
-    return v
-
-
-def formular(bpin, *productos):
-    """La formulacion PIIP del BPIN con un indicador por producto."""
-    f = FormulacionProyecto.objects.create(bpin=bpin, nombre=f"Proyecto {bpin}")
-    for codigo in productos:
-        producto, _ = ProductoCatalogo.objects.get_or_create(codigo=codigo, defaults={"nombre": f"Producto {codigo}"})
-        indicador, _ = IndicadorCatalogo.objects.get_or_create(codigo=f"{codigo}00",
-                                                               defaults={"producto": producto, "nombre": "Indicador"})
-        IndicadorProyecto.objects.create(formulacion=f, indicador=indicador)
-    return f
-
-
-def corte_t3():
-    """Los casos del plan con las cifras al 30/09/2026."""
-    return corte_con([
-        fila(101, "2.3.2.02.02.009", Decimal("1054759012"), "3", "2", "202500000039332",
-             obligacion=Decimal("834182726")),
-        fila(102, "2.3.2.01.01.001.02.08", Decimal("6016089072.27"), "7", "16", "2023002700021",
-             obligacion=Decimal("6015697203.50")),
-        fila(102, "2.3.2.01.01.001.02.08", Decimal("1027664538.50"), "114", "3", "2023002700021",
-             obligacion=Decimal("1014627682")),
-        fila(101, "2.3.2.02.02.009", Decimal("2979309905"), "35", "19", "202500000029628",
-             obligacion=Decimal("2010861681.15")),
-        fila(101, "2.3.2.02.02.009", Decimal("1000000000"), "54", "19", "202500000029628"),
-        fila(101, "2.3.2.02.02.009", Decimal("425784947"), "125", "19", "202500000029628",
-             obligacion=Decimal("314670429.87")),
-        fila(103, "2.3.3.05.09.054", Decimal("40000000"), "108", "10", "202600000018441"),
-        fila(104, "2.3.7.05.03", Decimal("389231271"), "128", "1", "0"),
-        fila(105, "2.3.2.02.02.009", Decimal("5000"), "1", "2", "202600000099999"),     # sin PIIP
-    ], fecha_fin=date(2026, 9, 30))
+from .fabricas import corte_con, corte_t3, fila, formular, homologar, listas_distribucion
 
 
 class PeriodoDelCorte(TestCase):

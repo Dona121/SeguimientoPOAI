@@ -1,5 +1,4 @@
 """Plano CHIP del CUIPO (fase 6)."""
-from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -8,69 +7,12 @@ from django.test import TestCase
 from django.urls import reverse
 
 from cuipo import distribucion, plano, validacion
-from cuipo.models import (ConceptoCUIPO, DistribucionBPIN, FuenteCUIPO, HomologacionFuente, HomologacionRubro,
-                          ProductoCUIPO, ReglaTercero, TerceroCUIPO, VersionListas, VigenciaGasto)
-from siifweb.models import CentroCosto, Fuente, Rubro
+from cuipo.models import (DistribucionBPIN, ProductoCUIPO, VigenciaGasto)
 
-from .test_derivacion import corte_con
-from .test_distribucion import formular, listas_distribucion
-from .test_ejecucion_gastos import fila
+from .fabricas import ENCABEZADO, distribuir_manual, preparar_plano as preparar
+
 
 D = Decimal
-ENCABEZADO = "S\t117070000\t10909\t2026\tD_EJECUCION_DE_GASTOS"
-
-
-def preparar():
-    """Listas, homologaciones y un corte al 30/09 con los casos del plan."""
-    listas_distribucion()
-    v = VersionListas.objects.get()
-    ConceptoCUIPO.objects.create(codigo="2.3.7.05.03", descripcion="Pago de deficit", nivel="D",
-                                 habilitado_departamentos=True, version=v)
-    for codigo in ("1.3.2.3.11", "1.2.3.2.06", "1.3.3.4.01", "1.2.3.1.19"):
-        FuenteCUIPO.objects.create(codigo=codigo, descripcion=f"Fuente {codigo}", version=v)
-    for codigo in ("35", "54", "125", "128"):
-        Fuente.objects.create(codigo=codigo, nombre=f"Recurso {codigo}")
-    for codigo in ("19", "1"):
-        CentroCosto.objects.get_or_create(codigo=codigo, defaults={"nombre": f"Centro {codigo}"})
-    for recurso, fuente in (("108", "1.3.3.3.20"), ("35", "1.3.3.4.01"), ("54", "1.3.2.3.11"),
-                            ("125", "1.3.2.3.11"), ("128", "1.2.3.1.19")):
-        HomologacionFuente.objects.create(fuente_siifweb=Fuente.objects.get(codigo=recurso), vigencia=2026,
-                                          fuente_cuipo=FuenteCUIPO.objects.get(codigo=fuente))
-    HomologacionRubro.objects.create(rubro=Rubro.objects.get(codigo="2.3.3.05.09.054"),
-                                     concepto=ConceptoCUIPO.objects.get(codigo="2.3.3.05.09.099"))
-    ReglaTercero.objects.create(centro_costo=CentroCosto.objects.get(codigo="10"),
-                                tercero=TerceroCUIPO.objects.get(codigo="220170001"))
-    formular("202500000029628", "4502034", "4502038")
-    formular("202600000018441", "3301053")
-    corte = corte_con([
-        fila(101, "2.3.2.02.02.009", D("2979309905"), "35", "19", "202500000029628", obligacion=D("2010861681.15")),
-        fila(101, "2.3.2.02.02.009", D("1000000000"), "54", "19", "202500000029628"),
-        fila(101, "2.3.2.02.02.009", D("425784947"), "125", "19", "202500000029628", obligacion=D("314670429.87")),
-        fila(103, "2.3.3.05.09.054", D("40000000"), "108", "10", "202600000018441"),
-        fila(104, "2.3.7.05.03", D("389231271"), "128", "1", "0"),
-    ], fecha_fin=date(2026, 9, 30))
-    distribucion.precargar(corte)
-    return corte
-
-
-def distribuir_manual(corte):
-    """202500000029628: cada fila mitad y mitad entre sus dos productos, con centavos; el
-    recurso 54 lleva una parte en vigencia futura (4)."""
-    d = DistribucionBPIN.objects.get(corte=corte, bpin="202500000029628")
-    p34, p38 = (ProductoCUIPO.objects.get(codigo=c).pk for c in ("4502034", "4502038"))
-    v1, v4 = (VigenciaGasto.objects.get(codigo=c).pk for c in ("1", "4"))
-    reparto = {
-        "35": [(p34, v1, "1489654952.50", "1005430840.58"), (p38, v1, "1489654952.50", "1005430840.57")],
-        "54": [(p34, v1, "600000000", "600000000"), (p38, v4, "400000000", "400000000")],
-        "125": [(p34, v1, "212892473.50", "157335214.94"), (p38, v1, "212892473.50", "157335214.93")],
-    }
-    for f in d.filas():
-        for producto, vigencia, c, o in reparto[f.recurso]:
-            for campo, valor in (("compromisos", c), ("obligaciones", o), ("pagos", o)):
-                distribucion.guardar_valor(d, f.pk, producto, vigencia, campo, valor)
-    return d
-
-
 def lineas_d(texto):
     return [r.split("\t") for r in texto.splitlines() if r.startswith("D\t")]
 

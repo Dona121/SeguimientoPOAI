@@ -1,5 +1,4 @@
 """Importador de la ejecucion de gastos por corte (estado_ppto_gasto_gobatl_fyccw)."""
-import hashlib
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -14,58 +13,7 @@ from openpyxl import Workbook
 from cuipo import ejecucion
 from cuipo.models import CorteEjecucionGastos, FilaEjecucionGastos
 
-COLUMNAS = ["RUBRO_ID", "RUBRO", "NOMBRE_RUBRO", "RECURSO", "NOMBRE_RECURSO", "CENTROCOSTO",
-            "NOMBRE_CENTROCOSTO", "PROYECTO", "APROPIACION_INICIAL", "ADICION", "DISMINUCION", "CREDITO",
-            "CONTRACREDITO", "APLAZAMIENTOS", "DESAPLAZAMIENTOS", "APROPIACION_DEFINITIVA",
-            "SOLICITUD_TRAMITE", "CDP", "RP", "OBLIGACION", "PAGO", "DISPONIBLE"]
-
-
-def fila(rubro_id, rubro, rp, recurso=None, centro=None, proyecto=None, obligacion=None, pago=None, **otros):
-    """Una fila del reporte. Sin recurso es un subtotal."""
-    obligacion = rp if obligacion is None else obligacion
-    pago = obligacion if pago is None else pago
-    valores = {"APROPIACION_INICIAL": rp, "ADICION": 0, "DISMINUCION": 0, "CREDITO": 0, "CONTRACREDITO": 0,
-               "APLAZAMIENTOS": 0, "DESAPLAZAMIENTOS": 0, "APROPIACION_DEFINITIVA": rp, "SOLICITUD_TRAMITE": rp,
-               "CDP": rp, "RP": rp, "OBLIGACION": obligacion, "PAGO": pago, "DISPONIBLE": "0"}
-    valores.update(otros)
-    return {"RUBRO_ID": rubro_id, "RUBRO": rubro, "NOMBRE_RUBRO": f"Rubro {rubro}",
-            "RECURSO": recurso, "NOMBRE_RECURSO": f"Recurso {recurso}" if recurso else None,
-            "CENTROCOSTO": centro, "NOMBRE_CENTROCOSTO": f"Centro {centro}" if centro else None,
-            "PROYECTO": proyecto if recurso else None, **valores}
-
-
-def reporte_basico():
-    """2 > 2.3 > 2.3.2.02.02.009 con dos filas de detalle (un proyecto y funcionamiento)."""
-    return [
-        fila(100, "2", 1500),
-        fila(101, "2.3", 1500),
-        fila(102, "2.3.2.02.02.009", 1500),
-        fila(102, "2.3.2.02.02.009", 1000, "3", "2", "202500000039332"),
-        fila(102, "2.3.2.02.02.009", 500, "7", "16", "0"),
-    ]
-
-
-def libro(filas):
-    wb = Workbook()
-    hoja = wb.active
-    hoja.title = "Hoja1"
-    hoja.append(COLUMNAS)
-    for f in filas:
-        hoja.append([f[c] for c in COLUMNAS])
-    buffer = BytesIO()
-    wb.save(buffer)
-    return buffer.getvalue()
-
-
-def cortar(filas, vigencia=2026, fecha_fin=date(2026, 9, 30)):
-    datos = libro(filas)
-    corte = CorteEjecucionGastos(vigencia=vigencia, fecha_inicio=date(vigencia, 1, 1), fecha_fin=fecha_fin,
-                                 hash=hashlib.sha256(datos).hexdigest())
-    corte.archivo.save("ejecucion.xlsx", ContentFile(datos), save=True)
-    ejecucion.procesar(corte)
-    corte.refresh_from_db()
-    return corte
-
+from .fabricas import COLUMNAS, cortar, fila, libro_ejecucion as libro, reporte_basico
 
 class ImportarEjecucion(TestCase):
     def test_guarda_solo_el_detalle_con_todas_las_columnas(self):

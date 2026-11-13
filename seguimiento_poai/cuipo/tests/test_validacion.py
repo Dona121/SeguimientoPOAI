@@ -10,9 +10,8 @@ from cuipo import distribucion, validacion
 from cuipo.models import (CPC, ConceptoCUIPO, DetalleSectorial, DistribucionBPIN, LineaCUIPO, ProductoCUIPO,
                           TerceroCUIPO, VigenciaGasto)
 
-from .test_derivacion import corte_con, homologar
-from .test_distribucion import formular, listas_distribucion
-from .test_ejecucion_gastos import fila
+from .fabricas import corte_con, fila, formular, homologar, listas_distribucion
+
 
 BPIN = "202500000039332"
 

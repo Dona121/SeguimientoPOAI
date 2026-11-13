@@ -71,7 +71,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 536.
+  disco temporal). Hoy son 540.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -663,10 +663,34 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   - Al integrarse en el plano de presupuesto, solo cambia el bloque D: sus líneas 2.1 y 2.2
     y las categorías E, C, B y A salen idénticas, y el orden de bloques se conserva.
 
-**Fase 7 — Pruebas**
-- Pasar `fila()`, `libro()` y `cortar()` de `cuipo/tests/test_ejecucion_gastos.py` a
-  `cuipo/tests/fabricas.py`; agregar un libro de listas mínimo y un plano esperado (golden
-  file) de 202500000039332.
+**Fase 7 — Pruebas** — **hecha el 13/11** (rama `cuipo-fase7-pruebas`).
+- `cuipo/tests/fabricas.py` reúne los ayudantes que estaban repartidos: reportes de ejecución
+  en memoria (`fila`, `libro_ejecucion`, `cortar`, `corte_con`), el libro de listas mínimo
+  (`hojas_minimas`, `libro_listas`), las listas CHIP mínimas (`listas`,
+  `listas_distribucion`), la formulación PIIP (`formular`), la homologación (`homologar`) y
+  los escenarios (`corte_t3`, `preparar_plano`, `distribuir_manual`).
+- `cuipo/tests/test_extremo_a_extremo.py`: 202500000039332 de punta a punta (corte al 30/09,
+  precarga, digitación desde el PIIP, CPC, validación, plano) contra el plano esperado
+  `cuipo/tests/datos/plano_202500000039332.txt`, byte a byte, también descargado desde la
+  pantalla del plano. `.gitattributes` evita que git cambie su fin de línea.
+- Las pruebas del CUIPO son 149, en 9 archivos.
+
+**Estado del módulo (13/11):** las siete fases están hechas en ramas encadenadas, sin subir:
+`main ← formulacion-piip ← cuipo-ejecucion-gastos ← piip-control-siifweb ← cuipo-fase1-listas ←
+cuipo-fase2-reglas ← cuipo-fase3-distribucion ← cuipo-fase4-pantalla ← cuipo-fase5-validaciones
+← cuipo-fase6-plano ← cuipo-fase7-pruebas`. Migraciones: `siifweb/0020` a `0022` y `cuipo/0001`
+a `0004`.
+
+**Para usarlo en producción** (después de respaldar Supabase y subir la rama final):
+1. CUIPO → Versiones de las listas CHIP: subir `Listas_Categoria_CUIPO_09-2026.xlsx`.
+2. Cargar los consolidados al día y, si hay uno nuevo, el exporte del PIIP.
+3. CUIPO → Cortes: cargar el corte 01/01–30/09/2026 (completo, 22 columnas).
+4. CUIPO → Pendientes: cargar `Semillas_CUIPO_T3_2026.xlsx`, crear las reglas iniciales y
+   homologar los recursos que falten (110, 125, 130, 160, 166, 35 y 91 al 11/11).
+5. Cortes: acción "Precargar la distribución del CUIPO".
+6. Distribuciones por BPIN → Distribuir: digitar, elegir cualitativos y validar.
+7. Cortes → Plano: descargar el bloque o integrarlo en el plano de presupuesto; después de
+   enviar a CHIP, "Marcar enviadas las validadas".
 
 ---
 

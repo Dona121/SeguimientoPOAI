@@ -7,11 +7,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from cuipo import distribucion
-from cuipo.models import (CPC, DistribucionBPIN, LineaCUIPO, ProductoCUIPO, TerceroCUIPO, VigenciaGasto)
+from cuipo.models import (DistribucionBPIN, ProductoCUIPO, TerceroCUIPO, VigenciaGasto)
 
-from .test_derivacion import corte_con
-from .test_distribucion import corte_t3, formular, listas_distribucion
-from .test_ejecucion_gastos import fila
+from .fabricas import corte_con, corte_t3, fila, formular, listas_distribucion
+
 
 
 class Repartir(TestCase):

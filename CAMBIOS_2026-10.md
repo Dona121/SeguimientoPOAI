@@ -594,3 +594,16 @@ Rama `cuipo-fase6-plano`, sobre `cuipo-fase5-validaciones`. Sin migraciones.
   enviadas las validadas".
 
 **Pruebas.** 534, todas pasan (`cuipo/tests/test_plano.py`, 18 nuevas).
+
+## 26. CUIPO, fase 7: pruebas (13 de noviembre)
+
+Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
+
+- Los ayudantes de las pruebas del CUIPO pasan a `cuipo/tests/fabricas.py`.
+- Prueba de punta a punta de 202500000039332 contra un plano esperado escrito a mano
+  (`cuipo/tests/datos/plano_202500000039332.txt`), comparado byte a byte; `.gitattributes`
+  conserva su fin de linea.
+- Con esta fase quedan hechas las siete del plan del CUIPO (`PLAN_CUIPO.md`, seccion 5, con
+  los pasos para usarlo en produccion).
+
+**Pruebas.** 540, todas pasan (149 del CUIPO).

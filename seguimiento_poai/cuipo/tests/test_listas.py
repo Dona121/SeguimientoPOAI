@@ -1,5 +1,5 @@
 """Importador de las listas CHIP de la categoria CUIPO."""
-from io import BytesIO, StringIO
+from io import StringIO
 from pathlib import Path
 import tempfile
 
@@ -9,69 +9,12 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
-from openpyxl import Workbook
 
 from cuipo import listas
 from cuipo.models import (CPC, ConceptoCUIPO, DetalleSectorial, FuenteCUIPO, PoliticaPublica, ProductoCUIPO,
                           SeccionPresupuestal, SituacionFondos, TerceroCUIPO, VersionListas, VigenciaGasto)
 
-
-def hojas_minimas():
-    """Las once hojas con pocas filas, con los tipos que trae el archivo real."""
-    return {
-        "Conceptos por ambito": [
-            ["Nivel", "CODIGO", "NOMBRE", "438 - DEPARTAMENTOS", "439 - MUNICIPIOS", "Notas"],
-            ["S", "2.3", "INVERSION", 1, 1, None],
-            ["D", "2.3.2.02.02.009", "SERVICIOS PARA LA COMUNIDAD", 1, 1, None],
-            ["D", "2.3.3.05.09.054", "A ESTABLECIMIENTOS PUBLICOS", 0, 1, "Solo municipios"],
-            ["D", "2.3.3.05.09.099", "APORTES A ESTABLECIMIENTOS PUBLICOS", 1, 1, None],
-            [None, None, None, None, None, None],
-        ],
-        "Conceptos_CPC": [["Código", "Nombre", "Descripción"], ["2.3.2.02.02.009", "Servicios", "Servicios"],
-                          [None, None, None]],
-        "CPC": [["Código", "Clase o Subclase", "Sección", "División"],
-                ["0", "No aplica", "NO APLICA", "NO APLICA"],
-                ["01111", "Trigo semilla", "AGRICULTURA", "PRODUCTOS DE LA AGRICULTURA"],
-                [1101001, "Antracita", "MINERALES", "CARBON"],     # numero en Excel, 7 digitos
-                [21111, "Carne de bovino", "PRODUCTOS ALIMENTICIOS", "CARNE"]],
-        "Fuentes de Financiación": [["Código", "Descripción"], ["1.2.1.0.00", "ICLD"], ["1.3.3.3.20", "R.B. ESTAMPILLAS"]],
-        "Tercero": [["Código", "Entidad"], ["0", "OTRO"], ["220170001", "Fondo Mixto"]],
-        "Politica Pública": [["Código", "Descripción"], [0, "NO APLICA"], [8182, "PDET"]],
-        "Secciones Presupuestales": [["Código", "Descripción", None, "Nota suelta"],
-                                     ["16.0", "ADMINISTRACION CENTRAL", None, "no es una columna"],
-                                     ["21.0", "SALUD", None, None]],
-        "Vigencia Gasto": [["Código", "Descripción", None], [1, "VIGENCIA ACTUAL", None], [2, "RESERVAS", None]],
-        "Producto MGA": [["Codigo", "Descripción", "Sector", "Programa", "Aplica a Entidades Territoriales"],
-                         ["0101004", "Servicios de difusion", "CONGRESO", "Eficiencia legislativa", None],
-                         ["3301053", "Servicio de apoyo", "CULTURA", "Promocion cultural", None],
-                         ["3201051", "Producto nuevo", "AMBIENTE", "Programa", "Nuevo"]],
-        "Situación de Fondos": [["Código", "Descripción"], ["C", "CON SITUACION DE FONDOS"],
-                                ["S", "SIN SITUACION DE FONDOS"]],
-        "Detalle Sectorial": [["Código", "Concepto", "Grupo concepto", "Sector", None],
-                              [0, "NO APLICA", "NO APLICA", "NO APLICA", None],
-                              ["19.01.17", "RS - TRANSFERENCIAS", "RÉGIMEN SUBSIDIADO", "SALUD", None]],
-    }
-
-
-def libro(**cambios):
-    """Libro de listas en memoria. cambios: {nombre de hoja (con _ por espacio): filas o None}."""
-    hojas = hojas_minimas()
-    for clave, filas in cambios.items():
-        nombre = next(h for h in hojas if h.replace(" ", "_") == clave or h == clave)
-        if filas is None:
-            del hojas[nombre]
-        else:
-            hojas[nombre] = filas
-    wb = Workbook()
-    wb.remove(wb.active)
-    for nombre, filas in hojas.items():
-        hoja = wb.create_sheet(nombre)
-        for fila in filas:
-            hoja.append(fila)
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer
+from .fabricas import hojas_minimas, libro_listas as libro
 
 
 def importar(nombre="09-2026", **cambios):
