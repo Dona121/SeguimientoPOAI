@@ -7,9 +7,10 @@ Fuente, CentroCosto o Proyecto (que la carga tendria que crear si faltaran).
 """
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
-from siifweb.models import Fechas, listado_vigencias
+from siifweb.models import CentroCosto, Fechas, Fuente, Rubro, listado_vigencias
 
 
 class CorteEjecucionGastos(Fechas):
@@ -251,3 +252,143 @@ class TerceroCUIPO(CatalogoCHIP):
     class Meta(CatalogoCHIP.Meta):
         verbose_name = "Tercero CUIPO"
         verbose_name_plural = "Terceros CUIPO"
+
+
+# ---------------------------------------------------------------------------
+# Homologaciones y reglas: de la fila de ejecucion de SIIFWEB a los codigos CHIP
+# ---------------------------------------------------------------------------
+# Las tablas apuntan a los catalogos de siifweb (Fuente, Rubro, CentroCosto) y a las listas
+# CHIP; los modelos de siifweb no se tocan. La fila de ejecucion trae los codigos como texto
+# y se cruza con ellos por codigo (cuipo/derivacion.py).
+
+class HomologacionFuente(Fechas):
+    """Recurso de SIIFWEB -> fuente CUIPO, por vigencia. Sin ella la fila no se puede reportar.
+
+    Son muchos a uno (62 recursos -> 28 fuentes en 2026) y no se deduce del nombre del
+    recurso: en 20 de ellos el codigo que trae el nombre no es la fuente correcta.
+    """
+    fuente_siifweb = models.ForeignKey(Fuente, on_delete=models.PROTECT, related_name="homologaciones_cuipo",
+                                       verbose_name="Recurso SIIFWEB")
+    fuente_cuipo = models.ForeignKey(FuenteCUIPO, on_delete=models.PROTECT, related_name="homologaciones",
+                                     verbose_name="Fuente CUIPO")
+    vigencia = models.IntegerField(choices=listado_vigencias)
+    observacion = models.TextField(blank=True, verbose_name="Observación")
+    validado_por = models.ForeignKey("auth.User", on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name="homologaciones_fuente_cuipo", verbose_name="Validado por")
+    fecha_validacion = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de validación")
+
+    class Meta:
+        verbose_name = "Homologación de fuente"
+        verbose_name_plural = "Homologación de fuentes"
+        ordering = ("-vigencia", "fuente_siifweb__codigo")
+        constraints = [
+            models.UniqueConstraint(fields=["fuente_siifweb", "vigencia"], name="homologacion_fuente_por_vigencia"),
+        ]
+
+    def __str__(self):
+        return f"{self.vigencia}: recurso {self.fuente_siifweb.codigo} -> {self.fuente_cuipo.codigo}"
+
+
+class HomologacionRubro(Fechas):
+    """Excepciones: el rubro de SIIFWEB que se reporta con otro concepto CUIPO.
+
+    Sin excepcion, el concepto es el mismo codigo del rubro si existe en las listas y esta
+    habilitado para departamentos (ej. 2.3.3.05.09.054 no lo esta y va como 2.3.3.05.09.099).
+    """
+    rubro = models.OneToOneField(Rubro, on_delete=models.PROTECT, related_name="homologacion_cuipo",
+                                 verbose_name="Rubro SIIFWEB")
+    concepto = models.ForeignKey(ConceptoCUIPO, on_delete=models.PROTECT, related_name="homologaciones",
+                                 verbose_name="Concepto CUIPO")
+    observacion = models.TextField(blank=True, verbose_name="Observación")
+
+    class Meta:
+        verbose_name = "Homologación de rubro"
+        verbose_name_plural = "Homologación de rubros"
+        ordering = ("rubro__codigo",)
+
+    def __str__(self):
+        return f"{self.rubro.codigo} -> {self.concepto.codigo}"
+
+
+class ReglaSeccion(Fechas):
+    """Centro de costo de la fila -> seccion presupuestal. Sin regla: 16.0 (administracion central)."""
+    centro_costo = models.OneToOneField(CentroCosto, on_delete=models.PROTECT, related_name="regla_seccion_cuipo",
+                                        verbose_name="Centro de costo")
+    seccion = models.ForeignKey(SeccionPresupuestal, on_delete=models.PROTECT, related_name="reglas",
+                                verbose_name="Sección presupuestal")
+    observacion = models.TextField(blank=True, verbose_name="Observación")
+
+    class Meta:
+        verbose_name = "Regla de sección"
+        verbose_name_plural = "Reglas de sección"
+        ordering = ("centro_costo__codigo",)
+
+    def __str__(self):
+        return f"Centro de costo {self.centro_costo.codigo} -> {self.seccion.codigo}"
+
+
+class ReglaTercero(Fechas):
+    """Tercero CHIP por rubro o por centro de costo. Si una fila cumple las dos, gana la del rubro.
+
+    Sin regla, el tercero es 1 - NO APLICA (asi va en la mayoria de lineas de inversion).
+    """
+    rubro = models.OneToOneField(Rubro, on_delete=models.PROTECT, null=True, blank=True,
+                                 related_name="regla_tercero_cuipo", verbose_name="Rubro SIIFWEB")
+    centro_costo = models.OneToOneField(CentroCosto, on_delete=models.PROTECT, null=True, blank=True,
+                                        related_name="regla_tercero_cuipo", verbose_name="Centro de costo")
+    tercero = models.ForeignKey(TerceroCUIPO, on_delete=models.PROTECT, related_name="reglas")
+    observacion = models.TextField(blank=True, verbose_name="Observación")
+
+    class Meta:
+        verbose_name = "Regla de tercero"
+        verbose_name_plural = "Reglas de tercero"
+        ordering = ("rubro__codigo", "centro_costo__codigo")
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(rubro__isnull=False, centro_costo__isnull=True)
+                | Q(rubro__isnull=True, centro_costo__isnull=False),
+                name="regla_tercero_por_rubro_o_por_centro"),
+        ]
+
+    def clean(self):
+        if (self.rubro_id is None) == (self.centro_costo_id is None):
+            raise ValidationError("La regla va por rubro o por centro de costo: uno de los dos, no ambos.")
+
+    def __str__(self):
+        cual = f"rubro {self.rubro.codigo}" if self.rubro_id else f"centro de costo {self.centro_costo.codigo}"
+        return f"{cual} -> {self.tercero.codigo}"
+
+
+class ReglaSituacionFondos(Fechas):
+    """Prefijo de rubro (+ fuente CUIPO opcional) -> situacion de fondos. Sin regla: C.
+
+    Gana la regla de prefijo mas largo y, a igual prefijo, la que nombra la fuente.
+    Ejemplo: 2.3.1.01.02.001 con 1.2.4.1.01 (SGP educacion) -> S.
+    """
+    prefijo_rubro = models.CharField(max_length=40, verbose_name="Prefijo del rubro",
+                                     help_text="El rubro o el comienzo de su código, por ejemplo 2.3.1.01.02.001")
+    fuente_cuipo = models.ForeignKey(FuenteCUIPO, on_delete=models.PROTECT, null=True, blank=True,
+                                     related_name="reglas_situacion", verbose_name="Fuente CUIPO",
+                                     help_text="Vacía: aplica a cualquier fuente")
+    situacion = models.ForeignKey(SituacionFondos, on_delete=models.PROTECT, related_name="reglas",
+                                  verbose_name="Situación de fondos")
+    observacion = models.TextField(blank=True, verbose_name="Observación")
+
+    class Meta:
+        verbose_name = "Regla de situación de fondos"
+        verbose_name_plural = "Reglas de situación de fondos"
+        ordering = ("prefijo_rubro",)
+        constraints = [
+            models.UniqueConstraint(fields=["prefijo_rubro", "fuente_cuipo"], name="regla_situacion_unica"),
+            models.UniqueConstraint(fields=["prefijo_rubro"], condition=Q(fuente_cuipo__isnull=True),
+                                    name="regla_situacion_unica_sin_fuente"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.prefijo_rubro = self.prefijo_rubro.strip().rstrip(".")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        fuente = f" con {self.fuente_cuipo.codigo}" if self.fuente_cuipo_id else ""
+        return f"{self.prefijo_rubro}{fuente} -> {self.situacion.codigo}"
+

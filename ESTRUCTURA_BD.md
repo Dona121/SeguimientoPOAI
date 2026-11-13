@@ -394,3 +394,16 @@ Los subtotales del árbol no se guardan; la carga verifica que cuadren con el de
 Todos los catálogos heredan de `CatalogoCHIP` (abstracta): `codigo` único como texto exacto,
 `descripcion`, `activo` y `version` → `VersionListas` (PROTECT; la última versión que trajo el
 código). Lo que deja de venir queda inactivo; nada se borra.
+
+### Homologaciones y reglas (app `cuipo`, fase 2 del CUIPO)
+
+| modelo | llave natural | relaciones |
+|---|---|---|
+| `HomologacionFuente` | (`fuente_siifweb`, `vigencia`) | → `siifweb.Fuente`, → `FuenteCUIPO`, `validado_por` → `auth.User`, `fecha_validacion` |
+| `HomologacionRubro` | `rubro` | uno a uno con `siifweb.Rubro`, → `ConceptoCUIPO` |
+| `ReglaSeccion` | `centro_costo` | uno a uno con `siifweb.CentroCosto`, → `SeccionPresupuestal` |
+| `ReglaTercero` | `rubro` o `centro_costo` (uno de los dos) | uno a uno con `siifweb.Rubro` o con `siifweb.CentroCosto`, → `TerceroCUIPO` |
+| `ReglaSituacionFondos` | (`prefijo_rubro`, `fuente_cuipo`) | → `FuenteCUIPO` (opcional), → `SituacionFondos` |
+
+Todas con `observacion`. Las FK a catálogos son PROTECT. Los valores por defecto (sección 16.0,
+situación C, tercero 1 - NO APLICA) no se guardan: los aplica `cuipo/derivacion.py`.

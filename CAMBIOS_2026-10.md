@@ -500,3 +500,21 @@ situaciones de fondos, 87 politicas publicas y 5.736 terceros, en 4 segundos. Im
 otra vez no cambia nada.
 
 **Pruebas.** 428, todas pasan (`cuipo/tests/test_listas.py`, 20 nuevas).
+
+## 21. CUIPO, fase 2: homologaciones y reglas (13 de noviembre)
+
+Rama `cuipo-fase2-reglas`, sobre `cuipo-fase1-listas`.
+
+- Cinco tablas en `cuipo`: homologacion de fuentes (recurso de SIIFWEB -> fuente CUIPO, por
+  vigencia, con quien la valido), homologacion de rubros (excepciones), reglas de seccion por
+  centro de costo, de tercero por rubro o centro de costo, y de situacion de fondos por
+  prefijo de rubro y fuente. Migracion `cuipo/0003`.
+- `cuipo/derivacion.py` resuelve cada fila del corte: concepto, fuente, seccion, situacion de
+  fondos y tercero, con el origen de cada uno y lo que falta. Sin regla: seccion 16.0,
+  situacion C y tercero 1 - NO APLICA.
+- Pantalla **CUIPO -> Pendientes** por corte: recursos sin homologar, rubros sin concepto, BPIN
+  sin PIIP y centros de costo en la seccion por defecto; con un boton para crear las 14 reglas
+  iniciales del plan.
+- En cada fuente CUIPO del admin se registran los recursos que la usan.
+
+**Pruebas.** 452, todas pasan (`cuipo/tests/test_derivacion.py`, 24 nuevas).

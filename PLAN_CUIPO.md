@@ -69,7 +69,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 428.
+  disco temporal). Hoy son 452.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -280,7 +280,7 @@ Tablas propias; los modelos de `siifweb` no se modifican.
 | `HomologacionFuente` | FK a `siifweb.Fuente`, FK `FuenteCUIPO`, `vigencia`, `observacion`, `validado_por`, `fecha_validacion`; `UniqueConstraint(fuente_siifweb, vigencia)` | Bloquea |
 | `HomologacionRubro` | Solo excepciones (ej. 2.3.3.05.09.054 → 2.3.3.05.09.099) | Se usa el mismo código si existe en `ConceptoCUIPO` y está habilitado para departamentos; si no, bloquea |
 | `ReglaSeccion` | Centro de costo → sección (2 → 22.0 Educación, 3 → 21.0 Salud) | 16.0 |
-| `ReglaTercero` | Por rubro (ICBF 23900000, SENA 26800000, ESAP 22000000, MEN 11300000) o por centro de costo, **por código** (11 Inder 128470000, 10 Fondo Mixto 220170001, 5 Aguas de Sucre 923272066, 25 Universidad de Sucre 128870000) | Pendiente |
+| `ReglaTercero` | Por rubro (ICBF 23900000, SENA 26800000, ESAP 22000000, MEN 11300000) o por centro de costo, **por código** (11 Inder 128470000, 10 Fondo Mixto 220170001, 5 Aguas de Sucre 923272066, 25 Universidad de Sucre 128870000) | `1 - NO APLICA` (ajustado en la fase 2: así van 184 de las 225 líneas de inversión del CUIPO de junio) |
 | `ReglaSituacionFondos` | Prefijo de rubro + fuente CUIPO → S o C (ej. 2.3.1.01.02.001–003 con 1.2.4.1.01 → S) | — |
 
 - `HomologacionFuente`: 62 recursos SIIFWEB → 28 fuentes CUIPO (muchos a uno). 20 recursos
@@ -475,7 +475,29 @@ nuevo no cambia nada. Ajustes frente a lo previsto:
   - Existe el producto `0 - NO APLICA`; Conceptos_CPC marca `requiere_cpc`.
   - Si falla una hoja, no queda nada a medias.
 
-**Fase 2 — Homologaciones, reglas y admin**
+**Fase 2 — Homologaciones, reglas y admin** — **hecha el 13/11** (rama `cuipo-fase2-reglas`,
+migración `cuipo/0003`, 24 pruebas en `cuipo/tests/test_derivacion.py`).
+- Modelos: `HomologacionFuente` (FK a `siifweb.Fuente`, por vigencia), `HomologacionRubro` y
+  `ReglaTercero` (FK a `siifweb.Rubro`), `ReglaSeccion` y `ReglaTercero` (FK a
+  `siifweb.CentroCosto`), `ReglaSituacionFondos` (prefijo de rubro como texto + fuente CUIPO
+  opcional; gana el prefijo más largo y, a igual prefijo, la que nombra la fuente). La fila se
+  cruza con ellos por código.
+- `cuipo/derivacion.py`: `filas_cuipo(corte)` (las filas que entran), `Derivador(vigencia)` /
+  `derivar(fila)` (concepto, fuente, sección, situación y tercero, con el origen de cada uno y
+  la lista de faltantes), `pendientes(corte)` y `crear_reglas_iniciales()`.
+- Pantalla **CUIPO → Pendientes** (`/admin/cuipo/corteejecuciongastos/<id>/pendientes/`, y sin
+  id va al último corte procesado): recursos sin homologación (con el código del nombre como
+  pista, marcada como no confiable), rubros sin concepto válido, otros faltantes, BPIN con
+  ejecución sin formulación PIIP y centros de costo que van a la sección 16.0. Un botón crea
+  las reglas iniciales del plan que falten (14), sin tocar las existentes.
+- Admin: en cada fuente CUIPO, una tabla para registrar los recursos que la usan (guarda quién
+  y cuándo validó); las cinco tablas en el menú CUIPO; el autocompletar solo ofrece códigos
+  activos de las listas.
+- En local, con el corte al 11/11 y las reglas iniciales: 224 filas entran, ningún rubro sin
+  concepto, ningún BPIN sin PIIP, y quedan 63 recursos por homologar (todas las filas esperan
+  su fuente). 202600000018441 deriva 2.3.3.05.09.099, 16.0, C y 220170001; solo le falta la
+  homologación del recurso 108.
+
 - Archivos: los 5 modelos de la sección 4.2, `cuipo/derivacion.py` con `derivar(fila)`, admin
   (inline de `HomologacionFuente` en `FuenteCUIPO`), vista de pendientes, migración.
 - Aceptación:

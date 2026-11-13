@@ -1,0 +1,149 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+{% comment %}
+Lo que falta homologar o reglamentar antes de distribuir un corte. La vista es
+CorteEjecucionGastosAdmin.pendientes y los datos salen de cuipo.derivacion.pendientes.
+{% endcomment %}
+
+{% block title %}Pendientes del CUIPO | POAI{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url 'admin:cuipo_corteejecuciongastos_changelist' %}" class="font-medium text-primary-600">Cortes de ejecución de gastos</a></li>
+      <li class="mx-2">/</li>
+      <li>Pendientes</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .pd { display:flex; flex-direction:column; gap:1.5rem; }
+  .pd .caja { background:#fff; border:1px solid var(--color-base-200); border-radius:6px; }
+  .dark .pd .caja { background:var(--color-base-900); border-color:var(--color-base-800); }
+  .pd .caja h2 { font-weight:600; font-size:1rem; padding:.9rem 1.25rem; border-bottom:1px solid var(--color-base-200);
+                 display:flex; justify-content:space-between; align-items:center; gap:1rem; }
+  .pd .nota { font-size:.8rem; color:var(--color-base-500); padding:.6rem 1.25rem 0; }
+  .pd table { width:100%; font-size:.85rem; border-collapse:collapse; }
+  .pd th { text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--color-base-500);
+           padding:.6rem 1.25rem; border-bottom:1px solid var(--color-base-200); }
+  .pd td { padding:.55rem 1.25rem; border-bottom:1px solid var(--color-base-100); vertical-align:top; }
+  .pd .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .pd .cifras { display:grid; gap:1rem; grid-template-columns:repeat(auto-fill, minmax(13rem, 1fr)); }
+  .pd .cifra { padding:1rem 1.25rem; }
+  .pd .cifra b { display:block; font-size:1.6rem; font-weight:600; }
+  .pd .cifra span { font-size:.8rem; color:var(--color-base-500); }
+  .pd .ok { color:var(--color-primary-700); }
+  .pd .mal { color:#b42318; }
+  .pd .boton { display:inline-block; background:var(--color-primary-600); color:#fff; border-radius:6px;
+               padding:.45rem .9rem; font-size:.85rem; font-weight:500; }
+  .pd .boton:hover { background:var(--color-primary-700); }
+  .pd a.enlace { color:var(--color-primary-600); font-weight:500; }
+  .pd .vacio { padding:1rem 1.25rem; color:var(--color-base-500); font-size:.85rem; }
+</style>
+
+<div class="pd">
+
+  <section class="caja">
+    <h2>
+      <span>{{ corte }} · descargado el {{ corte.fecha_descarga|date:"d/m/Y" }}</span>
+      {% if otros_cortes %}
+      <span style="font-weight:400;font-size:.8rem">Otros cortes:
+        {% for c in otros_cortes %}<a class="enlace" href="{% url 'admin:cuipo_corte_pendientes' c.pk %}">{{ c.vigencia }} al {{ c.fecha_fin|date:"d/m/Y" }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
+      </span>
+      {% endif %}
+    </h2>
+    <div class="cifras">
+      <div class="cifra"><b>{{ p.filas|intcomma }}</b><span>filas de inversión con RP, obligación o pago</span></div>
+      <div class="cifra"><b class="ok">{{ p.completas|intcomma }}</b><span>se derivan completas</span></div>
+      <div class="cifra"><b class="{% if p.con_faltantes %}mal{% else %}ok{% endif %}">{{ p.con_faltantes|intcomma }}</b><span>tienen algo pendiente</span></div>
+      <div class="cifra"><b class="{% if p.sin_piip %}mal{% else %}ok{% endif %}">{{ p.sin_piip|length }}</b><span>BPIN sin formulación PIIP</span></div>
+    </div>
+  </section>
+
+  <section class="caja">
+    <h2><span>Recursos sin homologación de fuente ({{ corte.vigencia }})</span>
+      <a class="enlace" href="{% url 'admin:cuipo_homologacionfuente_add' %}?vigencia={{ corte.vigencia }}">Agregar homologación</a></h2>
+    {% if p.recursos %}
+    <p class="nota">La pista es el código que trae el nombre del recurso cuando existe en las fuentes CUIPO. No es confiable: en varios recursos no es la fuente correcta.</p>
+    <table>
+      <tr><th>Recurso</th><th>Nombre</th><th>Pista</th><th class="num">Filas</th><th class="num">RP</th></tr>
+      {% for r in p.recursos %}
+      <tr><td>{{ r.recurso }}</td><td>{{ r.nombre }}</td><td>{{ r.pista|default:"—" }}</td>
+          <td class="num">{{ r.filas }}</td><td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="vacio">Todos los recursos del corte tienen homologación.</p>{% endif %}
+  </section>
+
+  <section class="caja">
+    <h2><span>Rubros sin concepto CUIPO válido</span>
+      <a class="enlace" href="{% url 'admin:cuipo_homologacionrubro_add' %}">Agregar homologación de rubro</a></h2>
+    {% if p.rubros %}
+    <table>
+      <tr><th>Rubro</th><th>Nombre</th><th>Motivo</th><th class="num">Filas</th><th class="num">RP</th></tr>
+      {% for r in p.rubros %}
+      <tr><td>{{ r.rubro }}</td><td>{{ r.nombre }}</td><td>{{ r.motivo }}</td>
+          <td class="num">{{ r.filas }}</td><td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="vacio">Todos los rubros del corte tienen concepto.</p>{% endif %}
+  </section>
+
+  {% if p.otros %}
+  <section class="caja">
+    <h2><span>Otros faltantes</span></h2>
+    <table>
+      <tr><th>Faltante</th><th class="num">Filas</th><th class="num">RP</th></tr>
+      {% for r in p.otros %}
+      <tr><td>{{ r.faltante }}</td><td class="num">{{ r.filas }}</td><td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="caja">
+    <h2><span>BPIN con ejecución sin formulación PIIP</span></h2>
+    {% if p.sin_piip %}
+    <p class="nota">Sin formulación no hay productos para distribuir. El BPIN no está en la carga del PIIP: actualizar el exporte del PIIP y cargarlo.</p>
+    <table>
+      <tr><th>BPIN</th><th class="num">Filas</th><th class="num">RP</th></tr>
+      {% for r in p.sin_piip %}
+      <tr><td>{{ r.bpin }}</td><td class="num">{{ r.filas }}</td><td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="vacio">Todos los BPIN con ejecución tienen formulación PIIP.</p>{% endif %}
+  </section>
+
+  <section class="caja">
+    <h2><span>Centros de costo que van a la sección por defecto (16.0)</span>
+      <a class="enlace" href="{% url 'admin:cuipo_reglaseccion_changelist' %}">Reglas de sección</a></h2>
+    <p class="nota">Informativo: si alguno debe ir a otra sección, agregar su regla.</p>
+    {% if p.por_defecto %}
+    <table>
+      <tr><th>Centro de costo</th><th>Nombre</th><th class="num">Filas</th><th class="num">RP</th></tr>
+      {% for r in p.por_defecto %}
+      <tr><td>{{ r.centro_costo }}</td><td>{{ r.nombre }}</td><td class="num">{{ r.filas }}</td>
+          <td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="vacio">Todos los centros de costo tienen regla de sección.</p>{% endif %}
+  </section>
+
+  {% if puede_crear_reglas %}
+  <section class="caja">
+    <h2><span>Reglas iniciales del plan</span></h2>
+    <p class="nota">Crea las que falten: secciones 22.0 (centro de costo 2) y 21.0 (centro de costo 3); terceros ICBF, SENA, ESAP y MEN por rubro; Inder, Fondo Mixto, Aguas de Sucre y Universidad de Sucre por centro de costo; 2.3.3.05.09.054 → 2.3.3.05.09.099; y situación S para 2.3.1.01.02.001 a 003 con 1.2.4.1.01. No cambia las que ya existen.</p>
+    <form method="post" style="padding:1rem 1.25rem">{% csrf_token %}
+      <button type="submit" name="reglas_iniciales" value="1" class="boton">Crear las reglas que falten</button>
+    </form>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}
