@@ -213,8 +213,10 @@ class ElCatalogoDeProductosMGA(Base):
 
     def test_medido_a_traves_de_y_unidad_de_medida_son_catalogos_propios(self):
         from siifweb.models import MedidoATravesDe, UnidadMedida
-        self.assertEqual(MedidoATravesDe.objects.count(), 161)
-        self.assertEqual(sorted(UnidadMedida.objects.values_list("nombre", flat=True)),
+        # Las listas se comparten con el catalogo MGA territorial (0021): aqui van las del plan
+        self.assertEqual(MedidoATravesDe.objects.filter(productos__isnull=False).distinct().count(), 161)
+        self.assertEqual(sorted(UnidadMedida.objects.filter(indicadores__isnull=False).distinct()
+                                .values_list("nombre", flat=True)),
                          ["Hectáreas", "Kilómetros", "Metros cuadrados", "Metros cúbicos", "Metros lineales",
                           "Número", "Porcentaje"])
         self.assertEqual(UnidadMedida.objects.get(nombre="Número").indicadores.count() > 300, True)

@@ -48,8 +48,8 @@
   </div>
 
   {% comment %}
-  Dos fuentes, dos paneles: la ejecucion presupuestal de SIIFWEB y la contratacion
-  publica de SECOP II. Cada uno tiene su URL, asi que es enlazable y compartible.
+  Tres paneles: la ejecucion presupuestal de SIIFWEB, la contratacion publica de SECOP II
+  y la formulacion del proyecto en PIIP. Cada uno tiene su URL, asi que es enlazable y compartible.
   Ojo: {# #} solo comenta UNA linea; para varias va {% comment %}.
   {% endcomment %}
   <div class="flex gap-6 border-b dark:border-base-800">
@@ -205,6 +205,114 @@
     </div>
   </div>
 
+
+  {% elif panel == "piip" %}
+
+  {% if not formulacion %}
+  <div class="bg-white border rounded-default shadow-xs p-6 text-sm text-base-500 dark:bg-base-900 dark:border-base-800">
+    Este proyecto no tiene formulación del PIIP cargada. Se carga con "Información general PIIP" en
+    Cargas del reporte, y solo entran los BPIN que también tienen documentos en SIIFWEB.
+  </div>
+  {% else %}
+
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Datos generales
+        {% include "siifweb/_ayuda.html" with etiqueta="De donde sale la formulacion" texto="De la ficha del proyecto en PIIP, consolidada en la tabla InfoGeneral. El sector sale del programa del catálogo MGA; la región y el departamento, de los municipios." %}</h2>
+      <p class="text-sm text-base-500 mt-1">{{ formulacion.archivo_ficha|default:"" }}{% if formulacion.reporte %} · cargada el {{ formulacion.reporte.fecha_descarga|date:"DATE_FORMAT" }}{% endif %}</p>
+    </div>
+    {# Campo y valor, uno por fila #}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm datos-piip">
+        <tbody>
+          <tr><th>Sector</th><td>{{ formulacion.sector|default:"—" }}</td></tr>
+          <tr><th>Programa</th><td>{{ formulacion.programa|default:"—" }}</td></tr>
+          <tr><th>Vigencia de inicio</th><td>{{ formulacion.vigencia_inicio|default:"—" }}</td></tr>
+          <tr><th>Vigencia de fin</th><td>{{ formulacion.vigencia_fin|default:"—" }}</td></tr>
+          <tr><th>Región</th><td>{{ piip_regiones|join:", "|default:"—" }}</td></tr>
+          <tr><th>Departamento</th><td>{{ piip_departamentos|join:", "|default:"—" }}</td></tr>
+          <tr><th>Municipios</th><td>{{ piip_municipios|join:", "|default:"—" }}</td></tr>
+          <tr><th>Población afectada</th><td>{{ formulacion.poblacion_afectada|default_if_none:"—"|intcomma }}</td></tr>
+          <tr><th>Población objetivo</th><td>{{ formulacion.poblacion_objetivo|default_if_none:"—"|intcomma }}</td></tr>
+          <tr><th>Objetivo general</th><td>{{ formulacion.objetivo_general|default:"—"|linebreaksbr }}</td></tr>
+          <tr><th>Problema</th><td>{{ formulacion.problema|default:"—"|linebreaksbr }}</td></tr>
+          <tr><th>Descripción</th><td>{{ formulacion.descripcion|default:"—"|linebreaksbr }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="bg-white border rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+    <div class="border-b px-4 py-3 dark:border-base-800">
+      <h2 class="font-semibold text-base text-base-900 dark:text-base-100">Indicadores de producto ({{ piip_indicadores|length }})
+        {% include "siifweb/_ayuda.html" with etiqueta="Como leer los indicadores" texto="Cada indicador mide un producto del catálogo MGA. La meta total es la del horizonte del proyecto; si el indicador acumula, es la suma de las metas de cada vigencia. La última columna es el indicador del plan de desarrollo con el que está homologado." %}</h2>
+    </div>
+    {# Un dato por columna, en el orden de la tabla InfoGeneral #}
+    <div class="overflow-auto" style="max-height:34rem">
+      <table class="w-full text-sm indicadores-piip">
+        <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
+          <tr>
+            <th>Objetivo específico</th>
+            <th>Código producto</th>
+            <th>Producto</th>
+            <th>Producto principal</th>
+            <th>Etapa</th>
+            <th>UMP</th>
+            <th>Código indicador</th>
+            <th>Indicador</th>
+            <th>Tipo indicador</th>
+            <th>UMI</th>
+            <th>Acumula</th>
+            <th class="num">Meta total</th>
+            {% for v in piip_vigencias %}<th class="num">Meta {{ v }}</th>{% endfor %}
+            <th>Plan de desarrollo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in piip_indicadores %}
+          <tr class="border-b align-top dark:border-base-800">
+            <td class="largo">{{ i.objetivo_especifico|default:"—"|linebreaksbr }}</td>
+            <td class="font-mono">{{ i.indicador.producto.codigo }}</td>
+            <td class="largo">{{ i.indicador.producto.nombre }}</td>
+            <td>{% if i.producto_principal %}Sí{% else %}No{% endif %}</td>
+            <td>{{ i.get_etapa_display|default:"—" }}</td>
+            <td>{{ i.indicador.producto.medido_a_traves_de|default:"—" }}</td>
+            <td class="font-mono">{{ i.indicador.codigo }}</td>
+            <td class="largo">{{ i.indicador.nombre }}</td>
+            <td>{{ i.get_tipo_display|default:"—" }}</td>
+            <td>{{ i.unidad_medida|default:"—" }}</td>
+            <td>{% if i.acumula is None %}—{% elif i.acumula %}Sí{% else %}No{% endif %}</td>
+            <td class="num font-mono">{{ i.meta_total|default_if_none:"—"|floatformat:"-3g" }}</td>
+            {% for m in i.metas_por_vigencia %}<td class="num font-mono">{% if m is None %}—{% else %}{{ m|floatformat:"-3g" }}{% endif %}</td>{% endfor %}
+            <td class="largo">
+              {% for p in i.homologados %}<div><span class="font-mono">{{ p.codigo }}</span> {{ p.descripcion|striptags|truncatechars:70 }}</div>
+              {% empty %}<span class="text-base-500">Sin homologar</span>{% endfor %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="{{ piip_vigencias|length|add:13 }}" class="text-center text-base-500">La ficha del PIIP no trae indicadores.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <style>
+    /* Datos generales: el campo a la izquierda, sombreado, y su valor */
+    .datos-piip th { width: 14rem; text-align: left; vertical-align: top; font-weight: 500;
+                     padding: .5rem 1rem; background: rgba(0, 0, 0, .03); white-space: nowrap; }
+    .datos-piip td { padding: .5rem 1rem; }
+    .datos-piip tr + tr th, .datos-piip tr + tr td { border-top: 1px solid rgba(0, 0, 0, .08); }
+    .dark .datos-piip th { background: rgba(255, 255, 255, .04); }
+    .dark .datos-piip tr + tr th, .dark .datos-piip tr + tr td { border-top-color: rgba(255, 255, 255, .08); }
+    .indicadores-piip th, .indicadores-piip td { padding: .5rem .75rem; text-align: left; }
+    .indicadores-piip th { white-space: nowrap; }
+    .indicadores-piip .num { text-align: right; white-space: nowrap; }
+    .indicadores-piip .largo { min-width: 14rem; }
+    .indicadores-piip tbody tr:nth-child(even) td { background: rgba(0, 0, 0, .02); }
+    .dark .indicadores-piip tbody tr:nth-child(even) td { background: rgba(255, 255, 255, .03); }
+  </style>
 
   {% else %}
 

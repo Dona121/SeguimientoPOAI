@@ -293,8 +293,8 @@ quitaron: repetian a medias lo que la ficha muestra completo y agregado.
 
 **Ficha de ejecucion** (boton en el detalle, o el enlace del listado): una vista propia,
 hecha con una changeform action de unfold, porque los inlines muestran filas sueltas y
-aqui hace falta agregacion. Se divide en **dos pestanas sobre la misma URL**
-(`?panel=siifweb|secop`), cada una enlazable y calculada solo cuando se abre.
+aqui hace falta agregacion. Se divide en **tres pestanas sobre la misma URL**
+(`?panel=siifweb|secop|piip`), cada una enlazable y calculada solo cuando se abre.
 
 Panel **SIIFWEB**:
 
@@ -643,6 +643,44 @@ corre en un contenedor aparte y lo que escribe en disco no llega al que atiende.
 `DEBUG=False` el manifiesto de WhiteNoise tiene que estar en la imagen; si falta, toda
 pagina cae con `Missing staticfiles manifest entry`.
 
+## Catalogo PIIP y formulacion de los proyectos
+
+El catalogo del plan de desarrollo no admite productos nuevos (cambiarlo pasa por la
+Asamblea), y los proyectos se formulan en PIIP con el catalogo MGA completo. Por eso hay
+un catalogo aparte, en el modulo **Catalogo PIIP** del menu:
+
+- **Catalogo MGA territorial** (`SectorCatalogo`, `ProgramaCatalogo`, `ProductoCatalogo`,
+  `IndicadorCatalogo`): la migracion `0021` carga del `CatalogoProductoMGA_junio_2025.xlsx`
+  los indicadores con "Es Territorial" = "Si" (5.739, de 2.462 productos), mas los que no
+  son territoriales pero usa algun proyecto (los de bomberos, 370800900 y 370801300). Se
+  genera con `modelos-metas/generar_migracion_catalogo_territorial.py`. Solo de consulta.
+- **Homologacion de indicadores**: indicador del catalogo -> indicador del plan
+  (`IndicadorMGA`). La `0021` crea las que coinciden por codigo (375); las demas las asigna
+  el equipo. En Indicadores, los filtros "Lo usa algun proyecto" y "Sin homologar" dejan
+  los que faltan.
+- **Formulacion de proyectos**: `FormulacionProyecto` (uno a uno con el proyecto: programa,
+  vigencias de inicio y fin, objetivo general, problema, descripcion, poblaciones y
+  municipios), `IndicadorProyecto` (indicador del catalogo, objetivo especifico, producto
+  principal, etapa, UMI, tipo, acumula y meta total; el producto sale del indicador) y
+  `MetaVigenciaIndicador`.
+
+Se llena con la carga **Informacion general PIIP**, que lee la tabla de Excel `InfoGeneral`
+(hoja `IndicadoresPIIP` del libro `ReporteSIIFWEB_*.xlsx`, el mismo de SECOP II: el hash
+del archivo es unico por tipo de reporte, asi que el libro se carga una vez para cada uno).
+
+- Solo entran los BPIN que tienen algun documento en SIIFWEB (CDP, RP, obligacion, reserva
+  o contrato): sin ejecucion no hay traza presupuestal. Los demas se listan en el mensaje.
+- Cada BPIN del archivo reemplaza su formulacion anterior; los que no trae no se tocan.
+- Los municipios se cruzan por nombre (sin tildes ni mayusculas); los que no estan en el
+  admin se avisan. Un municipio sin departamento lo toma del PIIP. Un indicador fuera del
+  catalogo se crea con los nombres del PIIP y se avisa.
+- Un indicador repetido bajo dos objetivos especificos queda una vez, con los dos
+  objetivos, y su meta no se duplica.
+
+En la ficha del proyecto, la pestana **Formulacion (PIIP)** muestra los datos generales y
+la tabla de indicadores (un dato por columna, metas por vigencia en columnas y el
+indicador del plan con el que esta homologado).
+
 ## Reportes
 
 `Seguimiento -> Reportes` abre un indice con tres reportes. Cada uno tiene su pagina, con
@@ -810,7 +848,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-354 pruebas en catorce modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+371 pruebas en quince modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
@@ -819,6 +857,7 @@ datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 | `test_cargar_secop.py` | El cargador: grano, deduplicacion, procesos sin contrato, BPIN fuera del catalogo, normalizacion, idempotencia, atomicidad y el mensaje de resultado. Al final, las cifras del archivo real |
 | `test_modelos_secop.py` | Llaves unicas, la restriccion de la fila BPIN, los `PROTECT` y el tipo de reporte nuevo |
 | `test_ficha_proyecto.py` | Los dos paneles: que cada uno consulte solo lo suyo, el orden del tramite, el modal, las ayudas, las tablas con alto limitado y que ninguna suma se multiplique. El saldo y el pagado de las obligaciones, el filtro de fechas (cada tabla por su fecha, limites incluidos, tarjetas sin filtrar, fechas invalidas) y el formato de fecha |
+| `test_formulacion_piip.py` | El catalogo territorial con sus excepciones, la homologacion por codigo, la carga de `InfoGeneral` (solo BPIN con documentos en SIIFWEB, reemplazo por BPIN, indicador bajo dos objetivos, municipios con coma o de fuera, indicador fuera del catalogo), el mismo libro para SECOP y PIIP, la pestana de la ficha y la seccion del menu |
 | `test_pdf_ficha.py` | El PDF y el Excel de cada tabla: que traigan solo la tabla pedida y las mismas columnas (con el centro de costo), que respeten el filtro, el 404 de una tabla desconocida, los textos con `<`, `>` y `&`, las tablas de varias paginas, los permisos, el encabezado con la dependencia responsable y los enlaces junto a cada titulo |
 | `test_regresion_cargadores.py` | Que los cargadores de siempre sigan funcionando, ya que comparten `leer_filas` con el de SECOP. Los valores monetarios: separador de miles y que un valor ilegible aborte la carga |
 | `test_validar.py` | La seccion 8 del comando `validar` y que las siete anteriores sigan saliendo |

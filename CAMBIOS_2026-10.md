@@ -348,3 +348,17 @@ La tabla de **fuentes de financiacion** suma, ademas de lo comprometido, lo obli
 pagado de cada fuente en el proyecto, con su total. Cada etapa se suma en su propia
 consulta y se cruza por la fuente, para que varias obligaciones de un RP no dupliquen lo
 comprometido.
+
+## 16. Catalogo PIIP y formulacion de los proyectos (12 de noviembre)
+
+- Catalogo MGA territorial aparte del del plan: migraciones `0020` (modelos) y `0021`
+  (datos: 20 sectores, 75 programas, 2.464 productos, 5.741 indicadores, con las dos
+  excepciones de bomberos), homologacion por codigo con el plan (375) y departamento de
+  Sucre para los municipios existentes. `0022`: el hash de la carga es unico por tipo.
+- Modelos `Departamento`, `HomologacionIndicador`, `FormulacionProyecto`,
+  `IndicadorProyecto` y `MetaVigenciaIndicador`; `Municipio` apunta a su departamento.
+- Carga **Informacion general PIIP** (tabla `InfoGeneral`): solo BPIN con documentos en
+  SIIFWEB. En la base local: 364 proyectos, 436 indicadores y 519 metas; 124 BPIN quedan
+  fuera por no tener ejecucion.
+- Modulo **Catalogo PIIP** en el menu y pestana **Formulacion (PIIP)** en la ficha, en
+  formato de tabla.

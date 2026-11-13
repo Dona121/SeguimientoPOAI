@@ -11,6 +11,9 @@ Reglas de normalizacion (ver NOTAS_CRUCES.md del proyecto de analisis):
   - Las reservas apuntan a CDPs de la vigencia ANTERIOR
   - Obligacion cuyo RP no existe en su vigencia se busca en v-1 (ejecucion de reserva)
 """
+import re
+import unicodedata
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
@@ -20,8 +23,10 @@ from openpyxl import load_workbook
 
 from .models import (BpinProceso, Cdp, CdpImputacion, CentroCosto, Compromiso,
                      CompromisoImputacion, Contrato, ContratoSecop,
-                     ContratoActa, ContratoImputacion, Fuente, Obligacion, ObligacionImputacion,
-                     OrdenGasto, ProcesoSecop, Proyecto, Reserva, ReservaImputacion, Rubro, Tercero)
+                     ContratoActa, ContratoImputacion, Departamento, FormulacionProyecto, Fuente,
+                     IndicadorCatalogo, IndicadorProyecto, MetaVigenciaIndicador, Municipio, Obligacion,
+                     ObligacionImputacion, OrdenGasto, ProcesoSecop, ProductoCatalogo, ProgramaCatalogo,
+                     Proyecto, Reserva, ReservaImputacion, Rubro, SectorCatalogo, Tercero)
 
 CERO = Decimal("0")
 
@@ -729,10 +734,216 @@ def cargar_secop(carga):
 # El cruce POAI ya no se carga (octubre de 2026): la dependencia responsable y la
 # clasificacion de cada proyecto las mantiene el equipo en el admin.
 ORDEN_DE_CARGA = ["cdp", "compromisos", "obligaciones", "reservas",
-                  "historial", "secop"]
+                  "historial", "secop", "piip"]
+
+
+# ---------- informacion general de los proyectos en PIIP ----------
+
+COLUMNAS_PIIP = [
+    "NombreArchivo", "BPIN", "SectorProyecto", "Programa", "Inicio", "Fin", "ObjetivoGeneral",
+    "Problema", "Descripcion", "PoblacionAfectada", "PoblacionObjetivo", "Región", "Departamento",
+    "Municipios", "ObjetivoEspecifico", "CodigoProducto", "Producto", "Etapa", "CodigoIndicador",
+    "Indicador", "UMI", "TipoIndicador", "Acumula", "MetaTotalIndicador", "Vigencia", "MetaVigencia",
+]
+PRINCIPAL = "(Producto principal del proyecto)"
+
+
+def sin_tildes(valor):
+    """Para comparar nombres: sin tildes, sin mayusculas y sin espacios de sobra."""
+    limpio = unicodedata.normalize("NFKD", " ".join(str(valor or "").split()).lower())
+    return limpio.encode("ascii", "ignore").decode()
+
+
+def entero(valor):
+    """Un numero entero del reporte, o None si no lo es (la poblacion, una vigencia)."""
+    limpio = texto(valor).replace(".", "").replace(",", "")
+    return int(limpio) if limpio.isdigit() else None
+
+
+def si_no(valor):
+    v = sin_tildes(valor)
+    return True if v in ("si", "s") else False if v in ("no", "n") else None
+
+
+def bpines_con_ejecucion(bpines):
+    """Los proyectos de esos BPIN que tienen algun documento en SIIFWEB.
+
+    Sin CDP, RP, obligacion, reserva o contrato no hay como seguirle la traza
+    presupuestal, asi que la formulacion de PIIP no se carga para ellos.
+    """
+    proyectos = dict(Proyecto.objects.filter(bpin__in=bpines).values_list("pk", "bpin"))
+    con = set()
+    for modelo in (CdpImputacion, CompromisoImputacion, ObligacionImputacion, ReservaImputacion,
+                   ContratoImputacion):
+        con |= set(modelo.objects.filter(proyecto_id__in=proyectos).values_list("proyecto_id", flat=True))
+    return {proyectos[pk]: pk for pk in con}
+
+
+class CatalogoPIIP:
+    """El catalogo MGA territorial y los municipios, en memoria para la carga.
+
+    Un indicador que no esta en el catalogo se crea con los nombres que trae el PIIP (y
+    su producto, programa y sector si tampoco estan), sin marca de territorial, y se avisa.
+    """
+
+    def __init__(self):
+        self.indicadores = {i.codigo: i for i in IndicadorCatalogo.objects.all()}
+        self.programas = {p.codigo: p for p in ProgramaCatalogo.objects.all()}
+        self.municipios = {sin_tildes(m.nombre): m for m in Municipio.objects.select_related("departamento")}
+        # Los nombres con coma ("Bogota, D.C.") se reconocen antes de partir la lista
+        self.con_coma = sorted((m.nombre for m in self.municipios.values() if "," in m.nombre),
+                               key=len, reverse=True)
+        self.creados, self.municipios_sin_cruce, self.departamentos_asignados = [], set(), set()
+
+    def programa(self, f):
+        codigo, _, nombre = texto(f["Programa"]).partition(" - ")
+        codigo = codigo.strip()
+        if not codigo:
+            return None
+        if codigo not in self.programas:
+            sector, _ = SectorCatalogo.objects.get_or_create(
+                codigo=codigo[:2], defaults={"nombre": texto(f.get("SectorProyecto"))})
+            self.programas[codigo] = ProgramaCatalogo.objects.create(
+                codigo=codigo, sector=sector, nombre=nombre.strip() or codigo)
+            self.creados.append(f"programa {codigo}")
+        return self.programas[codigo]
+
+    def indicador(self, f):
+        codigo = texto(f["CodigoIndicador"])
+        if codigo not in self.indicadores:
+            cod_producto = texto(f["CodigoProducto"])
+            producto = ProductoCatalogo.objects.filter(codigo=cod_producto).first()
+            if producto is None:
+                programa = self.programa({"Programa": cod_producto[:4],
+                                          "SectorProyecto": f.get("SectorProyecto")})
+                nombre = texto(f["Producto"]).replace(PRINCIPAL, "").strip()
+                producto = ProductoCatalogo.objects.create(codigo=cod_producto, programa=programa,
+                                                           nombre=nombre)
+                self.creados.append(f"producto {cod_producto}")
+            self.indicadores[codigo] = IndicadorCatalogo.objects.create(
+                codigo=codigo, producto=producto, nombre=texto(f["Indicador"]))
+            self.creados.append(f"indicador {codigo}")
+        return self.indicadores[codigo]
+
+    def municipios_de(self, f):
+        lista = texto(f["Municipios"])
+        nombres = []
+        for nombre in self.con_coma:
+            if nombre in lista:
+                nombres.append(nombre)
+                lista = lista.replace(nombre, "")
+        nombres += [n.strip() for n in lista.split(",") if n.strip()]
+        encontrados = []
+        for nombre in nombres:
+            municipio = self.municipios.get(sin_tildes(nombre))
+            if municipio is None:
+                self.municipios_sin_cruce.add(nombre)
+                continue
+            # El municipio sin departamento lo toma del PIIP
+            if municipio.departamento_id is None and texto(f.get("Departamento")):
+                departamento, _ = Departamento.objects.get_or_create(
+                    nombre=texto(f["Departamento"]), defaults={"region": texto(f.get("Región"))})
+                municipio.departamento = departamento
+                municipio.save(update_fields=["departamento", "fecha_actualizacion"])
+                self.departamentos_asignados.add(municipio.nombre)
+            encontrados.append(municipio)
+        return encontrados
+
+
+ETAPAS = {"preinversion": "preinversion", "inversion": "inversion", "operacion": "operacion"}
+TIPOS = {"principal": "principal", "secundario": "secundario"}
+
+
+@transaction.atomic
+def cargar_piip(carga):
+    """Informacion general de los proyectos en PIIP: la tabla `InfoGeneral` del libro.
+
+    Una fila por proyecto, objetivo especifico, producto, indicador y vigencia; los datos
+    del proyecto se repiten en sus filas. Solo entran los BPIN que tambien estan en
+    SIIFWEB con algun documento. Cada BPIN que trae el archivo reemplaza su formulacion
+    anterior; los que no trae quedan como estaban.
+    """
+    filas = leer_filas(stream(carga.archivo), tabla="InfoGeneral", columnas=COLUMNAS_PIIP)
+    por_bpin = defaultdict(list)
+    for f in filas:
+        if texto(f["BPIN"]):
+            por_bpin[texto(f["BPIN"])].append(f)
+    con_ejecucion = bpines_con_ejecucion(list(por_bpin))
+    omitidos = sorted(set(por_bpin) - set(con_ejecucion))
+    cat = CatalogoPIIP()
+
+    n_indicadores = n_metas = 0
+    avisos = []
+    for bpin, grupo in sorted(por_bpin.items()):
+        if bpin not in con_ejecucion:
+            continue
+        f = grupo[0]
+        formulacion, _ = FormulacionProyecto.objects.update_or_create(
+            proyecto_id=con_ejecucion[bpin],
+            defaults={
+                "reporte": carga, "archivo_ficha": texto(f["NombreArchivo"])[:255],
+                "programa": cat.programa(f),
+                "vigencia_inicio": entero(f["Inicio"]), "vigencia_fin": entero(f["Fin"]),
+                "objetivo_general": texto(f["ObjetivoGeneral"]), "problema": texto(f["Problema"]),
+                "descripcion": texto(f["Descripcion"]),
+                "poblacion_afectada": entero(f["PoblacionAfectada"]),
+                "poblacion_objetivo": entero(f["PoblacionObjetivo"]),
+            })
+        formulacion.municipios.set(cat.municipios_de(f))
+        formulacion.indicadores.all().delete()
+
+        # Un indicador puede venir en varias filas: una por vigencia, y repetido si su
+        # producto cuelga de dos objetivos especificos
+        por_indicador = defaultdict(list)
+        for fila in grupo:
+            if texto(fila["CodigoIndicador"]):
+                por_indicador[texto(fila["CodigoIndicador"])].append(fila)
+        for codigo, filas_ind in por_indicador.items():
+            g = filas_ind[0]
+            objetivos = list(dict.fromkeys(texto(x["ObjetivoEspecifico"]) for x in filas_ind
+                                           if texto(x["ObjetivoEspecifico"])))
+            indicador = IndicadorProyecto.objects.create(
+                formulacion=formulacion, indicador=cat.indicador(g),
+                objetivo_especifico="\n".join(objetivos),
+                producto_principal=any(PRINCIPAL in texto(x["Producto"]) for x in filas_ind),
+                etapa=ETAPAS.get(sin_tildes(g["Etapa"]), ""),
+                unidad_medida=texto(g["UMI"])[:255],
+                tipo=TIPOS.get(sin_tildes(g["TipoIndicador"]), ""),
+                acumula=si_no(g["Acumula"]),
+                meta_total=decimal(g["MetaTotalIndicador"]) if texto(g["MetaTotalIndicador"]) else None)
+            n_indicadores += 1
+            metas = {}
+            for x in filas_ind:
+                vigencia = entero(x["Vigencia"])
+                if vigencia is None or not texto(x["MetaVigencia"]):
+                    continue
+                valor = decimal(x["MetaVigencia"])
+                if vigencia in metas and metas[vigencia] != valor:
+                    avisos.append(f"{bpin} {codigo} {vigencia}: metas distintas ({metas[vigencia]} y {valor}), "
+                                  f"queda la primera")
+                    continue
+                metas.setdefault(vigencia, valor)
+            MetaVigenciaIndicador.objects.bulk_create([
+                MetaVigenciaIndicador(indicador_proyecto=indicador, vigencia=v, meta=m)
+                for v, m in sorted(metas.items())])
+            n_metas += len(metas)
+
+    partes = [f"{len(con_ejecucion)} proyectos, {n_indicadores} indicadores, {n_metas} metas por vigencia"]
+    if omitidos:
+        partes.append(f"{len(omitidos)} BPIN sin ejecucion en SIIFWEB, no se cargan: "
+                      f"{', '.join(omitidos[:20])}{' ...' if len(omitidos) > 20 else ''}")
+    if cat.municipios_sin_cruce:
+        partes.append(f"municipios que no estan en el admin: {', '.join(sorted(cat.municipios_sin_cruce))}")
+    if cat.departamentos_asignados:
+        partes.append(f"departamento tomado del PIIP para: {', '.join(sorted(cat.departamentos_asignados))}")
+    if cat.creados:
+        partes.append(f"no estaban en el catalogo MGA territorial y se crearon: {', '.join(cat.creados)}")
+    partes += avisos
+    return len(filas), " | ".join(partes)
 
 
 PROCESADORES = {
+    "piip": cargar_piip,
     "cdp": cargar_cdp,
     "compromisos": cargar_compromisos,
     "obligaciones": cargar_obligaciones,

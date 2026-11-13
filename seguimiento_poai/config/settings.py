@@ -429,6 +429,34 @@ UNFOLD = {
                 ],
             },
             {
+                # El catalogo MGA territorial con el que se formulan los proyectos, aparte
+                # del del plan (que no admite productos sin pasar por la Asamblea), su
+                # homologacion con el plan y lo que cada proyecto formulo en PIIP
+                "title": "Catálogo PIIP",
+                "collapsible": True,
+                "separator": True,
+                "items": [
+                    {"title": "Formulación de proyectos", "icon": "description",
+                     "link": reverse_lazy("admin:siifweb_formulacionproyecto_changelist"),
+                     "permission": _administra_los_datos},
+                    {"title": "Homologación de indicadores", "icon": "compare_arrows",
+                     "link": reverse_lazy("admin:siifweb_homologacionindicador_changelist"),
+                     "permission": _administra_los_datos},
+                    {"title": "Sectores", "icon": "domain",
+                     "link": reverse_lazy("admin:siifweb_sectorcatalogo_changelist"),
+                     "permission": _administra_los_datos},
+                    {"title": "Programas", "icon": "list",
+                     "link": reverse_lazy("admin:siifweb_programacatalogo_changelist"),
+                     "permission": _administra_los_datos},
+                    {"title": "Productos", "icon": "inventory_2",
+                     "link": reverse_lazy("admin:siifweb_productocatalogo_changelist"),
+                     "permission": _administra_los_datos},
+                    {"title": "Indicadores", "icon": "query_stats",
+                     "link": reverse_lazy("admin:siifweb_indicadorcatalogo_changelist"),
+                     "permission": _administra_los_datos},
+                ],
+            },
+            {
                 # Todo lo que llega de los reportes de SIIFWEB: la cadena de gasto, el
                 # cierre de vigencia, los contratos del historial y sus catalogos
                 "title": "SIIFWEB",
@@ -499,6 +527,9 @@ UNFOLD = {
                      "permission": _administra_los_datos},
                     {"title": "Tipos de banco", "icon": "account_balance",
                      "link": reverse_lazy("admin:siifweb_tipobanco_changelist"),
+                     "permission": _administra_los_datos},
+                    {"title": "Departamentos", "icon": "map",
+                     "link": reverse_lazy("admin:siifweb_departamento_changelist"),
                      "permission": _administra_los_datos},
                     {"title": "Municipios", "icon": "location_city",
                      "link": reverse_lazy("admin:siifweb_municipio_changelist"),

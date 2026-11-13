@@ -64,7 +64,7 @@ def cargar(tipo, vigencia, relativa):
         print(f"  FALTA  {tipo} {vigencia}: {ruta.name}")
         return
     digest = hashlib.sha256(ruta.read_bytes()).hexdigest()
-    if CargaReporte.objects.filter(hash=digest).exists():
+    if CargaReporte.objects.filter(hash=digest, tipo_reporte=tipo).exists():
         print(f"  ya cargado  {tipo} {vigencia or 'rango'}")
         return
     carga = CargaReporte(tipo_reporte=tipo, vigencia=vigencia, hash=digest)

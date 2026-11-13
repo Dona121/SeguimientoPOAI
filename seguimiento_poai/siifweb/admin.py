@@ -34,6 +34,8 @@ from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MedidoATraves
                      UnidadMedida, VigenciaMeta, indicadores_fuera_del_programa)
 from .models import (MESES, Municipio, ObservacionProyecto, PeriodoReporte, ProgramacionMeta,
                      ProgramacionProyectos, SeguimientoMeta, TipoBanco, listado_vigencias_metas)
+from .models import (Departamento, FormulacionProyecto, HomologacionIndicador, IndicadorCatalogo,
+                     IndicadorProyecto, ProductoCatalogo, ProgramaCatalogo, SectorCatalogo)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import User, Group
@@ -247,7 +249,10 @@ class CargaReporteForm(forms.ModelForm):
         archivo = datos.get("archivo")
         if archivo and hasattr(archivo, "chunks"):
             digest = hash_archivo(archivo)
-            previa = CargaReporte.objects.filter(hash=digest).exclude(pk=self.instance.pk).first()
+            # El mismo libro trae SECOP II y la informacion general del PIIP: lo repetido
+            # es el mismo archivo cargado otra vez como el mismo tipo de reporte
+            previa = (CargaReporte.objects.filter(hash=digest, tipo_reporte=datos.get("tipo_reporte"))
+                      .exclude(pk=self.instance.pk).first())
             if previa:
                 raise forms.ValidationError(
                     f"Este archivo ya fue cargado el {previa.fecha_creacion:%Y-%m-%d} "
@@ -255,10 +260,11 @@ class CargaReporteForm(forms.ModelForm):
             self.instance.hash = digest
         tipo = datos.get("tipo_reporte")
         sin_vigencia = (CargaReporte.TipoReporte.HISTORIAL, CargaReporte.TipoReporte.POAI,
-                        CargaReporte.TipoReporte.SECOP)
+                        CargaReporte.TipoReporte.SECOP, CargaReporte.TipoReporte.PIIP)
         if tipo and tipo not in sin_vigencia and not datos.get("vigencia"):
-            raise forms.ValidationError("La vigencia es obligatoria salvo en el historial de contratos "
-                                        "y SECOP II, que cubren varias vigencias.")
+            raise forms.ValidationError("La vigencia es obligatoria salvo en el historial de contratos, "
+                                        "SECOP II y la informacion general del PIIP, que cubren varias "
+                                        "vigencias.")
         return datos
 
 
@@ -666,6 +672,40 @@ class ProyectoAdmin(ModelAdmin):
         url = reverse("admin:siifweb_proyecto_ficha_ejecucion", args=(obj.pk,))
         return format_html('<a href="{}" class="text-primary-600" title="Expediente"><i class="material-symbols-outlined">folder_open</a>', url)
 
+    def _ficha_piip(self, proyecto):
+        """El panel de la formulacion: lo que el proyecto registro en PIIP.
+
+        Los indicadores van con su producto (sale del indicador), sus metas por vigencia
+        en columnas y el indicador del plan con el que estan homologados.
+        """
+        formulacion = (FormulacionProyecto.objects.filter(proyecto=proyecto)
+                       .select_related("programa__sector", "reporte")
+                       .prefetch_related("municipios__departamento").first())
+        if formulacion is None:
+            return {"formulacion": None}
+        indicadores = list(
+            formulacion.indicadores
+            .select_related("indicador__producto__medido_a_traves_de")
+            .prefetch_related("metas", Prefetch(
+                "indicador__homologaciones",
+                queryset=HomologacionIndicador.objects.select_related("indicador_pdd")))
+            .order_by("-producto_principal", "indicador__producto__codigo", "indicador__codigo"))
+        vigencias = sorted({m.vigencia for i in indicadores for m in i.metas.all()})
+        for i in indicadores:
+            por_vigencia = {m.vigencia: m.meta for m in i.metas.all()}
+            i.metas_por_vigencia = [por_vigencia.get(v) for v in vigencias]
+            i.homologados = [h.indicador_pdd for h in i.indicador.homologaciones.all()]
+        municipios = list(formulacion.municipios.all())
+        departamentos = {m.departamento for m in municipios if m.departamento_id}
+        return {
+            "formulacion": formulacion,
+            "piip_indicadores": indicadores,
+            "piip_vigencias": vigencias,
+            "piip_municipios": municipios,
+            "piip_departamentos": sorted(d.nombre for d in departamentos),
+            "piip_regiones": sorted({d.region for d in departamentos if d.region}),
+        }
+
     def _ficha_secop(self, proyecto):
         """El panel de SECOP II: la contratacion publica del proyecto.
 
@@ -726,18 +766,22 @@ class ProyectoAdmin(ModelAdmin):
         if proyecto is None:
             raise Http404("No hay proyecto con ese id.")
 
-        panel = "secop" if request.GET.get("panel") == "secop" else "siifweb"
+        panel = request.GET.get("panel")
+        panel = panel if panel in ("secop", "piip") else "siifweb"
         comun = {
             **self.admin_site.each_context(request),
             "title": f"Ficha de ejecucion - {proyecto.bpin}",
             "proyecto": proyecto,
             "panel": panel,
-            "paneles": (("siifweb", "SIIFWEB"), ("secop", "SECOP II")),
+            "paneles": (("siifweb", "SIIFWEB"), ("secop", "SECOP II"), ("piip", "Formulación (PIIP)")),
             "volver": reverse("admin:siifweb_proyecto_change", args=(object_id,)),
         }
         if panel == "secop":
             return TemplateResponse(request, "siifweb/ficha_proyecto.html",
                                     {**comun, **self._ficha_secop(proyecto)})
+        if panel == "piip":
+            return TemplateResponse(request, "siifweb/ficha_proyecto.html",
+                                    {**comun, **self._ficha_piip(proyecto)})
 
         # Filtro de fechas y de centro de costo: recorta las tablas de CDPs, RPs y
         # obligaciones, en la pantalla y en el PDF y el Excel de cada una
@@ -2196,8 +2240,11 @@ class TipoBancoAdmin(ModelAdmin):
 @admin.register(Municipio)
 class MunicipioAdmin(ModelAdmin):
     compressed_fields = True
-    list_display = ("nombre", "n_proyectos")
+    list_display = ("nombre", "departamento", "n_proyectos")
+    list_filter = (("departamento", RelatedDropdownFilter),)
+    list_select_related = ("departamento",)
     search_fields = ("nombre",)
+    autocomplete_fields = ("departamento",)
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(n=Count("proyectos", distinct=True))
@@ -2435,3 +2482,179 @@ class SeguimientoMetaAdmin(ModelAdmin):
         if not change:
             obj.reportado_por = request.user
         super().save_model(request, obj, form, change)
+
+
+
+# ---------------------------------------------------------------------------
+# Catalogo MGA territorial, homologacion con el plan y formulacion (PIIP)
+# ---------------------------------------------------------------------------
+
+@admin.register(Departamento)
+class DepartamentoAdmin(ModelAdmin):
+    compressed_fields = True
+    list_display = ("nombre", "region", "n_municipios")
+    search_fields = ("nombre", "region")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(n=Count("municipios", distinct=True))
+
+    @display(description="Municipios", ordering="n")
+    def n_municipios(self, obj):
+        return obj.n
+
+
+class CatalogoTerritorial(SoloLectura):
+    """El catalogo MGA territorial viene de una migracion: se consulta, no se edita."""
+    search_fields = ("codigo", "nombre")
+    list_filter_submit = True
+
+    @display(description="Nombre", ordering="nombre")
+    def nombre_corto(self, obj):
+        return corto(obj.nombre)
+
+
+@admin.register(SectorCatalogo)
+class SectorCatalogoAdmin(CatalogoTerritorial):
+    list_display = ("codigo", "nombre_corto")
+
+
+@admin.register(ProgramaCatalogo)
+class ProgramaCatalogoAdmin(CatalogoTerritorial):
+    list_display = ("codigo", "nombre_corto", "sector")
+    list_filter = (("sector", RelatedDropdownFilter),)
+    list_select_related = ("sector",)
+
+
+@admin.register(ProductoCatalogo)
+class ProductoCatalogoAdmin(CatalogoTerritorial):
+    list_display = ("codigo", "nombre_corto", "programa", "medido_a_traves_de")
+    list_filter = (("programa__sector", RelatedDropdownFilter), ("programa", RelatedDropdownFilter))
+    search_fields = ("codigo", "nombre", "descripcion")
+    list_select_related = ("programa", "medido_a_traves_de")
+
+
+class UsadoEnProyectos(admin.SimpleListFilter):
+    title = "uso en proyectos"
+    parameter_name = "en_proyectos"
+
+    def lookups(self, request, model_admin):
+        return (("si", "Lo usa algún proyecto"), ("no", "Ningún proyecto"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "si":
+            return queryset.filter(en_proyectos__isnull=False).distinct()
+        if self.value() == "no":
+            return queryset.filter(en_proyectos__isnull=True)
+        return queryset
+
+
+class Homologado(admin.SimpleListFilter):
+    title = "homologación con el plan"
+    parameter_name = "homologado"
+
+    def lookups(self, request, model_admin):
+        return (("si", "Homologado"), ("no", "Sin homologar"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "si":
+            return queryset.filter(homologaciones__isnull=False).distinct()
+        if self.value() == "no":
+            return queryset.filter(homologaciones__isnull=True)
+        return queryset
+
+
+@admin.register(IndicadorCatalogo)
+class IndicadorCatalogoAdmin(CatalogoTerritorial):
+    """Con "Lo usa algun proyecto" y "Sin homologar" quedan los que el equipo debe
+    homologar a mano con un indicador del plan."""
+    list_display = ("codigo", "nombre_corto", "producto", "unidad_medida", "es_territorial",
+                    "plan", "n_proyectos")
+    list_filter = (UsadoEnProyectos, Homologado, "es_territorial", ("producto__programa__sector", RelatedDropdownFilter))
+    list_select_related = ("producto", "unidad_medida")
+
+    def get_queryset(self, request):
+        return (super().get_queryset(request)
+                .annotate(n=Count("en_proyectos", distinct=True))
+                .prefetch_related(Prefetch("homologaciones",
+                                           queryset=HomologacionIndicador.objects.select_related("indicador_pdd"))))
+
+    @display(description="Plan de desarrollo")
+    def plan(self, obj):
+        return ", ".join(h.indicador_pdd.codigo or "" for h in obj.homologaciones.all()) or "—"
+
+    @display(description="Proyectos", ordering="n")
+    def n_proyectos(self, obj):
+        return obj.n
+
+
+@admin.register(HomologacionIndicador)
+class HomologacionIndicadorAdmin(ModelAdmin):
+    """Las que coinciden por codigo las crea la migracion; las demas, el equipo."""
+    compressed_fields = True
+    list_fullwidth = True
+    list_display = ("indicador", "indicador_pdd", "por_codigo", "observacion_corta")
+    list_filter = ("por_codigo",)
+    list_select_related = ("indicador", "indicador_pdd")
+    search_fields = ("indicador__codigo", "indicador__nombre", "indicador_pdd__codigo",
+                     "indicador_pdd__descripcion")
+    autocomplete_fields = ("indicador", "indicador_pdd")
+    fields = ("indicador", "indicador_pdd", "observacion", "por_codigo")
+    readonly_fields = ("por_codigo",)
+
+    @display(description="Observación")
+    def observacion_corta(self, obj):
+        return corto(obj.observacion) or "—"
+
+
+class IndicadorProyectoInline(ImputacionInline):
+    model = IndicadorProyecto
+    fields = ("indicador", "producto_del_indicador", "objetivo_especifico", "producto_principal", "etapa",
+              "unidad_medida", "tipo", "acumula", "meta_total", "metas_por_vigencia")
+    readonly_fields = fields
+    show_change_link = False
+    verbose_name_plural = "Indicadores"
+
+    @display(description="Producto")
+    def producto_del_indicador(self, obj):
+        return obj.indicador.producto
+
+    @display(description="Metas por vigencia")
+    def metas_por_vigencia(self, obj):
+        return ", ".join(f"{m.vigencia}: {number_format(m.meta.normalize(), force_grouping=True)}"
+                         for m in obj.metas.all()) or "—"
+
+    def get_queryset(self, request):
+        return (super().get_queryset(request)
+                .select_related("indicador__producto").prefetch_related("metas"))
+
+
+@admin.register(FormulacionProyecto)
+class FormulacionProyectoAdmin(SoloLectura):
+    """Lo que cada proyecto formulo en PIIP. Se llena con la carga "Informacion general PIIP"."""
+    list_display = ("bpin", "nombre_proyecto", "programa", "vigencia_inicio", "vigencia_fin", "n_indicadores")
+    list_filter = (("programa__sector", RelatedDropdownFilter), ("programa", RelatedDropdownFilter),
+                   "vigencia_inicio", "vigencia_fin")
+    list_select_related = ("proyecto", "programa")
+    search_fields = ("proyecto__bpin", "proyecto__nombre")
+    inlines = (IndicadorProyectoInline,)
+    fieldsets = (
+        (None, {"fields": ("proyecto", "programa", "vigencia_inicio", "vigencia_fin", "municipios",
+                           "poblacion_afectada", "poblacion_objetivo")}),
+        ("Formulación", {"fields": ("objetivo_general", "problema", "descripcion")}),
+        ("Origen", {"fields": ("archivo_ficha", "reporte")}),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(n=Count("indicadores", distinct=True))
+
+    @display(description="BPIN", ordering="proyecto__bpin")
+    def bpin(self, obj):
+        return obj.proyecto.bpin
+
+    @display(description="Proyecto", ordering="proyecto__nombre")
+    def nombre_proyecto(self, obj):
+        return corto(obj.proyecto.nombre)
+
+    @display(description="Indicadores", ordering="n")
+    def n_indicadores(self, obj):
+        return obj.n

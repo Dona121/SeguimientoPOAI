@@ -35,6 +35,7 @@ class CargaReporte(Fechas):
         # su nombre. El formulario no lo ofrece y no tiene cargador.
         POAI = "poai", _("Cruce proyectos POAI (opcional: nombre, dependencia y clasificacion)")
         SECOP = "secop", _("Consolidado BPIN por proceso de SECOP II (rango completo)")
+        PIIP = "piip", _("Informacion general de los proyectos en PIIP (tabla InfoGeneral)")
 
     class Estado(models.TextChoices):
         PENDIENTE = "P", _("Pendiente")
@@ -46,11 +47,13 @@ class CargaReporte(Fechas):
     fecha_descarga = models.DateField(verbose_name="Fecha de descarga", default=timezone.localdate,
                                       help_text="Los saldos del reporte son la foto de este dia")
     vigencia = models.IntegerField(verbose_name="Vigencia", null=True, blank=True, choices=listado_vigencias,
-                                   help_text="Dejar vacia en el historial de ordenes de gasto 2 y en "
-                                             "el consolidado de SECOP II: se descargan por rango "
-                                             "completo, no por vigencia")
+                                   help_text="Dejar vacia en el historial de ordenes de gasto 2, en "
+                                             "el consolidado de SECOP II y en la informacion general "
+                                             "del PIIP: no se descargan por vigencia")
     filas = models.IntegerField(verbose_name="Numero de filas", default=0)
-    hash = models.CharField(max_length=64, unique=True, blank=True, verbose_name="Hash del archivo",
+    # Unico por tipo de reporte, no en general: SECOP II y la informacion general del PIIP
+    # salen del mismo libro, que se carga una vez para cada uno
+    hash = models.CharField(max_length=64, blank=True, verbose_name="Hash del archivo",
                             help_text="Detecta recargas del mismo archivo")
     estado = models.CharField(max_length=2, choices=Estado.choices, default=Estado.PENDIENTE, verbose_name="Estado")
     mensaje = models.TextField(blank=True, verbose_name="Resultado del proceso")
@@ -1046,10 +1049,27 @@ class TipoBanco(Fechas):
         return self.nombre
 
 
+class Departamento(Fechas):
+    """El departamento de un municipio, con su region. Sucre casi siempre; los de fuera
+    llegan con los proyectos que se ejecutan en otro departamento (una feria, un evento)."""
+    nombre = models.CharField(max_length=150, unique=True, verbose_name="Nombre")
+    region = models.CharField(max_length=60, blank=True, verbose_name="Región")
+
+    class Meta:
+        verbose_name = "Departamento"
+        verbose_name_plural = "Departamentos"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
 class Municipio(Fechas):
     """Los 26 municipios de Sucre, mas "Todo el departamento" para los proyectos que lo
-    cubren entero."""
+    cubren entero, y los de otros departamentos donde se ejecuta algun proyecto."""
     nombre = models.CharField(max_length=100, unique=True, verbose_name="Nombre")
+    departamento = models.ForeignKey(Departamento, on_delete=models.PROTECT, null=True, blank=True,
+                                     related_name="municipios", verbose_name="Departamento")
 
     class Meta:
         verbose_name = "Municipio"
@@ -1225,3 +1245,201 @@ class SeguimientoMeta(Fechas):
                                        f"{self.vigencia}.")
         if errores:
             raise ValidationError(errores)
+
+
+
+# 5 - Catalogo MGA territorial y formulacion de los proyectos (PIIP)
+#
+# El catalogo del plan de desarrollo (SectorMGA ... IndicadorMGA) no admite productos
+# nuevos: cambiarlo pasa por la Asamblea. Los proyectos se formulan con el catalogo MGA
+# completo, asi que ese va aparte, y sus indicadores se homologan con los del plan.
+
+class SectorCatalogo(Fechas):
+    codigo = models.CharField(max_length=4, unique=True, verbose_name="Código")
+    nombre = models.CharField(max_length=255, verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Sector (catálogo MGA)"
+        verbose_name_plural = "Sectores (catálogo MGA)"
+        ordering = ("codigo",)
+
+    def __str__(self):
+        return f"{self.codigo} - {self.nombre}"
+
+
+class ProgramaCatalogo(Fechas):
+    sector = models.ForeignKey(SectorCatalogo, on_delete=models.PROTECT, related_name="programas",
+                               verbose_name="Sector")
+    codigo = models.CharField(max_length=6, unique=True, verbose_name="Código")
+    nombre = models.TextField(verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Programa (catálogo MGA)"
+        verbose_name_plural = "Programas (catálogo MGA)"
+        ordering = ("codigo",)
+
+    def __str__(self):
+        return f"{self.codigo} - {self.nombre}"
+
+
+class ProductoCatalogo(Fechas):
+    programa = models.ForeignKey(ProgramaCatalogo, on_delete=models.PROTECT, related_name="productos",
+                                 verbose_name="Programa")
+    codigo = models.CharField(max_length=10, unique=True, verbose_name="Código")
+    nombre = models.TextField(verbose_name="Nombre")
+    descripcion = models.TextField(blank=True, default="", verbose_name="Descripción")
+    medido_a_traves_de = models.ForeignKey(MedidoATravesDe, on_delete=models.PROTECT, null=True, blank=True,
+                                           related_name="productos_catalogo",
+                                           verbose_name="Medido a través de")
+
+    class Meta:
+        verbose_name = "Producto (catálogo MGA)"
+        verbose_name_plural = "Productos (catálogo MGA)"
+        ordering = ("codigo",)
+
+    def __str__(self):
+        return f"{self.codigo} - {self.nombre}"
+
+
+class IndicadorCatalogo(Fechas):
+    producto = models.ForeignKey(ProductoCatalogo, on_delete=models.PROTECT, related_name="indicadores",
+                                 verbose_name="Producto")
+    codigo = models.CharField(max_length=12, unique=True, verbose_name="Código")
+    nombre = models.TextField(verbose_name="Nombre")
+    unidad_medida = models.ForeignKey(UnidadMedida, on_delete=models.PROTECT, null=True, blank=True,
+                                      related_name="indicadores_catalogo", verbose_name="Unidad de medida")
+    es_principal = models.BooleanField(null=True, blank=True, verbose_name="Indicador principal")
+    es_nacional = models.BooleanField(null=True, blank=True, verbose_name="Es nacional")
+    # Se cargan solo los territoriales; un "No" es un indicador que usa algun proyecto
+    # aunque el catalogo no lo marque como territorial (los de bomberos, por ejemplo)
+    es_territorial = models.BooleanField(null=True, blank=True, verbose_name="Es territorial")
+
+    class Meta:
+        verbose_name = "Indicador (catálogo MGA)"
+        verbose_name_plural = "Indicadores (catálogo MGA)"
+        ordering = ("codigo",)
+
+    def __str__(self):
+        return f"{self.codigo} - {self.nombre}"
+
+
+class HomologacionIndicador(Fechas):
+    """Un indicador del catalogo MGA que cuenta para un indicador del plan de desarrollo.
+
+    Las que coinciden por codigo se crean solas; las demas las asigna el equipo.
+    """
+    indicador = models.ForeignKey(IndicadorCatalogo, on_delete=models.CASCADE, related_name="homologaciones",
+                                  verbose_name="Indicador del catálogo MGA")
+    indicador_pdd = models.ForeignKey(IndicadorMGA, on_delete=models.PROTECT, related_name="homologaciones",
+                                      verbose_name="Indicador del plan de desarrollo")
+    por_codigo = models.BooleanField(default=False, editable=False, verbose_name="Por código",
+                                     help_text="Creada sola porque los dos tienen el mismo código")
+    observacion = models.TextField(blank=True, default="", verbose_name="Observación",
+                                   help_text="Por qué se consideran equivalentes")
+
+    class Meta:
+        verbose_name = "Homologación de indicador"
+        verbose_name_plural = "Homologación de indicadores"
+        ordering = ("indicador__codigo",)
+        constraints = [models.UniqueConstraint(fields=["indicador", "indicador_pdd"],
+                                               name="homologacion_unica",
+                                               violation_error_message="Esa homologación ya existe.")]
+
+    def __str__(self):
+        return f"{self.indicador.codigo} -> {self.indicador_pdd.codigo}"
+
+
+class FormulacionProyecto(Fechas):
+    """Lo que el proyecto formulo en PIIP: datos generales e indicadores con sus metas.
+
+    Solo para proyectos que tambien estan en SIIFWEB: sin ejecucion no hay como seguirle
+    la traza presupuestal.
+    """
+    proyecto = models.OneToOneField(Proyecto, on_delete=models.CASCADE, related_name="formulacion",
+                                    verbose_name="Proyecto")
+    reporte = models.ForeignKey(CargaReporte, on_delete=models.PROTECT, null=True, blank=True,
+                                related_name="formulaciones", verbose_name="Carga")
+    archivo_ficha = models.CharField(max_length=255, blank=True, verbose_name="Ficha del PIIP",
+                                     help_text="Archivo de la ficha del proyecto descargada del PIIP")
+    programa = models.ForeignKey(ProgramaCatalogo, on_delete=models.PROTECT, null=True, blank=True,
+                                 related_name="formulaciones", verbose_name="Programa")
+    vigencia_inicio = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Vigencia de inicio")
+    vigencia_fin = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Vigencia de fin")
+    objetivo_general = models.TextField(blank=True, default="", verbose_name="Objetivo general")
+    problema = models.TextField(blank=True, default="", verbose_name="Problema")
+    descripcion = models.TextField(blank=True, default="", verbose_name="Descripción")
+    poblacion_afectada = models.PositiveIntegerField(null=True, blank=True, verbose_name="Población afectada")
+    poblacion_objetivo = models.PositiveIntegerField(null=True, blank=True, verbose_name="Población objetivo")
+    municipios = models.ManyToManyField(Municipio, blank=True, related_name="formulaciones",
+                                        verbose_name="Municipios")
+
+    class Meta:
+        verbose_name = "Formulación del proyecto (PIIP)"
+        verbose_name_plural = "Formulación de los proyectos (PIIP)"
+        ordering = ("proyecto__bpin",)
+
+    def __str__(self):
+        return f"Formulación de {self.proyecto}"
+
+    @property
+    def sector(self):
+        return self.programa.sector if self.programa_id else None
+
+
+class IndicadorProyecto(Fechas):
+    """Un indicador de producto del proyecto. El producto sale del indicador."""
+
+    class Etapa(models.TextChoices):
+        PREINVERSION = "preinversion", _("Preinversión")
+        INVERSION = "inversion", _("Inversión")
+        OPERACION = "operacion", _("Operación")
+
+    class Tipo(models.TextChoices):
+        PRINCIPAL = "principal", _("Principal")
+        SECUNDARIO = "secundario", _("Secundario")
+
+    formulacion = models.ForeignKey(FormulacionProyecto, on_delete=models.CASCADE, related_name="indicadores",
+                                    verbose_name="Formulación")
+    indicador = models.ForeignKey(IndicadorCatalogo, on_delete=models.PROTECT, related_name="en_proyectos",
+                                  verbose_name="Indicador")
+    objetivo_especifico = models.TextField(blank=True, default="", verbose_name="Objetivo específico")
+    producto_principal = models.BooleanField(default=False, verbose_name="Producto principal del proyecto")
+    etapa = models.CharField(max_length=15, choices=Etapa.choices, blank=True, verbose_name="Etapa")
+    # Texto libre del formulador: el mismo indicador trae "Número" en un proyecto y
+    # "Número de personas" en otro, asi que no es la unidad del catalogo
+    unidad_medida = models.CharField(max_length=255, blank=True, verbose_name="Unidad de medida (UMI)")
+    tipo = models.CharField(max_length=12, choices=Tipo.choices, blank=True, verbose_name="Tipo de indicador")
+    acumula = models.BooleanField(null=True, blank=True, verbose_name="Acumula")
+    meta_total = models.DecimalField(max_digits=20, decimal_places=5, null=True, blank=True,
+                                     verbose_name="Meta total del indicador")
+
+    class Meta:
+        verbose_name = "Indicador del proyecto"
+        verbose_name_plural = "Indicadores del proyecto"
+        ordering = ("indicador__codigo",)
+        constraints = [models.UniqueConstraint(fields=["formulacion", "indicador"],
+                                               name="indicador_unico_por_formulacion")]
+
+    def __str__(self):
+        return f"{self.formulacion.proyecto.bpin} - {self.indicador.codigo}"
+
+    @property
+    def producto(self):
+        return self.indicador.producto
+
+
+class MetaVigenciaIndicador(Fechas):
+    indicador_proyecto = models.ForeignKey(IndicadorProyecto, on_delete=models.CASCADE, related_name="metas",
+                                           verbose_name="Indicador del proyecto")
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
+    meta = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="Meta de la vigencia")
+
+    class Meta:
+        verbose_name = "Meta del indicador por vigencia"
+        verbose_name_plural = "Metas del indicador por vigencia"
+        ordering = ("vigencia",)
+        constraints = [models.UniqueConstraint(fields=["indicador_proyecto", "vigencia"],
+                                               name="meta_unica_por_vigencia")]
+
+    def __str__(self):
+        return f"{self.indicador_proyecto} - {self.vigencia}: {self.meta}"
