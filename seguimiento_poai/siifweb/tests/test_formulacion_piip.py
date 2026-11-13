@@ -107,7 +107,6 @@ class CargaPIIP(TestCase):
         [i] = f.indicadores.all()
         self.assertEqual(i.indicador.codigo, HOMOLOGADO)
         self.assertEqual(i.producto.codigo, "4104020")   # el producto sale del indicador
-        self.assertTrue(i.producto_principal)
         self.assertEqual((i.etapa, i.tipo, i.acumula), ("inversion", "principal", True))
         self.assertEqual(i.unidad_medida, "Número de personas")
         self.assertEqual(i.meta_total, Decimal("300"))

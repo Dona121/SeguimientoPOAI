@@ -745,6 +745,7 @@ COLUMNAS_PIIP = [
     "Municipios", "ObjetivoEspecifico", "CodigoProducto", "Producto", "Etapa", "UMP", "CodigoIndicador",
     "Indicador", "UMI", "TipoIndicador", "Acumula", "MetaTotalIndicador", "Vigencia", "MetaVigencia",
 ]
+# El PIIP marca asi el producto principal dentro de su nombre; se quita al crear el producto
 PRINCIPAL = "(Producto principal del proyecto)"
 
 
@@ -916,7 +917,6 @@ def cargar_piip(carga):
             indicador = IndicadorProyecto.objects.create(
                 formulacion=formulacion, indicador=del_catalogo,
                 objetivo_especifico="\n".join(objetivos),
-                producto_principal=any(PRINCIPAL in texto(x["Producto"]) for x in filas_ind),
                 etapa=ETAPAS.get(sin_tildes(g["Etapa"]), ""),
                 unidad_medida=texto(g["UMI"])[:255],
                 tipo=TIPOS.get(sin_tildes(g["TipoIndicador"]), ""),

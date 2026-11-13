@@ -253,14 +253,13 @@
       <table class="w-full text-sm indicadores-piip">
         <thead class="border-b text-xs uppercase tracking-wider text-base-500 bg-white dark:bg-base-900 dark:border-base-800" style="position:sticky;top:0;z-index:1">
           <tr class="grupos">
-            <th colspan="{{ piip_vigencias|length|add:12 }}">PIIP</th>
+            <th colspan="{{ piip_vigencias|length|add:11 }}">PIIP</th>
             <th colspan="6" class="plan">Plan de desarrollo (homologado)</th>
           </tr>
           <tr>
             <th>Objetivo específico</th>
             <th>Código producto</th>
             <th>Producto</th>
-            <th>Producto principal</th>
             <th>Etapa</th>
             <th>UMP</th>
             <th>Código indicador</th>
@@ -284,7 +283,6 @@
             <td class="largo">{{ i.objetivo_especifico|default:"—"|linebreaksbr }}</td>
             <td class="font-mono">{{ i.indicador.producto.codigo }}</td>
             <td class="largo">{{ i.indicador.producto.nombre }}</td>
-            <td>{% if i.producto_principal %}Sí{% else %}No{% endif %}</td>
             <td>{{ i.get_etapa_display|default:"—" }}</td>
             <td>{{ i.indicador.producto.medido_a_traves_de|default:"—" }}</td>
             <td class="font-mono">{{ i.indicador.codigo }}</td>
@@ -311,7 +309,7 @@
             {% endwith %}
           </tr>
           {% empty %}
-          <tr><td colspan="{{ piip_vigencias|length|add:18 }}" class="text-center text-base-500">La ficha del PIIP no trae indicadores.</td></tr>
+          <tr><td colspan="{{ piip_vigencias|length|add:17 }}" class="text-center text-base-500">La ficha del PIIP no trae indicadores.</td></tr>
           {% endfor %}
         </tbody>
       </table>

@@ -1372,7 +1372,6 @@ class IndicadorProyecto(Fechas):
     indicador = models.ForeignKey(IndicadorCatalogo, on_delete=models.PROTECT, related_name="en_proyectos",
                                   verbose_name="Indicador")
     objetivo_especifico = models.TextField(blank=True, default="", verbose_name="Objetivo específico")
-    producto_principal = models.BooleanField(default=False, verbose_name="Producto principal del proyecto")
     etapa = models.CharField(max_length=15, choices=Etapa.choices, blank=True, verbose_name="Etapa")
     # Texto libre del formulador: el mismo indicador trae "Número" en un proyecto y
     # "Número de personas" en otro, asi que no es la unidad del catalogo

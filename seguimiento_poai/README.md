@@ -663,7 +663,7 @@ productos e indicadores van aparte, en el modulo **Catalogo PIIP** del menu:
 - **Formulacion de proyectos**: `FormulacionProyecto` (uno a uno con el proyecto: sector y
   programa como los trae el PIIP, vigencias de inicio y fin, objetivo general, problema,
   descripcion, poblaciones y municipios), `IndicadorProyecto` (indicador del catalogo,
-  objetivo especifico, producto principal, etapa, UMI, tipo, acumula y meta total; el
+  objetivo especifico, etapa, UMI, tipo, acumula y meta total; el
   producto sale del indicador) y `MetaVigenciaIndicador`.
 
 Se llena con la carga **Informacion general PIIP**, que lee la tabla de Excel `InfoGeneral`

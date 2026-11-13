@@ -690,7 +690,7 @@ class ProyectoAdmin(ModelAdmin):
             .select_related("indicador__producto__medido_a_traves_de",
                             "indicador__indicador_pdd__producto_mga__programa_mga__sector_mga")
             .prefetch_related("metas")
-            .order_by("-producto_principal", "indicador__producto__codigo", "indicador__codigo"))
+            .order_by("indicador__producto__codigo", "indicador__codigo"))
         vigencias = sorted({m.vigencia for i in indicadores for m in i.metas.all()})
         for i in indicadores:
             por_vigencia = {m.vigencia: m.meta for m in i.metas.all()}
@@ -2630,7 +2630,7 @@ class IndicadorCatalogoAdmin(ModelAdmin):
 class IndicadorProyectoInline(ImputacionInline):
     model = IndicadorProyecto
     fields = ("indicador", "producto_del_indicador", "indicador_del_plan", "objetivo_especifico",
-              "producto_principal", "etapa", "unidad_medida", "tipo", "acumula", "meta_total", "metas_por_vigencia")
+              "etapa", "unidad_medida", "tipo", "acumula", "meta_total", "metas_por_vigencia")
     readonly_fields = fields
     show_change_link = False
     verbose_name_plural = "Indicadores"
