@@ -16,7 +16,8 @@ importador del reporte de ejecución ya está hecho (sección 3).
 
 | Tema | Decisión |
 |---|---|
-| Alcance | Solo la categoría `D_EJECUCION_DE_GASTOS` y solo **vigencia actual** (vigencia de gasto 1). Las reservas no se trabajan en el aplicativo |
+| Alcance | Solo la categoría `D_EJECUCION_DE_GASTOS` y solo **vigencia actual**. Las reservas no se trabajan en el aplicativo |
+| Vigencia de gasto | **Editable en la distribución** (decisión del 13/11): por defecto 1 (vigencia actual), y se puede elegir una o varias por fila, por ejemplo 1 y 4 (vigencias futuras - vigencia actual). En el CUIPO de junio 28 de 225 líneas de inversión fueron con 4 |
 | Periodo | El tercer trimestre es 10909 y el cuarto 11212. Los valores son **el acumulado de la vigencia hasta el último día del trimestre** (aunque CHIP rotule el 10909 como "01-09-2026 al 30-09-2026") |
 | Alcance del plano | Solo el detalle 2.3 del bloque `D_EJECUCION_DE_GASTOS` |
 | Trimestres anteriores | No se copia una distribución de un trimestre al siguiente (puede cambiar). La pantalla muestra, como referencia, cómo se distribuyó el BPIN en los trimestres anteriores |
@@ -69,7 +70,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 452.
+  disco temporal). Hoy son 458.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -304,12 +305,15 @@ Tablas propias; los modelos de `siifweb` no se modifican.
 **Modelos**
 - `DistribucionBPIN`: **corte** (FK a `CorteEjecucionGastos`, `on_delete=PROTECT`), periodo
   (ej. 10909), BPIN (`0` para la inversión sin proyecto), regla aplicada, estado (borrador →
-  validado → enviado), `validado_por`. No lleva vigencia de gasto: siempre es 1.
+  validado → enviado), `validado_por`.
 - `AsociacionFuenteProducto`: distribución, **FK a `FilaEjecucionGastos`**, producto.
-- `LineaCUIPO`: distribución, **FK a `FilaEjecucionGastos`** (`PROTECT`), producto; C, O y P
-  en `DecimalField(…, decimal_places=2)`; CPC, detalle sectorial, tercero y política pública;
+- `LineaCUIPO`: distribución, **FK a `FilaEjecucionGastos`** (`PROTECT`), producto,
+  **vigencia de gasto** (FK a `VigenciaGasto`, por defecto 1); C, O y P en
+  `DecimalField(…, decimal_places=2)`; CPC, detalle sectorial, tercero y política pública;
   `origen_valores` (SIIFWEB / PIIP / MANUAL) y un `origen_*` por cualitativo (regla /
-  antecedente / PAS / manual). Única por (distribución, fila, producto).
+  antecedente / PAS / manual). Única por (distribución, fila, producto, vigencia de gasto):
+  una fila puede repartirse entre varias vigencias de gasto (por ejemplo 1 y 4) y la suma de
+  sus líneas sigue debiendo dar el valor de la fila.
 - Rubro, fuente CUIPO, sección y situación de fondos **no** se guardan en `LineaCUIPO`: se
   derivan de la fila con las homologaciones.
 - La FK va al id de la fila y no a rubro + recurso + centro de costo porque esa combinación
@@ -493,10 +497,15 @@ migración `cuipo/0003`, 24 pruebas en `cuipo/tests/test_derivacion.py`).
 - Admin: en cada fuente CUIPO, una tabla para registrar los recursos que la usan (guarda quién
   y cuándo validó); las cinco tablas en el menú CUIPO; el autocompletar solo ofrece códigos
   activos de las listas.
-- En local, con el corte al 11/11 y las reglas iniciales: 224 filas entran, ningún rubro sin
-  concepto, ningún BPIN sin PIIP, y quedan 63 recursos por homologar (todas las filas esperan
-  su fuente). 202600000018441 deriva 2.3.3.05.09.099, 16.0, C y 220170001; solo le falta la
-  homologación del recurso 108.
+- **Semillas** (`cuipo/semillas.py`): carga las homologaciones validadas de un CUIPO enviado
+  desde `modelos-metas/Semillas_CUIPO_T3_2026.xlsx` (hojas HomologacionFuente y
+  HomologacionRubro), con `manage.py cargar_semillas_cuipo <archivo>` o subiendo el libro en
+  la pantalla de pendientes (no se guarda). Solo crea lo que falta; lo que existe con otro
+  valor no lo cambia y lo avisa; un código inexistente aborta sin dejar nada.
+- En local, con el corte al 11/11, las reglas iniciales y las semillas del T3 (62 recursos y 1
+  rubro): de 224 filas, 217 se derivan completas. Faltan 7 recursos que no vienen en las
+  semillas: 110, 125, 130, 160, 166, 35 y 91 (una fila cada uno). 202600000018441 deriva
+  completo: 2.3.3.05.09.099, 1.3.3.3.20, 16.0, C y 220170001.
 
 - Archivos: los 5 modelos de la sección 4.2, `cuipo/derivacion.py` con `derivar(fila)`, admin
   (inline de `HomologacionFuente` en `FuenteCUIPO`), vista de pendientes, migración.
@@ -516,6 +525,8 @@ migración `cuipo/0003`, 24 pruebas en `cuipo/tests/test_derivacion.py`).
   de reproceso en `cuipo/ejecucion.py` y de borrado en `cuipo/admin.py`, migración.
 - Aceptación:
   - Solo entran filas de vigencia actual, 2.3, con RP, obligación o pago distinto de cero.
+  - La vigencia de gasto de cada línea es 1 por defecto y se puede cambiar; una fila puede
+    repartirse entre varias vigencias de gasto.
   - La suma de las líneas de cada fila da su C, O y P.
   - Un corte con distribución no se reprocesa ni se borra, y lo dice.
   - Los casos de la sección 6 dan la regla esperada; los de "varios productos, una fuente"

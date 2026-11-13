@@ -517,4 +517,12 @@ Rama `cuipo-fase2-reglas`, sobre `cuipo-fase1-listas`.
   iniciales del plan.
 - En cada fuente CUIPO del admin se registran los recursos que la usan.
 
-**Pruebas.** 452, todas pasan (`cuipo/tests/test_derivacion.py`, 24 nuevas).
+- Semillas: `cuipo/semillas.py` carga las homologaciones de fuentes y rubros validadas en el
+  CUIPO del T3 (`Semillas_CUIPO_T3_2026.xlsx`, 62 recursos y 1 rubro), por comando
+  (`cargar_semillas_cuipo`) o subiendo el libro en la pantalla de pendientes. Solo crea lo
+  que falta. En local quedan 217 de 224 filas completas; faltan 7 recursos que no estan en
+  las semillas (110, 125, 130, 160, 166, 35 y 91).
+- Decision: la vigencia de gasto sera editable en la distribucion (fase 3), una o varias por
+  fila, 1 por defecto.
+
+**Pruebas.** 458, todas pasan (`cuipo/tests/test_derivacion.py` y `test_semillas.py`, 30 nuevas).
