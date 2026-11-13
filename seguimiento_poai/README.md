@@ -655,9 +655,9 @@ un catalogo aparte, en el modulo **Catalogo PIIP** del menu:
   productos), validados por codigo contra el catalogo, sean territoriales o no (los de
   bomberos, 370800900 y 370801300, no lo son). Sectores y programas van todos los
   territoriales. Se genera con `modelos-metas/generar_migracion_catalogo_territorial.py`.
-  Los datos del catalogo no se editan; la vista de indicadores dice si cada uno esta
-  homologado, y al abrir uno se homologa ahi mismo (tabla de indicadores del plan con su
-  observacion).
+  El equipo lo mantiene en el admin (agregar, editar y borrar lo que no este en uso); las
+  cargas del PIIP no lo cambian. La vista de indicadores dice si cada uno esta homologado,
+  y al abrir uno se homologa ahi mismo (tabla de indicadores del plan con su observacion).
 - **Homologacion de indicadores**: indicador del catalogo -> indicador del plan
   (`IndicadorMGA`). La `0021` crea las que coinciden por codigo (163); las demas las asigna
   el equipo. En Indicadores, los filtros "Lo usa algun proyecto" y "Sin homologar" dejan
@@ -852,7 +852,7 @@ guarda y la pisaba, asi que cada corrida dejaba cientos de xlsx de prueba en
 `media/reportes` (se acumularon 4.694, 150 MB, borrados en octubre de 2026). Ahora esa
 linea no se ejecuta en pruebas, y `test_las_pruebas_no_corren_contra_produccion` lo vigila.
 
-376 pruebas en quince modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
+377 pruebas en quince modulos. Tardan algo mas de un minuto: la `0012` y la `0014` cargan sus
 datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 | Modulo | Que vigila |
