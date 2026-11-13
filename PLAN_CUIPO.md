@@ -1,21 +1,41 @@
 # Plan del módulo CUIPO (ejecución de gastos de inversión por producto MGA)
 
-Documento autocontenido, redactado el 13 de noviembre de 2026. Reúne el diseño funcional,
-lo que ya existe en el aplicativo, los ajustes que salieron de revisar los datos reales y
-el plan por fases. Sirve para continuar el trabajo en otra conversación sin el historial.
+Documento autocontenido, redactado el 13 de noviembre de 2026 y actualizado el mismo día con
+las decisiones tomadas al revisarlo contra los datos del CUIPO del tercer trimestre. Reúne el
+diseño funcional, lo que ya existe en el aplicativo, los ajustes que salieron de revisar los
+datos reales y el plan por fases. Sirve para continuar el trabajo en otra conversación sin el
+historial.
 
-**Quién lo construye.** Donaldo (Secretaría de Planeación, Gobernación de Sucre) escribe
-los modelos y el código por fases para aprender construyéndolo; el asistente revisa lo que
-él le pase. La excepción es el importador del reporte de ejecución, que ya está hecho
-(sección 3) porque se pidió explícitamente.
+**Quién lo construye.** Desde el 13 de noviembre lo implementa el asistente por fases, a
+pedido de Donaldo (Secretaría de Planeación, Gobernación de Sucre), que revisa cada fase. El
+importador del reporte de ejecución ya está hecho (sección 3).
+
+---
+
+## 0. Decisiones tomadas (13 de noviembre de 2026)
+
+| Tema | Decisión |
+|---|---|
+| Alcance | Solo la categoría `D_EJECUCION_DE_GASTOS` y solo **vigencia actual** (vigencia de gasto 1). Las reservas no se trabajan en el aplicativo |
+| Periodo | El tercer trimestre es 10909 y el cuarto 11212. Los valores son **el acumulado de la vigencia hasta el último día del trimestre** (aunque CHIP rotule el 10909 como "01-09-2026 al 30-09-2026") |
+| Alcance del plano | Solo el detalle 2.3 del bloque `D_EJECUCION_DE_GASTOS` |
+| Trimestres anteriores | No se copia una distribución de un trimestre al siguiente (puede cambiar). La pantalla muestra, como referencia, cómo se distribuyó el BPIN en los trimestres anteriores |
+| Validación contra programación | No va en el aplicativo: el reporte de programación se usa como referencia externa antes del envío |
+| Listas CHIP | Se construyen los modelos de parametrización desde `modelos-metas/Listas_Categoria_CUIPO_09-2026.xlsx` |
+| Nombres | Sufijo `CUIPO` solo en los dos modelos que chocan con `siifweb`: `ProductoCUIPO` y `TerceroCUIPO`. Los demás sin sufijo |
+| Cortes con distribución | No se pueden reprocesar ni borrar. Para actualizar, se carga un corte nuevo y se distribuye sobre él |
+| Valores por producto (PIIP) | El reporte de AporteProductos del PIIP **no se carga** al aplicativo: los valores por producto se digitan a mano en la matriz a partir de ese reporte |
+| Inversión sin BPIN | Entra al CUIPO con BPIN 0 y producto 0, el 100 % automático; solo se diligencian los cualitativos |
+| Roles | Por ahora sin roles nuevos: quien tenga los permisos de los modelos del CUIPO puede distribuir y validar |
+| 2023002700021 | La fila de 15.251.706.362,76 (recurso 7, centro de costo 16) que aparecía duplicada en la ejecución al 30/09 se había agregado a mano. En el reporte oficial la llave de la fila es única |
 
 ---
 
 ## 1. Objetivo
 
 Generar el reporte CUIPO de CHIP (Contaduría General), categoría `D_EJECUCION_DE_GASTOS`,
-para la inversión (rubros 2.3), abierto por producto MGA. Hasta ahora se armaba en Excel
-con Power Query y scripts de Python.
+para la inversión (rubros 2.3), abierto por producto MGA, en vigencia actual. Hasta ahora se
+armaba en Excel con Power Query y scripts de Python.
 
 El flujo es:
 
@@ -23,9 +43,9 @@ El flujo es:
 2. Derivar de cada fila el concepto, la fuente CUIPO, la sección, la situación de fondos y
    el tercero, con homologaciones y reglas.
 3. Distribuir cada fila de cada BPIN entre los productos del proyecto (precarga automática
-   y ajuste en pantalla).
+   y ajuste o digitación en pantalla).
 4. Validar la distribución.
-5. Generar el plano de texto que se sube a CHIP.
+5. Generar el bloque `D_EJECUCION_DE_GASTOS` del plano de texto que se sube a CHIP.
 
 ---
 
@@ -49,7 +69,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 404.
+  disco temporal). Hoy son 410.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -62,8 +82,8 @@ El flujo es:
 - Cargas dentro de `transaction.atomic()`, con un mensaje de resultado en el registro.
 - Admin de solo lectura: `siifweb.admin.SoloLectura`. Menú lateral en `UNFOLD["SIDEBAR"]` de
   `config/settings.py`; cada enlace con `permission=_con_permiso("app.view_modelo")`.
-- Roles existentes: grupos `Consulta` y `Seguimiento` (migración `siifweb/0009`). No hay
-  roles de planeación ni de presupuesto.
+- Roles existentes: grupos `Consulta` y `Seguimiento` (migración `siifweb/0009`). Para el
+  CUIPO no se crean roles nuevos por ahora (sección 4.5).
 - Algunos archivos de `siifweb` tienen fin de línea CRLF (`models.py`, `admin.py`,
   `cargas.py`, `config/settings.py`): al editarlos, conservarlo.
 
@@ -73,31 +93,52 @@ El flujo es:
 - Estos catálogos los crean las cargas de los consolidados (CDP, compromisos, obligaciones).
   Un código que aparece en el reporte de ejecución antes de cargar los consolidados no
   existe todavía en ellos.
-- **Productos por BPIN (PIIP):** `FormulacionProyecto` (uno a uno con `Proyecto`,
-  `related_name="formulacion"`) → `IndicadorProyecto` (`formulacion.indicadores`) →
-  `IndicadorCatalogo` (`related_name="en_proyectos"` desde `IndicadorProyecto`) →
-  `ProductoCatalogo` (código de 7 dígitos). Los productos de un BPIN:
+- **Productos por BPIN (PIIP):** `FormulacionProyecto` (con su propio `bpin`, único, y
+  enlace opcional uno a uno con `Proyecto`, `related_name="formulacion"`) →
+  `IndicadorProyecto` (`formulacion.indicadores`) → `IndicadorCatalogo`
+  (`related_name="en_proyectos"` desde `IndicadorProyecto`) → `ProductoCatalogo` (código de 7
+  dígitos). Los productos de un BPIN:
   `ProductoCatalogo.objects.filter(indicadores__en_proyectos__formulacion__bpin=bpin).distinct()`.
-  Se llenan con la carga "Información general PIIP" (tabla `InfoGeneral`). Entran todos
-  los BPIN del PIIP; la formulación se enlaza con el `Proyecto` de SIIFWEB del mismo BPIN,
-  también si este llega después (rama `piip-control-siifweb`).
-- **Reservas:** `Reserva` + `ReservaImputacion` (`valor_reserva_def`, `obligaciones_reserva`,
-  `pagos_reserva`, `saldo_reserva`). No tienen centro de costo y cada carga sobrescribe la
-  vigencia.
+  Se llenan con la carga "Información general PIIP" (tabla `InfoGeneral`). Esto da **qué**
+  productos tiene el BPIN, no cuánto vale cada uno.
+- Desde la rama `piip-control-siifweb` la carga del PIIP crea la formulación de **todos** los
+  BPIN del PIIP, estén o no en SIIFWEB, y el enlace con el proyecto se hace solo, por BPIN, en
+  cualquier orden (detalle en `CATALOGO_PIIP.md`, sección 9). Ya no hace falta reprocesar el
+  PIIP después de cargar los consolidados.
 - Nombres que ya existen en `siifweb`: `ProductoMGA` (catálogo del plan de desarrollo) y
-  `Tercero` (contratistas).
+  `Tercero` (contratistas). Por eso los catálogos CHIP equivalentes llevan sufijo `CUIPO`.
 
 **Ramas (ninguna subida a `main`)**
 
+Cadena actual:
+
 ```
-main ← formulacion-piip ← centro-costo-compromisos ← cuipo-ejecucion-gastos
+main ← formulacion-piip ← centro-costo-compromisos ← cuipo-ejecucion-gastos ← piip-control-siifweb
 ```
 
 - `formulacion-piip`: catálogo PIIP y formulación de los proyectos (productos por BPIN).
   Migraciones `siifweb/0020` y `0021`.
 - `centro-costo-compromisos`: centro de costo por línea en `CompromisoImputacion`
-  (migración `siifweb/0022`). El CUIPO ya no la necesita; está por decidir si se conserva.
-- `cuipo-ejecucion-gastos`: la app `cuipo` con el importador (migración `cuipo/0001`).
+  (migración `siifweb/0022`). **Se descarta**: se hizo cuando el CUIPO se iba a armar desde el
+  consolidado de compromisos, y el reporte oficial de ejecución ya trae el centro de costo
+  por fila.
+- `cuipo-ejecucion-gastos`: la app `cuipo` con el importador (migración `cuipo/0001`, sin
+  dependencias de `siifweb`).
+- `piip-control-siifweb`: formulación de todos los BPIN del PIIP con semáforo de SIIFWEB
+  (migración `siifweb/0023`, que hoy depende de la `0022` que se descarta).
+
+Cadena objetivo: `main ← formulacion-piip ← cuipo-ejecucion-gastos ← piip-control-siifweb`.
+Pasos (fase 0):
+1. Revisar que ningún código de `cuipo` use el centro de costo de `CompromisoImputacion`.
+2. En la base local, revertir `siifweb/0023` y `0022` (`migrate siifweb 0021`) antes de cambiar
+   el código. Para revertir la `0023` hay que borrar antes las formulaciones sin proyecto (la
+   reversa vuelve obligatorio el proyecto); se recuperan reprocesando el PIIP.
+3. Rebasar las dos ramas sobre `formulacion-piip` dejando fuera el commit de
+   `centro-costo-compromisos` (`git rebase --onto formulacion-piip centro-costo-compromisos
+   piip-control-siifweb` y mover `cuipo-ejecucion-gastos` a su commit equivalente).
+4. Renumerar la migración de la formulación como `siifweb/0022`, con dependencia de la `0021`.
+5. Aplicar migraciones en local, reprocesar el PIIP, correr las pruebas y borrar la rama
+   `centro-costo-compromisos`.
 
 ---
 
@@ -121,7 +162,8 @@ los códigos se guardan como texto, tal como vienen.
 - `RUBRO_ID` es el id del rubro en SIIFWEB y cambia en cada vigencia. El reporte de 2023 trae,
   además de su árbol (raíz 11545), filas del árbol de 2022 (raíz 5582): 27 filas, 22 con
   BPIN, solo con obligación (16.890.687.467) y pago. Por eso rubro + recurso + centro de
-  costo + proyecto se repite en 2023 y `RUBRO_ID` tiene que ir en la llave.
+  costo + proyecto se repite en 2023 y `RUBRO_ID` tiene que ir en la llave. Las filas del
+  árbol de otra vigencia no entran al CUIPO (solo vigencia actual).
 - Valores en float, entero o texto con coma decimal.
 
 **Modelos** (`seguimiento_poai/cuipo/models.py`)
@@ -147,6 +189,8 @@ los códigos se guardan como texto, tal como vienen.
 - `procesar(corte)`: llama a `importar` y deja estado y mensaje; si falla, las filas previas
   del corte quedan intactas.
 - No guarda `DISPONIBLE` ni los subtotales.
+- **Cambio pendiente (fase 3):** si el corte ya tiene distribuciones, `procesar` lo rechaza
+  con un mensaje claro y el corte no se puede borrar (sección 4.3).
 
 **Admin** (`seguimiento_poai/cuipo/admin.py`), menú "CUIPO"
 - Cortes: se importa al guardar; acción "Volver a procesar"; totales de RP, obligación y pago;
@@ -161,8 +205,10 @@ los códigos se guardan como texto, tal como vienen.
   descargados el 31/07/2026; 2026 al 11/11/2026). Cargados en la base local: 395, 463, 422,
   400 y 405 filas de detalle; los subtotales cuadran en los cinco.
 - `modelos-metas/EjecucionGastos1Enero-30Septiembre.xlsx` tiene solo 10 columnas (una muestra
-  de la estructura): **no se puede importar**. Falta descargar el corte 01/01–30/09/2026
-  completo.
+  de la estructura): **no se puede importar**. La versión de 34 columnas con la que se armó el
+  CUIPO del T3 (con metas, programa MGA y número de distribuciones agregados) tampoco: no es el
+  reporte oficial y trae la fila agregada a mano de 2023002700021. Falta descargar el corte
+  oficial 01/01–30/09/2026 completo.
 
 **Lo que mostró el cruce con los consolidados**
 - El RP del reporte es el `VALOR_COMPROMISO_DEF` del consolidado de compromisos (no el
@@ -179,7 +225,8 @@ los códigos se guardan como texto, tal como vienen.
 | 2.2 | 4 | 4 | 18.976.774.323 | 9.526.762.957 | 9.526.762.957 |
 | 2.3 | 327 | 224 | 1.024.227.220.324,22 | 901.628.453.314,84 | 846.578.327.851,09 |
 
-- En 2.3: 101 BPIN con valores; de los 128 BPIN del 2.3, 119 tienen formulación PIIP.
+- En 2.3: 101 BPIN con valores, los 101 con formulación PIIP; de los 128 BPIN del 2.3, 127
+  tienen formulación (con la carga de todos los BPIN del PIIP).
 - 63 filas de 2.3 sin BPIN (proyecto 0) con valores, 173.848.360.419,85 de RP.
 - 2.1 y 2.2 nunca traen BPIN.
 
@@ -189,8 +236,9 @@ los códigos se guardan como texto, tal como vienen.
 
 ### 4.1 Catálogos CHIP
 
-Se cargan desde `Listas_Categoria_CUIPO_09-2026.xlsx` (11 hojas, encabezado en la fila 1;
-**el archivo todavía no está en el repositorio**).
+**Fuente:** `modelos-metas/Listas_Categoria_CUIPO_09-2026.xlsx` (11 hojas, encabezado en la
+fila 1). Desde este archivo se construyen los modelos de parametrización del CUIPO y se prueba
+el importador de la fase 1.
 
 Clase abstracta base: `codigo` (CharField único), `descripcion`, `activo`, FK `version` →
 `VersionListas`. Modelos concretos:
@@ -201,17 +249,13 @@ Clase abstracta base: `codigo` (CharField único), `descripcion`, `activo`, FK `
 | (sin modelo) | Conceptos_CPC | Solo marca `requiere_cpc=True`; se procesa después de Conceptos |
 | `FuenteCUIPO` | Fuentes de Financiación | |
 | `SeccionPresupuestal` | Secciones Presupuestales | Solo columnas A:B (hay una nota suelta en la D) |
-| `VigenciaGasto` | Vigencia Gasto | |
-| `ProductoMGA`* | Producto MGA | `aplica_territoriales`; el importador crea además `0 - NO APLICA` |
+| `VigenciaGasto` | Vigencia Gasto | Se carga completa aunque el aplicativo solo use la 1 |
+| `ProductoCUIPO` | Producto MGA | `aplica_territoriales`; el importador crea además `0 - NO APLICA` |
 | `CPC` | CPC | Longitud 1, 5 o 7 |
 | `DetalleSectorial` | Detalle Sectorial | |
 | `SituacionFondos` | Situación de Fondos | |
 | `PoliticaPublica` | Politica Pública | |
-| `Tercero`* | Tercero | |
-
-\* Chocan de nombre con `siifweb.ProductoMGA` y `siifweb.Tercero`. Django lo permite en otra
-app, pero confunde en el admin, los imports y los mensajes. Propuesta: sufijo `CUIPO`
-(`ProductoCUIPO`, `TerceroCUIPO`) o en todos (`CPCCUIPO`...). Decisión pendiente.
+| `TerceroCUIPO` | Tercero | |
 
 `VersionListas`: nombre ("09-2026"), archivo, fecha y usuario de carga.
 
@@ -237,7 +281,7 @@ Tablas propias; los modelos de `siifweb` no se modifican.
 | `HomologacionFuente` | FK a `siifweb.Fuente`, FK `FuenteCUIPO`, `vigencia`, `observacion`, `validado_por`, `fecha_validacion`; `UniqueConstraint(fuente_siifweb, vigencia)` | Bloquea |
 | `HomologacionRubro` | Solo excepciones (ej. 2.3.3.05.09.054 → 2.3.3.05.09.099) | Se usa el mismo código si existe en `ConceptoCUIPO` y está habilitado para departamentos; si no, bloquea |
 | `ReglaSeccion` | Centro de costo → sección (2 → 22.0 Educación, 3 → 21.0 Salud) | 16.0 |
-| `ReglaTercero` | Por rubro (ICBF 23900000, SENA 26800000, ESAP 22000000, MEN 11300000) o por centro de costo (Inder 128470000, Fondo Mixto 220170001, Aguas de Sucre 923272066, Unisucre 128870000) | Pendiente |
+| `ReglaTercero` | Por rubro (ICBF 23900000, SENA 26800000, ESAP 22000000, MEN 11300000) o por centro de costo, **por código** (11 Inder 128470000, 10 Fondo Mixto 220170001, 5 Aguas de Sucre 923272066, 25 Universidad de Sucre 128870000) | Pendiente |
 | `ReglaSituacionFondos` | Prefijo de rubro + fuente CUIPO → S o C (ej. 2.3.1.01.02.001–003 con 1.2.4.1.01 → S) | — |
 
 - `HomologacionFuente`: 62 recursos SIIFWEB → 28 fuentes CUIPO (muchos a uno). 20 recursos
@@ -247,19 +291,21 @@ Tablas propias; los modelos de `siifweb` no se modifican.
 - **Cómo se cruza con la fila de ejecución:** la fila trae el recurso como texto; la fuente
   SIIFWEB se obtiene con `Fuente.objects.get(codigo=fila.recurso)`. Si el recurso todavía no
   existe en `siifweb.Fuente` (aparece en el reporte antes de cargar los consolidados), queda
-  como pendiente. En el corte de 2026 al 11/11 solo pasó con el recurso 130 (la base local
-  tiene los consolidados al 22/10). La regla práctica: cargar los consolidados antes de
-  distribuir.
+  como pendiente. Con los consolidados al 22/10 pasó con el recurso 130; con los del 11/11 ya
+  no hay ninguno. La regla práctica: cargar los consolidados antes de distribuir.
 - La sección sale del centro de costo **de la fila de ejecución**.
 - Conviene una vista de "pendientes": los recursos, rubros y centros de costo de un corte que
-  no tienen homologación o regla.
+  no tienen homologación o regla, y los BPIN con ejecución sin formulación PIIP (con el aviso
+  "el BPIN no está en la carga del PIIP: actualizar el exporte del PIIP y cargarlo").
+- En los scripts del T3 la regla de tercero por centro de costo se hacía por el nombre
+  (`NOMBRE_CENTROCOSTO`); en el aplicativo va por el código del centro de costo.
 
 ### 4.3 Distribución por producto
 
 **Modelos**
-- `DistribucionBPIN`: **corte** (FK a `CorteEjecucionGastos`), periodo (ej. 10909), BPIN,
-  vigencia de gasto, regla aplicada, estado (borrador → en validación → validado →
-  enviado), `validado_por`.
+- `DistribucionBPIN`: **corte** (FK a `CorteEjecucionGastos`, `on_delete=PROTECT`), periodo
+  (ej. 10909), BPIN (`0` para la inversión sin proyecto), regla aplicada, estado (borrador →
+  validado → enviado), `validado_por`. No lleva vigencia de gasto: siempre es 1.
 - `AsociacionFuenteProducto`: distribución, **FK a `FilaEjecucionGastos`**, producto.
 - `LineaCUIPO`: distribución, **FK a `FilaEjecucionGastos`** (`PROTECT`), producto; C, O y P
   en `DecimalField(…, decimal_places=2)`; CPC, detalle sectorial, tercero y política pública;
@@ -268,68 +314,86 @@ Tablas propias; los modelos de `siifweb` no se modifican.
 - Rubro, fuente CUIPO, sección y situación de fondos **no** se guardan en `LineaCUIPO`: se
   derivan de la fila con las homologaciones.
 - La FK va al id de la fila y no a rubro + recurso + centro de costo porque esa combinación
-  se repite entre árboles de rubros (sección 3). Dentro de un mismo corte de 2026 no se
-  repite: el BPIN 2023002700021 tiene la combinación rubro / 7 / 16 en 2023, 2024 y 2026,
-  cada una con su `RUBRO_ID`.
+  se repite entre árboles de rubros (sección 3). Dentro de un mismo corte oficial no se
+  repite.
 
-**El corte y el periodo.** El periodo CUIPO es trimestral y acumulado: el corte de una
-distribución debe ir del 1 de enero al último día del trimestre del periodo. La distribución
-apunta al corte; así el CUIPO de septiembre se regenera aunque después se cargue octubre.
+**El corte y el periodo.** El periodo es trimestral (tercer trimestre 10909, cuarto 11212) y
+sus valores son el acumulado de la vigencia hasta el último día del trimestre: el corte de una
+distribución va del 1 de enero al último día del trimestre del periodo. La distribución apunta
+al corte; así el CUIPO de septiembre se regenera aunque después se cargue octubre.
 
-**Qué filas entran (vigencia de gasto 1):** las del corte con `de_otra_vigencia=False`,
-rubro 2.3, BPIN distinto de 0 y algún valor distinto de cero. Las de otra vigencia y las de
-2.3 sin BPIN quedan pendientes de decisión (sección 7).
+**Trimestres anteriores.** No se copia la distribución de un trimestre al siguiente. En la
+pantalla del BPIN se muestra, solo como referencia, la distribución por producto del mismo
+BPIN en los periodos anteriores de la vigencia (valor y participación de cada producto), tomada
+de su `DistribucionBPIN` más reciente en estado enviado.
 
-**Reproceso de un corte con distribución (decidido: bloqueado).** Reprocesar es volver a
-importar un corte ya cargado (acción "Volver a procesar" o cambiar su archivo):
-`ejecucion.importar()` borra las filas del corte y las vuelve a crear. Si el corte ya tiene
-una distribución, `procesar` lo rechaza con un mensaje claro, sin intentar borrar. Para
-trabajar con datos más recientes se carga **otro corte** y sobre ese se distribuye; el corte
-de un CUIPO enviado no cambia nunca. Un corte sin distribución se puede reprocesar o borrar
-libremente.
+**Qué filas entran:** las del corte con `de_otra_vigencia=False`, rubro 2.3 y `rp`,
+`obligacion` o `pago` distinto de cero. **No** basta con "algún valor distinto de cero": en
+2023002700021 el recurso 159 tenía al 30/09 una adición de 4.949.736.116,45 con RP en cero, y
+no debe entrar.
+- Con BPIN: se distribuyen entre los productos del proyecto.
+- Sin BPIN (proyecto 0): una distribución con BPIN 0 y producto `0 - NO APLICA`, el 100 %
+  automático; solo se diligencian los cualitativos. Así lo hace hoy presupuesto: el plano que
+  aceptó CHIP en el T3 trae 34 líneas de 2.3 con BPIN 0 y producto 0, por 75.195.347.557 de
+  compromisos (algunas con tercero o CPC).
 
-Como equivocarse sale caro (la distribución hecha sobre un corte no pasa sola a otro), dos
-ayudas:
-- Revisar el corte antes de distribuir: el importador ya verifica los subtotales; la
-  pantalla del corte puede mostrar además sus totales frente al corte anterior de la misma
-  vigencia.
-- **Copiar una distribución de un corte a otro**: llevar las asociaciones y proporciones
-  por producto de cada fila al corte nuevo, cruzando por (`rubro_id_siifweb`, `recurso`,
-  `centro_costo`, `proyecto`), recalcular los valores con las cifras nuevas y marcar las
-  filas que cambiaron o son nuevas para revisarlas. Sirve también para arrancar el trimestre
-  siguiente.
+**Cortes con distribución: ni reprocesar ni borrar.** Hoy `ejecucion.importar()` borra y
+vuelve a crear las filas del corte. Si el corte ya tiene distribuciones:
+- `procesar` lo rechaza con un mensaje claro;
+- el admin no permite eliminarlo (`has_delete_permission`) y la FK `PROTECT` de
+  `DistribucionBPIN` impide borrarlo por fuera del admin;
+- para actualizar, se carga un corte nuevo y se distribuye sobre él.
 
-**Precarga automática por BPIN** (las reglas del Power Query):
-- 1 producto: el 100 % de cada fila va a ese producto.
-- Más de 1 producto y 1 fuente: según AporteProductos (PIIP).
-- Más de 1 producto y más de 1 fuente: manual.
+**Precarga automática por BPIN:**
+- 1 producto: el 100 % de cada fila va a ese producto (`origen_valores` = SIIFWEB).
+- Más de 1 producto y 1 fuente: la matriz queda vacía y en estado "pendiente de digitar".
+  Los valores por producto se digitan a mano desde el reporte de AporteProductos del PIIP, que
+  no se carga al aplicativo (`origen_valores` = PIIP).
+- Más de 1 producto y más de 1 fuente: manual (`origen_valores` = MANUAL).
+- Sin BPIN: el 100 % al producto 0.
 
 Los productos del BPIN salen de la formulación PIIP (sección 2) y deben existir en el
-catálogo CHIP de productos.
+catálogo CHIP de productos. La carga del PIIP crea la formulación de todos los BPIN del PIIP,
+así que un BPIN con ejecución solo queda sin productos si no está en el exporte del PIIP. Al
+11/11/2026 los 101 BPIN de 2.3 con ejecución tienen formulación; el único del 2.3 sin ella
+(2024002700177) está en cero y no está en el PIIP.
 
 **Pantalla por BPIN** (vista propia con HTMX, registrada en `get_urls()` del admin de
 `DistribucionBPIN`; `htmx.min.js` como estático propio en `cuipo/static/cuipo/`, no por CDN):
 1. Asociar filas con productos.
 2. Matriz filas × productos con C, O y P y la diferencia contra SIIFWEB en vivo. Botones:
-   "Según PIIP", "Proporcional a compromisos" (O y P con la participación de C) y "Todo a un
-   producto".
+   "Proporcional a compromisos" (O y P con la participación de C) y "Todo a un producto".
+   Los valores del PIIP se digitan directamente en las celdas.
 3. Cualitativos por línea, mostrando su origen.
 
 **Validaciones** (`validar_distribucion()`, que usan la pantalla y el generador):
 - Suma por fila = valor de la fila en C, O y P, al peso.
 - Por celda: O ≤ C, P ≤ O, nada negativo.
-- El producto pertenece al BPIN.
+- El producto pertenece al BPIN (salvo el producto 0 en la inversión sin BPIN).
 - CPC vacío → bloquea; CPC 0 en un concepto con `requiere_cpc` → solo advertencia (CHIP lo
-  aceptó).
+  aceptó en el T3 en los viáticos 2.1.2.02.02.010 y 2.3.2.02.02.010).
 - Código de catálogo inactivo → bloquea.
-
-**Reservas (vigencia de gasto 2).** El diseño original las toma del consolidado de reservas,
-pero este no tiene centro de costo (sin él no hay sección) y se sobrescribe. El reporte de
-ejecución de una vigencia no trae las reservas que se ejecutan en ella. Falta definir la
-fuente (sección 7).
 
 ### 4.4 Plano CHIP
 
+**Estructura del archivo de presupuesto.** Es un solo archivo de texto con cinco categorías;
+cada una empieza con su línea `S` y le siguen sus líneas de detalle. En el plano del T3:
+
+| Orden | Encabezado | Líneas de detalle | Campos |
+|---|---|---|---|
+| 1 | `S	117070000	10909	2026	E_ID_SECCIONES_PRESUPUESTALES_ADICIONALES` | 1 | 4 |
+| 2 | `S	117070000	10909	2026	D_EJECUCION_DE_GASTOS` | 580 | 15 |
+| 3 | `S	117070000	10909	2026	C_PROGRAMACION_DE_GASTOS` | 421 | 9 |
+| 4 | `S	117070000	10909	2026	B_EJECUCION_DE_INGRESOS` | 182 | 14 |
+| 5 | `S	117070000	10909	2026	A_PROGRAMACION_DE_INGRESOS` | 125 | 5 |
+
+La `D` al inicio de una línea de detalle **no** significa "ejecución de gastos": es la marca
+de registro de detalle y la usan las cinco categorías (la programación tiene, por ejemplo,
+líneas `D 2.1…` y `D 2.99…`). Por eso todo lo que haga el aplicativo sobre el archivo opera
+**dentro del bloque** que va de la línea `S…D_EJECUCION_DE_GASTOS` a la siguiente línea `S`,
+nunca buscando "líneas que empiezan por D" en todo el archivo.
+
+**Formato del bloque D**
 - Texto separado por tabulaciones.
 - Encabezado: `S\t117070000\t10909\t2026\tD_EJECUCION_DE_GASTOS`.
 - Líneas D de 15 campos: D, CODIGO, VIG, SECCION, PROD, CPC, DETSEC, FUENTE, BPIN, SITFON,
@@ -340,30 +404,51 @@ fuente (sección 7).
 - Orden: vigencia → sección → segmentos del rubro.
 - Las líneas con igual (VIG, SECCION, CODIGO, PROD, CPC, DETSEC, FUENTE, BPIN, SITFON, POLPUB,
   TERC) se agrupan sumando; las líneas en cero no van.
-- Primera fase: solo el detalle 2.3, que reemplaza el 2.3 del plano de presupuesto y conserva
-  sin cambios sus líneas 2.1, 2.2 y las demás categorías. Como el corte trae también 2.1 y
-  2.2, más adelante se podría generar el formato D completo (pregunta abierta).
+
+**Alcance:** el aplicativo genera solo el detalle 2.3. Al integrarlo en el plano de
+presupuesto, dentro del bloque D reemplaza su detalle 2.3, conserva sin cambios sus líneas
+2.1 y 2.2, recalcula las líneas resumen del bloque (2, 2.3 y los niveles intermedios) y deja
+idénticas las demás categorías.
+
+**Revisión externa antes del envío:** el reporte de programación de gastos se usa como
+referencia por fuera del aplicativo (no se carga) para revisar que la ejecución de cada BPIN y
+sección no supere su programación. Así salieron en el T3 las correcciones de 2023002700172 y
+202600000015853.
 
 ### 4.5 Roles
 
-Hacen falta grupos nuevos (por ejemplo Planeación y Presupuesto) para el flujo borrador →
-validado → enviado, con una migración de datos como `siifweb/0009`. El menú "CUIPO" hoy solo
-lo ven quienes tienen el permiso de ver cortes.
+Por ahora no se crean roles nuevos. Quien tenga los permisos de los modelos del CUIPO puede
+distribuir, validar y marcar como enviado; `validado_por` registra quién validó. Si más
+adelante se separan planeación y presupuesto, se crean los grupos con una migración de datos
+como `siifweb/0009`. El menú "CUIPO" hoy solo lo ven quienes tienen el permiso de ver cortes.
 
 ---
 
 ## 5. Plan por fases
 
 **Fase 0 — Prerrequisitos de datos**
-- Hecho: importador de la ejecución por corte.
-- Falta: desplegar las ramas (respaldo previo), cargar en producción el corte
-  01/01–30/09/2026 completo, cargar los consolidados al día y definir la fuente de las
-  reservas.
+- Hecho: importador de la ejecución por corte; archivo de listas CHIP en
+  `modelos-metas/Listas_Categoria_CUIPO_09-2026.xlsx`.
+- Hecho en local (13/11): consolidados de 2026 al 11/11 cargados y carga del PIIP (id 209)
+  reprocesada con todos los BPIN: 488 formulaciones; los 101 BPIN de 2.3 con ejecución tienen
+  productos. Respaldo previo: `db_antes_consolidados_1111.sqlite3`.
+- Falta: descartar la rama `centro-costo-compromisos` (pasos en la sección 2), desplegar
+  `formulacion-piip`, `cuipo-ejecucion-gastos` y `piip-control-siifweb` (respaldo previo) y
+  descargar el corte oficial 01/01–30/09/2026 completo.
+- **Rutina en cada trimestre, antes de distribuir:**
+  1. Cargar el corte de ejecución del trimestre.
+  2. Cargar los consolidados al día (CDP, compromisos, obligaciones), para que existan los
+     recursos y proyectos nuevos.
+  3. Si hay un exporte nuevo del PIIP, cargarlo (el orden frente a los consolidados ya no
+     importa).
+  4. Revisar la vista de pendientes y distribuir.
 
 **Fase 1 — Catálogos e importador de listas**
-- Archivos: `cuipo/models.py` (`VersionListas`, base abstracta, 10 modelos), `cuipo/listas.py`,
+- Archivos: `cuipo/models.py` (`VersionListas`, base abstracta, 10 modelos con
+  `ProductoCUIPO` y `TerceroCUIPO`), `cuipo/listas.py`,
   `cuipo/management/commands/importar_listas_cuipo.py`, acción en `cuipo/admin.py`
   (catálogos en solo lectura con búsqueda), migración `cuipo/0002`.
+- Insumo: `modelos-metas/Listas_Categoria_CUIPO_09-2026.xlsx`.
 - Aceptación:
   - Importar dos veces el mismo archivo da los mismos conteos.
   - Un código que no viene en la versión nueva queda inactivo, no se borra.
@@ -379,27 +464,32 @@ lo ven quienes tienen el permiso de ver cortes.
   - `derivar(fila)` devuelve concepto, fuente CUIPO, sección, situación de fondos y tercero,
     o la lista de lo que falta.
   - Con el corte de 2026, la vista de pendientes lista lo que no está homologado.
-  - Casos mínimos: recursos 3, 7, 114, 159, 35, 54 y 125; centros de costo 2, 3, 16 y 19.
+  - Casos mínimos: recursos 3, 7, 114, 159, 35, 54, 108 y 125; centros de costo 2, 3, 10, 16
+    y 19.
+  - 202600000018441 (sección 6) deriva completo: concepto 099, fuente 1.3.3.3.20, sección
+    16.0 y tercero 220170001.
 
 **Fase 3 — Distribución y precarga**
 - Archivos: `DistribucionBPIN`, `AsociacionFuenteProducto`, `LineaCUIPO`,
-  `cuipo/distribucion.py` (las tres reglas de precarga), el bloqueo de reproceso en
-  `cuipo/ejecucion.py`, migración.
+  `cuipo/distribucion.py` (las reglas de precarga, incluida la inversión sin BPIN), el bloqueo
+  de reproceso en `cuipo/ejecucion.py` y de borrado en `cuipo/admin.py`, migración.
 - Aceptación:
+  - Solo entran filas de vigencia actual, 2.3, con RP, obligación o pago distinto de cero.
   - La suma de las líneas de cada fila da su C, O y P.
-  - Un corte con distribución no se reprocesa ni se borra, y lo dice; sus filas quedan
-    intactas.
-  - Copiar la distribución a un corte nuevo conserva las proporciones por producto y marca
-    las filas que cambiaron o son nuevas.
-  - Los tres casos de la sección 6 dan la regla esperada.
+  - Un corte con distribución no se reprocesa ni se borra, y lo dice.
+  - Los casos de la sección 6 dan la regla esperada; los de "varios productos, una fuente"
+    quedan pendientes de digitar.
 
 **Fase 4 — Pantalla HTMX**
 - Archivos: vistas en `get_urls()` del admin de `DistribucionBPIN`, `cuipo/templates/cuipo/`
   (pantalla y parciales), `cuipo/static/cuipo/htmx.min.js`.
 - Aceptación:
   - La matriz recalcula la diferencia contra SIIFWEB sin recargar.
-  - Los tres botones dan los valores esperados en los tres BPIN de prueba.
-  - Los cualitativos muestran su origen; un rol sin permiso recibe 403.
+  - Los dos botones dan los valores esperados en los BPIN de prueba.
+  - Los cualitativos muestran su origen; un usuario sin permiso sobre los modelos del CUIPO
+    recibe 403.
+  - Si el BPIN se distribuyó en un periodo anterior de la vigencia, se ve esa distribución
+    (valor y participación por producto) en solo lectura.
 
 **Fase 5 — Validaciones**
 - Archivo: `cuipo/validacion.py` con `validar_distribucion()`.
@@ -413,7 +503,8 @@ lo ven quienes tienen el permiso de ver cortes.
   - Orden y agrupación según la sección 4.4; sin líneas en cero.
   - El redondeo por mayor residuo cuadra con el total (se prueba con 202500000029628, que
     tiene centavos).
-  - Al integrarse en el plano de presupuesto, las líneas 2.1 y 2.2 salen idénticas.
+  - Al integrarse en el plano de presupuesto, solo cambia el bloque D: sus líneas 2.1 y 2.2
+    y las categorías E, C, B y A salen idénticas, y el orden de bloques se conserva.
 
 **Fase 7 — Pruebas**
 - Pasar `fila()`, `libro()` y `cortar()` de `cuipo/tests/test_ejecucion_gastos.py` a
@@ -427,16 +518,18 @@ lo ven quienes tienen el permiso de ver cortes.
 Cifras del corte 01/01–11/11/2026 (base local). Se recalculan con el corte al 30/09 cuando
 esté cargado. Todas las filas son del rubro indicado y del árbol de 2026.
 
-**202500000039332** — una fila, productos 2201006 y 2201048, regla "Según PIIP".
+**202500000039332** — una fila, productos 2201006 y 2201048. Regla "varios productos, una
+fuente": pendiente de digitar desde el PIIP.
 
 | Rubro | Recurso | CC | RP | Obligación = Pago |
 |---|---|---|---|---|
 | 2.3.2.02.02.009 | 3 | 2 | 1.084.750.996 | 834.182.726 |
 
-Al 30/09 el RP era 1.054.759.012 (del consolidado de compromisos filtrado por fecha).
+Al 30/09 el RP era 1.054.759.012 (del consolidado de compromisos filtrado por fecha). En el
+T3 se reportó 717.349.192 para 2201048 y 337.409.820 para 2201006.
 
-**2023002700021** — tres filas, productos 1906005 y 1906030, manual. Dos secciones en el
-mismo BPIN (centros de costo 16 y 3).
+**2023002700021** — productos 1906005 y 1906030, manual. Dos secciones en el mismo BPIN
+(centros de costo 16 y 3).
 
 | Rubro | Recurso | CC | RP | Obligación = Pago |
 |---|---|---|---|---|
@@ -444,7 +537,12 @@ mismo BPIN (centros de costo 16 y 3).
 | 2.3.2.01.01.001.02.08 | 114 | 3 | 1.027.664.538,50 | 1.014.627.682,00 |
 | 2.3.2.01.01.001.02.08 | 159 | 3 | 4.949.736.116,45 | 0 |
 
-La fila del recurso 159 se registró después del 30/09: no estará en el corte de septiembre.
+- Al 30/09 la fila del recurso 159 ya existía con la adición de 4.949.736.116,45 pero con RP
+  en cero: en el corte de septiembre no entra.
+- El T3 que está en CHIP incluye además 15.251.706.363 de compromisos y 10.841.369.180 de
+  obligaciones y pagos del recurso 7 para 1906030, que se agregaron a mano y no están en el
+  reporte oficial. Cuando el aplicativo genere el T4 ese valor no aparecerá: es esperado, no un
+  error del aplicativo.
 
 **202500000029628** — tres recursos, centro de costo 19, productos 4502034 y 4502038, manual.
 
@@ -454,31 +552,29 @@ La fila del recurso 159 se registró después del 30/09: no estará en el corte 
 | 2.3.2.02.02.009 | 54 | 19 | 1.000.000.000 | 1.000.000.000 |
 | 2.3.2.02.02.009 | 125 | 19 | 425.784.947 | 314.670.429,87 |
 
+**Inversión sin BPIN** — proyecto 0, producto 0, el 100 % automático. Referencia del T3
+(plano aceptado por CHIP, corte al 30/09): 2.3.2.01.01.001.03.02, sección 16.0, fuente
+1.2.3.3.04, BPIN 0, 30.460.454.553 de compromisos. En total, 34 líneas por 75.195.347.557.
+
+**202600000018441** — una fila, un producto (3301053), el 100 % automático. Recorre todas las
+reglas de derivación en un solo caso: RP 6971 del 28/10/2026 (no estará en el corte del
+30/09), transferencia de recursos del balance de estampilla procultura.
+
+| Dato de la fila | Valor | Derivación esperada |
+|---|---|---|
+| Rubro | 2.3.3.05.09.054 | No habilitado para departamentos (columna 438 = 0) → `HomologacionRubro` → 2.3.3.05.09.099 |
+| Recurso | 108 (R.B. Estampilla Pro Cultura) | `HomologacionFuente` → 1.3.3.3.20 |
+| Centro de costo | 10 (Fondo Mixto) | Sección 16.0 (por defecto); tercero 220170001 por `ReglaTercero` |
+| Producto | 3301053 | Existe en la lista CHIP de productos |
+| RP | 40 millones aprox. | |
+
 ---
 
-## 7. Preguntas abiertas (de más a menos bloqueante)
+## 7. Preguntas abiertas
 
-1. **Archivo de listas.** Falta `Listas_Categoria_CUIPO_09-2026.xlsx` en el repositorio;
-   sin él no se prueba la fase 1.
-2. **Nombres de modelos.** ¿Sufijo `CUIPO` para no chocar con `siifweb.ProductoMGA` y
-   `siifweb.Tercero`?
-3. **Roles y flujo.** ¿Quién distribuye, quién valida y quién marca "enviado"? ¿Una
-   distribución validada puede volver a borrador?
-4. **AporteProductos.** ¿De qué exporte del PIIP sale el valor por producto para la regla
-   "Según PIIP", con qué columnas y para qué vigencia?
-5. **Inversión sin BPIN.** En 2026 hay 63 filas de 2.3 con proyecto 0 (173.848 M de RP):
-   ¿van al CUIPO, con qué BPIN y con qué producto (¿0 - NO APLICA?)?
-6. **BPIN con ejecución sin formulación PIIP.** Con los consolidados al 11/11/2026, los
-   101 BPIN de 2.3 con ejecución tienen formulación; quedan 5 sin ella, todos en cero. Si
-   aparece alguno con ejecución, ¿se asignan productos a mano sin validar que pertenezcan
-   al BPIN?
-7. **Reservas (vigencia de gasto 2).** ¿SIIFWEB tiene un reporte de ejecución de reservas
-   por centro de costo y fondo? El consolidado de reservas no trae centro de costo.
-8. **Filas del árbol de otra vigencia** (2023: 27 filas, 22 con BPIN, obligación 16.890 M):
-   ¿qué son (reservas, cuentas por pagar) y van al CUIPO?
-9. **Alcance del plano.** ¿Solo el 2.3 dentro del plano de presupuesto, o el formato D
-    completo desde el corte?
-10. **Periodo.** Confirmar la codificación (`10909` = julio a septiembre) y si una
-    distribución se puede copiar al trimestre siguiente como punto de partida.
-11. **Rama `centro-costo-compromisos`.** ¿Se conserva (corrige el centro de costo de los RP
-    con varias líneas) o se descarta?
+No quedan preguntas abiertas que bloqueen la fase 1.
+
+**Fuera de alcance:** reservas (vigencia de gasto 2) y el árbol de otra vigencia; roles
+separados de planeación y presupuesto; carga del reporte de AporteProductos del PIIP; copia
+de distribuciones entre trimestres; carga del reporte de programación; bloque D completo
+(2.1 y 2.2).
