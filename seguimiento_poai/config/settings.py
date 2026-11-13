@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'siifweb',
+    'cuipo',
 ]
 
 MIDDLEWARE = [
@@ -503,6 +504,21 @@ UNFOLD = {
                     {"title": "BPIN por proceso", "icon": "account_tree",
                      "link": reverse_lazy("admin:siifweb_bpinproceso_changelist"),
                      "permission": _administra_los_datos},
+                ],
+            },
+            {
+                # Insumos del reporte CUIPO. La ejecucion de gastos por corte solo la usa el
+                # CUIPO: no alimenta la ficha ni el tablero
+                "title": "CUIPO",
+                "collapsible": True,
+                "separator": True,
+                "items": [
+                    {"title": "Cortes de ejecución de gastos", "icon": "event_available",
+                     "link": reverse_lazy("admin:cuipo_corteejecuciongastos_changelist"),
+                     "permission": _con_permiso("cuipo.view_corteejecuciongastos")},
+                    {"title": "Filas de ejecución de gastos", "icon": "table_rows",
+                     "link": reverse_lazy("admin:cuipo_filaejecuciongastos_changelist"),
+                     "permission": _con_permiso("cuipo.view_filaejecuciongastos")},
                 ],
             },
             {

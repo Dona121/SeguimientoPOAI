@@ -362,3 +362,20 @@ carga y validaciones) está en `CATALOGO_PIIP.md`.
 | `MetaVigenciaIndicador` | (`indicador_proyecto`, `vigencia`) | → `IndicadorProyecto` |
 | `Departamento` | `nombre` | ← `Municipio.departamento` |
 
+
+## 10. CUIPO: ejecución de gastos por corte (noviembre de 2026)
+
+App `cuipo`. Insumo del reporte CUIPO; no lo usa nada de `siifweb`. Los códigos van como
+texto, tal como vienen en el reporte de SIIFWEB, sin llaves a los catálogos.
+
+| modelo | llave natural | relaciones |
+|---|---|---|
+| `CorteEjecucionGastos` | (`vigencia`, `fecha_corte`) | archivo, `hash`, estado y mensaje de la carga |
+| `FilaEjecucionGastos` | (`corte`, `rubro_id_siifweb`, `recurso`, `centro_costo`, `proyecto`) | → `CorteEjecucionGastos` (CASCADE) |
+
+`FilaEjecucionGastos` guarda el detalle del reporte (filas con recurso): `rubro`, `recurso`,
+`centro_costo` con sus nombres, `proyecto` (BPIN, "0" sin proyecto), `de_otra_vigencia`
+(cuelga de un árbol de rubros de otra vigencia) y los valores en `Decimal(20,2)`:
+apropiación inicial, adición, disminución, crédito, contracrédito, aplazamientos,
+desaplazamientos, apropiación definitiva, solicitud en trámite, CDP, RP, obligación y pago.
+Los subtotales del árbol no se guardan; la carga verifica que cuadren con el detalle.

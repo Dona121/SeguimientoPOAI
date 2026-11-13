@@ -404,3 +404,34 @@ ejecuta en un contenedor aparte cuyo disco no llega al que atiende; con `DEBUG=T
 Django no consulta el manifiesto de WhiteNoise y por eso funcionaba. Ahora corre en el
 `buildCommand` y queda en la imagen; el `preDeployCommand` solo hace `migrate`. Subido a
 `main` (`202e619`) y desplegado.
+## 19. Corte de ejecucion de gastos para el CUIPO (13 de noviembre)
+
+App nueva **`cuipo`**, con el importador del reporte "Ejecucion presupuestal del gasto por
+centro de costo y fondo" de SIIFWEB (`estado_ppto_gasto_gobatl_fyccw_Vigencia{v}_Fecha{f}`).
+Sus datos solo los usa el CUIPO: no alimentan la ficha, el tablero ni los catalogos de
+`siifweb`, por eso rubro, recurso, centro de costo y proyecto van como texto, tal como
+vienen, y no como llaves (la carga no crea rubros, fuentes ni proyectos).
+
+- `CorteEjecucionGastos`: vigencia, fecha de corte, fecha de descarga, archivo, hash,
+  estado y mensaje. Uno por vigencia y fecha de corte; cada corte se conserva (cargar
+  octubre no toca septiembre). Se importa al guardarlo en el admin; la accion "Volver a
+  procesar" lo repite.
+- `FilaEjecucionGastos`: el detalle del reporte (las filas con recurso) con todas sus
+  columnas menos DISPONIBLE: RUBRO_ID, rubro, recurso, centro de costo y proyecto con sus
+  nombres, la apropiacion (inicial, adiciones, disminuciones, creditos, contracreditos,
+  aplazamientos, desaplazamientos, definitiva), solicitud en tramite, CDP, RP, obligacion y
+  pago. Unica por corte, RUBRO_ID, recurso, centro de costo y proyecto.
+- Los subtotales del arbol de rubros no se guardan: la carga comprueba que cada uno sea la
+  suma de su detalle y, si alguno no cuadra, aborta sin dejar nada.
+- El reporte de 2023 trae, ademas de su arbol (RUBRO_ID 11545), filas del arbol de 2022
+  (5582) con solo obligacion (16.890.687.467) y pago. Van marcadas como **de otra
+  vigencia**; por ellas RUBRO_ID es parte de la llave.
+- Menu **CUIPO**: cortes (con RP, obligacion y pago totales) y filas, visibles con el
+  permiso de ver cortes. Los roles del equipo no lo tienen.
+
+**Con los archivos de `modelos-metas/ejecucion-gastos`** (2022 a 2026): 395, 463, 422, 400
+y 405 filas de detalle; los subtotales cuadran en los cinco. El RP de 2026 al 11 de
+noviembre (1.127.765.686.152,76) es el mismo del consolidado de compromisos de esa fecha.
+
+**Pruebas.** 400, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 13 nuevas).
+
