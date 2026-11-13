@@ -268,3 +268,21 @@ class HomologarDesdeElIndicador(TestCase):
         self.assertEqual(self.client.get(reverse("admin:siifweb_indicadorcatalogo_add")).status_code, 403)
         borrar = reverse("admin:siifweb_indicadorcatalogo_delete", args=(self.indicador.pk,))
         self.assertEqual(self.client.get(borrar).status_code, 403)
+
+
+class LaCargaNoTocaLaHomologacion(TestCase):
+    def test_volver_a_cargar_conserva_la_homologacion_manual(self):
+        proy = proyecto()
+        cadena(proy)
+        fuera_del_plan = fila(CodigoProducto="1702012", CodigoIndicador="170201200")
+        carga_piip([fuera_del_plan])
+        indicador = IndicadorCatalogo.objects.get(codigo="170201200")
+        manual = HomologacionIndicador.objects.create(
+            indicador=indicador, indicador_pdd=IndicadorMGA.objects.exclude(codigo="").first(),
+            observacion="Mide lo mismo")
+        carga_piip([fuera_del_plan, fila(CodigoProducto="1702012", CodigoIndicador="170201200",
+                                         Vigencia="2026", MetaVigencia="5")])
+        self.assertTrue(HomologacionIndicador.objects.filter(pk=manual.pk, observacion="Mide lo mismo").exists())
+        # Y el indicador del proyecto la sigue viendo
+        self.assertEqual(IndicadorProyecto.objects.get(formulacion__proyecto=proy).indicador.homologaciones.get(),
+                         manual)
