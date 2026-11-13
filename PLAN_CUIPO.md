@@ -70,7 +70,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 458.
+  disco temporal). Hoy son 477.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -519,7 +519,33 @@ migración `cuipo/0003`, 24 pruebas en `cuipo/tests/test_derivacion.py`).
   - 202600000018441 (sección 6) deriva completo: concepto 099, fuente 1.3.3.3.20, sección
     16.0 y tercero 220170001.
 
-**Fase 3 — Distribución y precarga**
+**Fase 3 — Distribución y precarga** — **hecha el 13/11** (rama `cuipo-fase3-distribucion`,
+migración `cuipo/0004`, 19 pruebas en `cuipo/tests/test_distribucion.py`).
+- Modelos `DistribucionBPIN` (corte PROTECT, periodo, BPIN, regla, estado, productos del BPIN,
+  validado por, observación; una por corte y BPIN), `AsociacionFuenteProducto` y `LineaCUIPO`
+  (con vigencia de gasto, 1 por defecto; única por distribución, fila, producto y vigencia).
+- `periodo_de(corte)`: 10303, 10606, 10909 o 11212 si el corte va del 1 de enero al cierre de
+  un trimestre; si no, no hay periodo y la precarga no corre (el corte local al 11/11 no se
+  puede distribuir: hace falta el del 30/09).
+- `cuipo/distribucion.py`: `precargar(corte)` crea las distribuciones que falten (no toca las
+  existentes), `precargar_de_nuevo(distribucion)` (solo borradores) y `cuadre(distribucion)`
+  (por fila: SIIFWEB, distribuido y diferencia en C, O y P). Reglas: un producto → 100 %;
+  varios productos y un recurso → por digitar desde AporteProductos; varios productos y
+  varios recursos → manual; sin BPIN → producto 0; sin productos en la lista CHIP → no se
+  distribuye y lo dice. Cualitativos de las líneas nuevas: tercero por regla, CPC 0 si el
+  concepto no lo exige (si lo exige queda vacío), detalle sectorial y política pública 0; si
+  el BPIN se envió en un periodo anterior de la vigencia, CPC, detalle y política se toman de
+  esa línea (origen antecedente). Los valores nunca se copian.
+- `ejecucion.procesar` rechaza un corte con distribuciones (`CorteConDistribucion`); el admin
+  no deja cambiar su archivo ni borrarlo.
+- Admin: acción "Precargar la distribución del CUIPO" en los cortes; **CUIPO → Distribuciones
+  por BPIN** con regla, estado, líneas y si cuadra; en cada distribución, el cuadre por fila y
+  las líneas editables (lo que se cambia a mano queda con origen manual; validar registra
+  quién y cuándo). Es provisional hasta la pantalla de la fase 4.
+- Ensayo en local con el corte de 2026 llevado a 30/09 dentro de una transacción revertida:
+  102 distribuciones (79 de un producto, 20 por digitar desde el PIIP, 2 manuales, 1 sin
+  BPIN); las 80 automáticas cuadran al peso.
+
 - Archivos: `DistribucionBPIN`, `AsociacionFuenteProducto`, `LineaCUIPO`,
   `cuipo/distribucion.py` (las reglas de precarga, incluida la inversión sin BPIN), el bloqueo
   de reproceso en `cuipo/ejecucion.py` y de borrado en `cuipo/admin.py`, migración.

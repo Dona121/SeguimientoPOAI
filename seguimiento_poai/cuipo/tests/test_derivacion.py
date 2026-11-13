@@ -47,13 +47,13 @@ def listas():
 _dias = count()
 
 
-def corte_con(detalle, vigencia=2026):
+def corte_con(detalle, vigencia=2026, fecha_fin=None):
     """Un corte cuyo unico subtotal es la raiz 2: cuadra con cualquier detalle. Cada corte de
     una prueba termina un dia antes que el anterior, para no repetir el rango."""
     columnas = ["APROPIACION_INICIAL", "ADICION", "DISMINUCION", "CREDITO", "CONTRACREDITO", "APLAZAMIENTOS",
                 "DESAPLAZAMIENTOS", "APROPIACION_DEFINITIVA", "SOLICITUD_TRAMITE", "CDP", "RP", "OBLIGACION", "PAGO"]
     raiz = fila(100, "2", 0, **{c: sum(f[c] for f in detalle) for c in columnas})
-    fin = date(vigencia, 9, 30) - timedelta(days=next(_dias) % 200)
+    fin = fecha_fin or date(vigencia, 9, 30) - timedelta(days=next(_dias) % 200)
     corte = cortar([raiz, *detalle], vigencia=vigencia, fecha_fin=fin)
     assert corte.estado == corte.Estado.PROCESADO, corte.mensaje
     return corte

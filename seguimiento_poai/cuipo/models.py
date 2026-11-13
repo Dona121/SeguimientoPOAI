@@ -392,3 +392,152 @@ class ReglaSituacionFondos(Fechas):
         fuente = f" con {self.fuente_cuipo.codigo}" if self.fuente_cuipo_id else ""
         return f"{self.prefijo_rubro}{fuente} -> {self.situacion.codigo}"
 
+
+# ---------------------------------------------------------------------------
+# Distribucion por producto
+# ---------------------------------------------------------------------------
+
+def periodo_de(corte):
+    """El periodo CHIP del corte (10303, 10606, 10909, 11212) o None.
+
+    El CUIPO es acumulado: el corte debe ir del 1 de enero al ultimo dia de un trimestre de
+    la misma vigencia. Cualquier otro rango no tiene periodo.
+    """
+    import calendar
+    inicio, fin = corte.fecha_inicio, corte.fecha_fin
+    if not inicio or not fin or (inicio.month, inicio.day) != (1, 1) or inicio.year != corte.vigencia:
+        return None
+    if fin.year != corte.vigencia or fin.month not in (3, 6, 9, 12):
+        return None
+    if fin.day != calendar.monthrange(fin.year, fin.month)[1]:
+        return None
+    return f"1{fin.month:02d}{fin.month:02d}"
+
+
+class DistribucionBPIN(Fechas):
+    """La distribucion de las filas de un BPIN entre sus productos, sobre un corte.
+
+    BPIN "0" agrupa la inversion sin proyecto, que va toda al producto 0 - NO APLICA. Una vez
+    el corte tiene distribuciones, no se reprocesa ni se borra: para datos mas recientes se
+    carga otro corte y se distribuye sobre el.
+    """
+
+    class Regla(models.TextChoices):
+        UN_PRODUCTO = "un_producto", "Un producto: el 100 % a ese producto"
+        PIIP = "piip", "Varios productos, una fuente: se digita desde AporteProductos (PIIP)"
+        MANUAL = "manual", "Varios productos y varias fuentes: manual"
+        SIN_BPIN = "sin_bpin", "Sin BPIN: el 100 % al producto 0"
+        SIN_PRODUCTOS = "sin_productos", "Sin productos en la lista CHIP: revisar la formulación PIIP"
+
+    class Estado(models.TextChoices):
+        BORRADOR = "borrador", "Borrador"
+        VALIDADO = "validado", "Validado"
+        ENVIADO = "enviado", "Enviado"
+
+    corte = models.ForeignKey(CorteEjecucionGastos, on_delete=models.PROTECT, related_name="distribuciones")
+    periodo = models.CharField(max_length=5, help_text="10909 = tercer trimestre, 11212 = cuarto")
+    bpin = models.CharField(max_length=25, verbose_name="BPIN", help_text="0 = inversión sin proyecto")
+    regla = models.CharField(max_length=15, choices=Regla.choices, verbose_name="Regla aplicada")
+    estado = models.CharField(max_length=10, choices=Estado.choices, default=Estado.BORRADOR)
+    productos = models.ManyToManyField(ProductoCUIPO, blank=True, related_name="distribuciones",
+                                       help_text="Los productos del BPIN (de la formulación PIIP) en la lista CHIP")
+    validado_por = models.ForeignKey("auth.User", on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name="distribuciones_cuipo", verbose_name="Validado por")
+    fecha_validacion = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de validación")
+    observacion = models.TextField(blank=True, verbose_name="Observación")
+
+    class Meta:
+        verbose_name = "Distribución por BPIN"
+        verbose_name_plural = "Distribuciones por BPIN"
+        ordering = ("corte", "bpin")
+        constraints = [
+            models.UniqueConstraint(fields=["corte", "bpin"], name="una_distribucion_por_bpin_y_corte"),
+        ]
+
+    def filas(self):
+        """Las filas del corte de este BPIN que entran al CUIPO."""
+        from .derivacion import filas_cuipo
+        return filas_cuipo(self.corte).filter(proyecto=self.bpin)
+
+    def __str__(self):
+        return f"{self.bpin} · {self.corte}"
+
+
+class AsociacionFuenteProducto(Fechas):
+    """Que filas (rubro x recurso x centro de costo) van a que productos del BPIN."""
+    distribucion = models.ForeignKey(DistribucionBPIN, on_delete=models.CASCADE, related_name="asociaciones")
+    fila = models.ForeignKey(FilaEjecucionGastos, on_delete=models.PROTECT, related_name="asociaciones_cuipo")
+    producto = models.ForeignKey(ProductoCUIPO, on_delete=models.PROTECT, related_name="asociaciones")
+
+    class Meta:
+        verbose_name = "Asociación fila - producto"
+        verbose_name_plural = "Asociaciones fila - producto"
+        constraints = [
+            models.UniqueConstraint(fields=["distribucion", "fila", "producto"], name="asociacion_unica"),
+        ]
+
+    def __str__(self):
+        return f"{self.fila} -> {self.producto.codigo}"
+
+
+class LineaCUIPO(Fechas):
+    """Una linea del CUIPO: lo que de una fila va a un producto y a una vigencia de gasto.
+
+    Rubro, fuente CUIPO, seccion y situacion de fondos no se guardan: se derivan de la fila.
+    Una fila puede repartirse entre productos y entre vigencias de gasto (por ejemplo 1 y 4);
+    la suma de sus lineas debe dar el valor de la fila.
+    """
+
+    class OrigenValores(models.TextChoices):
+        SIIFWEB = "siifweb", "SIIFWEB"
+        PIIP = "piip", "PIIP"
+        MANUAL = "manual", "Manual"
+
+    class Origen(models.TextChoices):
+        REGLA = "regla", "Regla"
+        ANTECEDENTE = "antecedente", "Antecedente"
+        PAS = "pas", "PAS"
+        MANUAL = "manual", "Manual"
+
+    distribucion = models.ForeignKey(DistribucionBPIN, on_delete=models.CASCADE, related_name="lineas")
+    fila = models.ForeignKey(FilaEjecucionGastos, on_delete=models.PROTECT, related_name="lineas_cuipo")
+    producto = models.ForeignKey(ProductoCUIPO, on_delete=models.PROTECT, related_name="lineas")
+    vigencia_gasto = models.ForeignKey(VigenciaGasto, on_delete=models.PROTECT, related_name="lineas",
+                                       verbose_name="Vigencia del gasto")
+    compromisos = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    obligaciones = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    pagos = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    origen_valores = models.CharField(max_length=10, choices=OrigenValores.choices, default=OrigenValores.MANUAL,
+                                      verbose_name="Origen de los valores")
+    cpc = models.ForeignKey(CPC, on_delete=models.PROTECT, null=True, blank=True, related_name="lineas",
+                            verbose_name="CPC")
+    origen_cpc = models.CharField(max_length=12, choices=Origen.choices, blank=True, verbose_name="Origen del CPC")
+    detalle_sectorial = models.ForeignKey(DetalleSectorial, on_delete=models.PROTECT, null=True, blank=True,
+                                          related_name="lineas", verbose_name="Detalle sectorial")
+    origen_detalle_sectorial = models.CharField(max_length=12, choices=Origen.choices, blank=True,
+                                                verbose_name="Origen del detalle sectorial")
+    tercero = models.ForeignKey(TerceroCUIPO, on_delete=models.PROTECT, null=True, blank=True, related_name="lineas")
+    origen_tercero = models.CharField(max_length=12, choices=Origen.choices, blank=True,
+                                      verbose_name="Origen del tercero")
+    politica_publica = models.ForeignKey(PoliticaPublica, on_delete=models.PROTECT, null=True, blank=True,
+                                         related_name="lineas", verbose_name="Política pública")
+    origen_politica_publica = models.CharField(max_length=12, choices=Origen.choices, blank=True,
+                                               verbose_name="Origen de la política pública")
+
+    class Meta:
+        verbose_name = "Línea CUIPO"
+        verbose_name_plural = "Líneas CUIPO"
+        ordering = ("fila__rubro", "fila__recurso", "producto__codigo", "vigencia_gasto__codigo")
+        constraints = [
+            models.UniqueConstraint(fields=["distribucion", "fila", "producto", "vigencia_gasto"],
+                                    name="linea_unica_por_fila_producto_y_vigencia"),
+        ]
+
+    def clean(self):
+        if self.fila_id and self.distribucion_id:
+            if self.fila.corte_id != self.distribucion.corte_id or self.fila.proyecto != self.distribucion.bpin:
+                raise ValidationError({"fila": "La fila no es de este BPIN en este corte."})
+
+    def __str__(self):
+        return f"{self.fila} -> {self.producto.codigo} (vigencia {self.vigencia_gasto.codigo})"
+

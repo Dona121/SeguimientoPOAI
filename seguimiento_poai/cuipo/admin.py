@@ -7,7 +7,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import ChoicesDropdownFilter, RelatedDropdownFilter
 from unfold.decorators import action, display
@@ -15,9 +16,9 @@ from unfold.decorators import action, display
 from siifweb import cargas
 from siifweb.admin import SoloLectura, hash_archivo, pesos
 
-from . import derivacion, ejecucion, listas, semillas
-from .models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, FilaEjecucionGastos, FuenteCUIPO,
-                     HomologacionFuente, HomologacionRubro, PoliticaPublica, ProductoCUIPO, ReglaSeccion,
+from . import derivacion, distribucion, ejecucion, listas, semillas
+from .models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, DistribucionBPIN,
+                     FilaEjecucionGastos, FuenteCUIPO, HomologacionFuente, LineaCUIPO, HomologacionRubro, PoliticaPublica, ProductoCUIPO, ReglaSeccion,
                      ReglaSituacionFondos, ReglaTercero, SeccionPresupuestal, SituacionFondos, TerceroCUIPO,
                      VersionListas, VigenciaGasto)
 
@@ -30,6 +31,9 @@ class CorteEjecucionGastosForm(forms.ModelForm):
     def clean(self):
         datos = super().clean()
         archivo = datos.get("archivo")
+        if archivo and hasattr(archivo, "chunks") and self.instance.pk and self.instance.distribuciones.exists():
+            raise forms.ValidationError("Este corte ya tiene distribuciones del CUIPO: no se cambia su archivo. "
+                                        "Para datos más recientes, cargue un corte nuevo.")
         if archivo and hasattr(archivo, "chunks"):
             digest = hash_archivo(archivo)
             previo = CorteEjecucionGastos.objects.filter(hash=digest).exclude(pk=self.instance.pk).first()
@@ -46,10 +50,10 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
     compressed_fields = True
     list_fullwidth = True
     list_display = ("__str__", "vigencia", "fecha_inicio", "fecha_fin", "fecha_descarga", "estado_badge", "filas",
-                    "rp", "obligacion", "pago", "ver_filas", "ver_pendientes")
+                    "rp", "obligacion", "pago", "ver_filas", "ver_pendientes", "n_distribuciones")
     list_filter = ("vigencia", ("estado", ChoicesDropdownFilter))
     readonly_fields = ("estado", "filas", "mensaje", "hash", "fecha_creacion", "fecha_actualizacion")
-    actions = ("volver_a_procesar",)
+    actions = ("volver_a_procesar", "precargar_distribucion")
     fieldsets = (
         ("Reporte", {"fields": ("vigencia", ("fecha_inicio", "fecha_fin"), "fecha_descarga", "archivo"),
                      "description": "Ejecución presupuestal del gasto por centro de costo y fondo "
@@ -66,7 +70,12 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         if not change or "archivo" in form.changed_data:
-            self._informar(request, obj, ejecucion.procesar(obj))
+            self._procesar(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj is not None and obj.distribuciones.exists():
+            return False
+        return super().has_delete_permission(request, obj)
 
     def get_urls(self):
         propias = [
@@ -122,13 +131,38 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
         }
         return TemplateResponse(request, "cuipo/pendientes.html", contexto)
 
-    def _informar(self, request, corte, bien):
+    def _procesar(self, request, corte):
+        try:
+            bien = ejecucion.procesar(corte)
+        except ejecucion.CorteConDistribucion as error:
+            self.message_user(request, str(error), messages.ERROR)
+            return
         self.message_user(request, f"{corte}: {corte.mensaje}", messages.SUCCESS if bien else messages.ERROR)
 
     @action(description="Volver a procesar los cortes seleccionados", icon="play_arrow")
     def volver_a_procesar(self, request, queryset):
         for corte in queryset:
-            self._informar(request, corte, ejecucion.procesar(corte))
+            self._procesar(request, corte)
+
+    @action(description="Precargar la distribución del CUIPO", icon="call_split",
+            permissions=["precargar"])
+    def precargar_distribucion(self, request, queryset):
+        for corte in queryset:
+            try:
+                self.message_user(request, f"{corte}: {distribucion.precargar(corte)}", messages.SUCCESS)
+            except ValueError as error:
+                self.message_user(request, str(error), messages.ERROR)
+
+    def has_precargar_permission(self, request):
+        return request.user.has_perm("cuipo.add_distribucionbpin")
+
+    @display(description="Distribuciones")
+    def n_distribuciones(self, obj):
+        n = obj.distribuciones.count()
+        if not n:
+            return "—"
+        url = reverse("admin:cuipo_distribucionbpin_changelist")
+        return format_html('<a href="{}?corte__id__exact={}" class="text-primary-600">{}</a>', url, obj.pk, n)
 
     @display(description="Estado", label={"Pendiente": "warning", "Procesado": "success", "Con error": "danger"})
     def estado_badge(self, obj):
@@ -404,3 +438,112 @@ class ReglaSituacionFondosAdmin(ReglaAdmin):
     search_fields = ("prefijo_rubro", "fuente_cuipo__codigo")
     list_select_related = ("fuente_cuipo", "situacion")
     autocomplete_fields = ("fuente_cuipo", "situacion")
+
+
+# ---------------------------------------------------------------------------
+# Distribucion por BPIN
+# ---------------------------------------------------------------------------
+
+CUALITATIVOS = ("cpc", "detalle_sectorial", "tercero", "politica_publica")
+
+
+class LineaCUIPOInline(TabularInline):
+    """Las lineas de la distribucion. Mientras llega la pantalla por BPIN (fase 4), aqui se
+    digitan los valores por producto y se cambia la vigencia de gasto."""
+    model = LineaCUIPO
+    extra = 0
+    fields = ("fila", "producto", "vigencia_gasto", "compromisos", "obligaciones", "pagos", "origen_valores",
+              "cpc", "detalle_sectorial", "tercero", "politica_publica")
+    readonly_fields = ("origen_valores",)
+    autocomplete_fields = ("producto", "vigencia_gasto", "cpc", "detalle_sectorial", "tercero", "politica_publica")
+    tab = True
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "fila":
+            pk = request.resolver_match.kwargs.get("object_id") if request.resolver_match else None
+            dist = DistribucionBPIN.objects.filter(pk=pk).first() if pk else None
+            kwargs["queryset"] = dist.filas() if dist else FilaEjecucionGastos.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+@admin.register(DistribucionBPIN)
+class DistribucionBPINAdmin(ModelAdmin):
+    """La distribucion de cada BPIN entre sus productos. La crea la precarga del corte."""
+    compressed_fields = True
+    list_fullwidth = True
+    list_per_page = 100
+    list_display = ("bpin", "nombre_proyecto", "periodo", "regla", "estado", "n_lineas", "cuadra")
+    list_filter = (("corte", RelatedDropdownFilter), "regla", "estado")
+    search_fields = ("bpin",)
+    list_select_related = ("corte",)
+    readonly_fields = ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion", "validado_por",
+                       "fecha_validacion", "cuadre_por_fila")
+    fieldsets = (
+        (None, {"fields": ("corte", "periodo", "bpin", "regla", "productos_del_bpin", "observacion")}),
+        ("Estado", {"fields": ("estado", "validado_por", "fecha_validacion")}),
+        ("Cuadre con SIIFWEB", {"fields": ("cuadre_por_fila",)}),
+    )
+    inlines = (LineaCUIPOInline,)
+    actions = ("volver_a_precargar",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if "estado" in form.changed_data and obj.estado == DistribucionBPIN.Estado.VALIDADO:
+            obj.validado_por, obj.fecha_validacion = request.user, timezone.now()
+        super().save_model(request, obj, form, change)
+
+    def save_formset(self, request, form, formset, change):
+        """Lo que se cambia a mano queda con origen manual."""
+        for linea in formset.save(commit=False):
+            cambios = next((f.changed_data for f in formset.forms if f.instance is linea), [])
+            if {"compromisos", "obligaciones", "pagos"} & set(cambios) or linea.pk is None:
+                linea.origen_valores = LineaCUIPO.OrigenValores.MANUAL
+            for campo in CUALITATIVOS:
+                if campo in cambios:
+                    setattr(linea, f"origen_{campo}", LineaCUIPO.Origen.MANUAL)
+            linea.save()
+        for borrada in formset.deleted_objects:
+            borrada.delete()
+
+    @action(description="Volver a precargar (solo borradores; borra lo digitado)", icon="restart_alt")
+    def volver_a_precargar(self, request, queryset):
+        for dist in queryset:
+            try:
+                self.message_user(request, f"{dist.bpin}: {distribucion.precargar_de_nuevo(dist)}", messages.SUCCESS)
+            except ValueError as error:
+                self.message_user(request, str(error), messages.ERROR)
+
+    @display(description="Proyecto")
+    def nombre_proyecto(self, obj):
+        if obj.bpin == "0":
+            return "Inversión sin proyecto"
+        from siifweb.models import FormulacionProyecto
+        f = FormulacionProyecto.objects.filter(bpin=obj.bpin).only("nombre").first()
+        nombre = f.nombre if f else ""
+        return nombre if len(nombre) <= 70 else nombre[:70].rstrip() + "..."
+
+    @display(description="Líneas")
+    def n_lineas(self, obj):
+        return obj.lineas.count()
+
+    @display(description="Cuadra con SIIFWEB", boolean=True)
+    def cuadra(self, obj):
+        return all(f["cuadra"] for f in distribucion.cuadre(obj))
+
+    @display(description="Productos")
+    def productos_del_bpin(self, obj):
+        return ", ".join(f"{p.codigo} {p.descripcion[:60]}" for p in obj.productos.all()) or "—"
+
+    @display(description="Por fila (C / O / P)")
+    def cuadre_por_fila(self, obj):
+        def cifra(v):
+            return f"{v:,.2f}"
+        filas = distribucion.cuadre(obj)
+        if not filas:
+            return "Sin filas"
+        return format_html_join(
+            mark_safe("<br>"), "{} · recurso {} · CC {}: SIIFWEB {} / {} / {} · diferencia {} / {} / {} {}",
+            ((f["fila"].rubro, f["fila"].recurso, f["fila"].centro_costo, *map(cifra, f["siifweb"]),
+              *map(cifra, f["diferencia"]), "✔" if f["cuadra"] else "✘") for f in filas))

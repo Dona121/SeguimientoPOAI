@@ -526,3 +526,21 @@ Rama `cuipo-fase2-reglas`, sobre `cuipo-fase1-listas`.
   fila, 1 por defecto.
 
 **Pruebas.** 458, todas pasan (`cuipo/tests/test_derivacion.py` y `test_semillas.py`, 30 nuevas).
+
+## 22. CUIPO, fase 3: distribucion por BPIN y precarga (13 de noviembre)
+
+Rama `cuipo-fase3-distribucion`, sobre `cuipo-fase2-reglas`.
+
+- `DistribucionBPIN`, `AsociacionFuenteProducto` y `LineaCUIPO` (con vigencia de gasto
+  editable, 1 por defecto; una fila puede repartirse entre productos y vigencias). Migracion
+  `cuipo/0004`.
+- `cuipo/distribucion.py`: la precarga crea la distribucion de cada BPIN del corte con la
+  regla del Power Query (un producto al 100 %, varios productos y un recurso por digitar
+  desde el PIIP, manual, sin BPIN al producto 0) y los cualitativos por defecto o del
+  trimestre anterior enviado. Solo corre sobre cortes del 1 de enero al cierre de un
+  trimestre (periodo 10303, 10606, 10909 o 11212).
+- Un corte con distribuciones no se reprocesa ni se borra.
+- Admin: accion de precarga en los cortes y **Distribuciones por BPIN**, con el cuadre por
+  fila y las lineas editables mientras llega la pantalla de la fase 4.
+
+**Pruebas.** 477, todas pasan (`cuipo/tests/test_distribucion.py`, 19 nuevas).

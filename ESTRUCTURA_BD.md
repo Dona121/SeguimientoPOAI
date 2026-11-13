@@ -407,3 +407,13 @@ código). Lo que deja de venir queda inactivo; nada se borra.
 
 Todas con `observacion`. Las FK a catálogos son PROTECT. Los valores por defecto (sección 16.0,
 situación C, tercero 1 - NO APLICA) no se guardan: los aplica `cuipo/derivacion.py`.
+
+### Distribución (app `cuipo`, fase 3 del CUIPO)
+
+| modelo | llave natural | relaciones |
+|---|---|---|
+| `DistribucionBPIN` | (`corte`, `bpin`) | → `CorteEjecucionGastos` (PROTECT), ↔ `ProductoCUIPO` (productos del BPIN), `validado_por` → `auth.User`; `periodo`, `regla`, `estado`, `observacion` |
+| `AsociacionFuenteProducto` | (`distribucion`, `fila`, `producto`) | → `DistribucionBPIN` (CASCADE), → `FilaEjecucionGastos` (PROTECT), → `ProductoCUIPO` |
+| `LineaCUIPO` | (`distribucion`, `fila`, `producto`, `vigencia_gasto`) | → `DistribucionBPIN` (CASCADE), → `FilaEjecucionGastos` (PROTECT), → `ProductoCUIPO`, → `VigenciaGasto`, → `CPC`, `DetalleSectorial`, `TerceroCUIPO`, `PoliticaPublica` (opcionales); C, O y P en `Decimal(20,2)`; `origen_valores` y un `origen_*` por cualitativo |
+
+Un corte con distribuciones no se borra (PROTECT) ni se reprocesa (lo impide el importador).

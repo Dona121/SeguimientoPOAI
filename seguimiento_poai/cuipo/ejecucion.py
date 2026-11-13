@@ -129,8 +129,19 @@ def importar(corte):
     return len(detalle), " | ".join(partes)
 
 
+class CorteConDistribucion(Exception):
+    """El corte ya tiene distribuciones del CUIPO: no se reprocesa ni se borra."""
+
+
 def procesar(corte):
-    """Importa el corte y deja el resultado en el registro. Devuelve True si salio bien."""
+    """Importa el corte y deja el resultado en el registro. Devuelve True si salio bien.
+
+    Un corte con distribuciones no se reprocesa: sus lineas apuntan a las filas que la
+    importacion borraria. Para datos mas recientes se carga otro corte.
+    """
+    if corte.pk and corte.distribuciones.exists():
+        raise CorteConDistribucion(f"{corte} ya tiene distribuciones del CUIPO: no se reprocesa. "
+                                   f"Para datos más recientes, cargue un corte nuevo.")
     try:
         corte.filas, corte.mensaje = importar(corte)
         corte.estado = CorteEjecucionGastos.Estado.PROCESADO
