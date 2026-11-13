@@ -1,12 +1,14 @@
 """Precarga de la distribucion por BPIN (fase 3 del CUIPO).
 
-Para cada BPIN con filas en el corte se crea una DistribucionBPIN con sus productos (los de la
-formulacion PIIP que esten en la lista CHIP) y se aplica la regla del Power Query:
+Para cada BPIN con filas en el corte se crea una DistribucionBPIN con sus productos: los de la
+formulacion PIIP con meta distinta de cero en la vigencia del corte (tabla InfoGeneral) que esten
+en la lista CHIP. Un producto programado solo en otros anios no entra. Luego se aplica la regla:
 
 - un producto: el 100 % de cada fila va a ese producto (valores de SIIFWEB);
-- varios productos y un solo recurso: la matriz queda vacia, para digitar los valores por
-  producto desde el reporte de AporteProductos del PIIP;
-- varios productos y varios recursos: manual;
+- varios productos y un solo registro (fila) del corte: la matriz queda vacia, para digitar los
+  valores por producto desde el reporte de AporteProductos del PIIP;
+- varios productos y varios registros: manual. Se cuentan registros y no fuentes: una misma
+  fuente puede venir en varios rubros;
 - sin BPIN (proyecto 0): el 100 % al producto 0 - NO APLICA;
 - sin productos en la lista CHIP: no se puede distribuir; queda con su observacion.
 
@@ -21,7 +23,7 @@ from decimal import ROUND_DOWN, Decimal
 
 from django.db import transaction
 
-from siifweb.models import ProductoCatalogo
+from siifweb.models import IndicadorProyecto, MetaVigenciaIndicador
 
 from .derivacion import Derivador, filas_cuipo
 from .models import (CPC, AsociacionFuenteProducto, DetalleSectorial, DistribucionBPIN, LineaCUIPO,
@@ -34,13 +36,24 @@ DETALLE_NO_APLICA = "0"
 POLITICA_NO_APLICA = "0"
 
 
-def productos_piip(bpines):
-    """{bpin: [codigos de producto]} de la formulacion PIIP."""
-    productos = defaultdict(list)
-    filas = (ProductoCatalogo.objects.filter(indicadores__en_proyectos__formulacion__bpin__in=list(bpines))
-             .values_list("indicadores__en_proyectos__formulacion__bpin", "codigo").distinct().order_by("codigo"))
-    for bpin, codigo in filas:
-        productos[bpin].append(codigo)
+def productos_piip(bpines, vigencia):
+    """{bpin: [codigos de producto]} de la formulacion PIIP con meta distinta de cero en la
+    vigencia (la del corte). Basta con que un indicador del producto tenga meta ese anio."""
+    productos = defaultdict(set)
+    metas = (MetaVigenciaIndicador.objects
+             .filter(indicador_proyecto__formulacion__bpin__in=list(bpines), vigencia=vigencia).exclude(meta=0)
+             .values_list("indicador_proyecto__formulacion__bpin", "indicador_proyecto__indicador__producto__codigo"))
+    for bpin, codigo in metas:
+        productos[bpin].add(codigo)
+    return {bpin: sorted(codigos) for bpin, codigos in productos.items()}
+
+
+def productos_formulados(bpines):
+    """{bpin: {codigos de producto}} de la formulacion PIIP, sin mirar la programacion."""
+    productos = defaultdict(set)
+    for bpin, codigo in (IndicadorProyecto.objects.filter(formulacion__bpin__in=list(bpines))
+                         .values_list("formulacion__bpin", "indicador__producto__codigo")):
+        productos[bpin].add(codigo)
     return productos
 
 
@@ -96,7 +109,7 @@ def regla_para(productos, filas):
         return Regla.SIN_PRODUCTOS
     if len(productos) == 1:
         return Regla.UN_PRODUCTO
-    return Regla.PIIP if len({f.recurso for f in filas}) == 1 else Regla.MANUAL
+    return Regla.PIIP if len(filas) == 1 else Regla.MANUAL
 
 
 @transaction.atomic
@@ -115,7 +128,9 @@ def precargar(corte, bpines=None):
         if bpines is None or fila.proyecto in bpines:
             por_bpin[fila.proyecto].append(fila)
     existentes = set(corte.distribuciones.values_list("bpin", flat=True))
-    piip = productos_piip(b for b in por_bpin if b != "0")
+    con_bpin = [b for b in por_bpin if b != "0"]
+    piip = productos_piip(con_bpin, corte.vigencia)
+    formulados = productos_formulados(con_bpin)
     chip = {p.codigo: p for p in ProductoCUIPO.objects.filter(
         codigo__in={c for codigos in piip.values() for c in codigos} | {PRODUCTO_SIN_BPIN}, activo=True)}
     if "0" in por_bpin and PRODUCTO_SIN_BPIN not in chip:
@@ -134,10 +149,17 @@ def precargar(corte, bpines=None):
             codigos = piip.get(bpin, [])
             productos = [chip[c] for c in codigos if c in chip]
             faltan = [c for c in codigos if c not in chip]
-            if not codigos:
-                observacion = "El BPIN no tiene formulación PIIP."
-            elif faltan:
-                observacion = f"Productos del PIIP que no están en la lista CHIP: {', '.join(faltan)}."
+            sin_meta = sorted(formulados[bpin] - set(codigos))
+            notas = []
+            if not formulados[bpin]:
+                notas.append("El BPIN no tiene productos en la formulación PIIP.")
+            elif not codigos:
+                notas.append(f"Ningún producto del PIIP tiene meta programada en {corte.vigencia}.")
+            elif sin_meta:
+                notas.append(f"Sin meta en {corte.vigencia}, no se distribuyen: {', '.join(sin_meta)}.")
+            if faltan:
+                notas.append(f"Productos del PIIP que no están en la lista CHIP: {', '.join(faltan)}.")
+            observacion = " ".join(notas)
             regla = regla_para(productos, filas)
         distribucion = DistribucionBPIN.objects.create(corte=corte, periodo=periodo, bpin=bpin, regla=regla,
                                                        observacion=observacion)
@@ -151,9 +173,9 @@ def precargar(corte, bpines=None):
     AsociacionFuenteProducto.objects.bulk_create(asociaciones, batch_size=1000)
     LineaCUIPO.objects.bulk_create(lineas, batch_size=1000)
 
-    etiquetas = {Regla.UN_PRODUCTO: "un producto (100 %)", Regla.PIIP: "varios productos y una fuente (por digitar)",
+    etiquetas = {Regla.UN_PRODUCTO: "un producto (100 %)", Regla.PIIP: "varios productos y un registro (por digitar)",
                  Regla.MANUAL: "manuales", Regla.SIN_BPIN: "sin BPIN (producto 0)",
-                 Regla.SIN_PRODUCTOS: "sin productos en la lista CHIP", "ya estaban": "ya estaban"}
+                 Regla.SIN_PRODUCTOS: "sin productos programados", "ya estaban": "ya estaban"}
     nuevas = sum(n for clave, n in resumen.items() if clave != "ya estaban")
     detalle = ", ".join(f"{resumen[clave]} {texto}" for clave, texto in etiquetas.items() if resumen[clave])
     return f"Periodo {periodo}: {nuevas} distribuciones nuevas y {len(lineas)} líneas" + (f" ({detalle})" if detalle else "")

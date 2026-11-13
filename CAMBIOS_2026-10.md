@@ -632,5 +632,12 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
 - Se quita la pantalla **Pendientes** y lo que mostraba pasa a las listas: Cortes (columna
   "Filas completas"), Dependencias (columna "Seccion CUIPO" con filtros por seccion y por
   corte) y el boton "Crear las reglas iniciales" arriba de Homologacion de fuentes.
+- La precarga toma solo los productos del PIIP con **meta distinta de cero en la vigencia del
+  corte** (tabla InfoGeneral); un producto programado solo en otro anio no entra y la
+  observacion lo dice. La validacion y la columna Productos PIIP de las filas usan el mismo
+  criterio.
+- La regla de la precarga cuenta **registros** del corte y no fuentes: varios productos y un
+  registro queda por digitar desde AporteProductos; varios registros, manual. Migracion
+  `cuipo.0005` (solo cambia las etiquetas de la regla; no toca datos).
 
-**Pruebas.** 543, todas pasan (152 del CUIPO).
+**Pruebas.** 546, todas pasan (155 del CUIPO).

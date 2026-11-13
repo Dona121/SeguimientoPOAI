@@ -67,7 +67,7 @@ class Validar(Base):
         otro = ProductoCUIPO.objects.get(codigo="2201006")
         self.d.productos.add(otro)
         LineaCUIPO.objects.filter(pk=self.linea.pk).update(producto=otro)
-        self.assertTrue(any("el producto no es del BPIN según la formulación PIIP" in e for e in self.errores()))
+        self.assertTrue(any("el producto no está programado en 2026 según la formulación PIIP" in e for e in self.errores()))
 
     def test_cualitativos_vacios_e_inactivos(self):
         LineaCUIPO.objects.filter(pk=self.linea.pk).update(cpc=None, tercero=None)

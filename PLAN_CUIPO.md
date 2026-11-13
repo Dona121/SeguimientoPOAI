@@ -28,6 +28,8 @@ importador del reporte de ejecución ya está hecho (sección 3).
 | Valores por producto (PIIP) | El reporte de AporteProductos del PIIP **no se carga** al aplicativo: los valores por producto se digitan a mano en la matriz a partir de ese reporte |
 | Inversión sin BPIN | Entra al CUIPO con BPIN 0 y producto 0, el 100 % automático; solo se diligencian los cualitativos |
 | Roles | Por ahora sin roles nuevos: quien tenga los permisos de los modelos del CUIPO puede distribuir y validar |
+| Productos que se distribuyen | Los del PIIP con **meta distinta de cero en la vigencia del corte** (tabla InfoGeneral, decisión del 13/11). Un producto programado solo en otro año no entra en el CUIPO de esta vigencia |
+| Regla de la precarga | Cuenta **registros** (filas) del corte y no fuentes (decisión del 13/11): una misma fuente puede venir en varios rubros, como en el 202500000049907 |
 | Reparto | **Manual** (decisión del 13/11): sin los botones "Proporcional a compromisos" ni "Todo a un producto", porque pueden generar confusión o errores. La precarga sigue haciendo el 100 % cuando hay un solo producto y en la inversión sin BPIN |
 | 2023002700021 | La fila de 15.251.706.362,76 (recurso 7, centro de costo 16) que aparecía duplicada en la ejecución al 30/09 se había agregado a mano. En el reporte oficial la llave de la fila es única |
 
@@ -71,7 +73,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 543.
+  disco temporal). Hoy son 546.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -351,14 +353,21 @@ vuelve a crear las filas del corte. Si el corte ya tiene distribuciones:
 
 **Precarga automática por BPIN:**
 - 1 producto: el 100 % de cada fila va a ese producto (`origen_valores` = SIIFWEB).
-- Más de 1 producto y 1 fuente: la matriz queda vacía y en estado "pendiente de digitar".
-  Los valores por producto se digitan a mano desde el reporte de AporteProductos del PIIP, que
-  no se carga al aplicativo (`origen_valores` = PIIP).
-- Más de 1 producto y más de 1 fuente: manual (`origen_valores` = MANUAL).
+- Más de 1 producto y 1 registro (fila) del corte: la matriz queda vacía y en estado
+  "pendiente de digitar". Los valores por producto se digitan a mano desde el reporte de
+  AporteProductos del PIIP, que no se carga al aplicativo (`origen_valores` = PIIP).
+- Más de 1 producto y más de 1 registro: manual (`origen_valores` = MANUAL). Se cuentan
+  registros y no fuentes: una misma fuente puede venir en varios rubros.
 - Sin BPIN: el 100 % al producto 0.
 
-Los productos del BPIN salen de la formulación PIIP (sección 2) y deben existir en el
-catálogo CHIP de productos. La carga del PIIP crea la formulación de todos los BPIN del PIIP,
+Los productos del BPIN salen de la formulación PIIP (sección 2): solo los que tienen **meta
+distinta de cero en la vigencia del corte** (`MetaVigenciaIndicador`; basta con un indicador
+del producto). Ejemplo: un proyecto con dos productos, uno con meta en 2026 y otro con meta 0
+en 2026 y meta en 2027; en un periodo de 2026 solo entra el primero. La observación de la
+distribución dice qué productos quedaron por fuera, y si ninguno tiene meta en la vigencia la
+distribución queda "sin productos programados". Además deben existir en el catálogo CHIP de
+productos. La validación usa el mismo criterio y la columna **Productos PIIP** de las filas
+de ejecución también. La carga del PIIP crea la formulación de todos los BPIN del PIIP,
 así que un BPIN con ejecución solo queda sin productos si no está en el exporte del PIIP. Al
 11/11/2026 los 101 BPIN de 2.3 con ejecución tienen formulación; el único del 2.3 sin ella
 (2024002700177) está en cero y no está en el PIIP.
@@ -537,8 +546,8 @@ migración `cuipo/0004`, 19 pruebas en `cuipo/tests/test_distribucion.py`).
 - `cuipo/distribucion.py`: `precargar(corte)` crea las distribuciones que falten (no toca las
   existentes), `precargar_de_nuevo(distribucion)` (solo borradores) y `cuadre(distribucion)`
   (por fila: SIIFWEB, distribuido y diferencia en C, O y P). Reglas: un producto → 100 %;
-  varios productos y un recurso → por digitar desde AporteProductos; varios productos y
-  varios recursos → manual; sin BPIN → producto 0; sin productos en la lista CHIP → no se
+  varios productos y un registro → por digitar desde AporteProductos; varios productos y
+  varios registros → manual (desde el 13/11 cuenta registros y no recursos); sin BPIN → producto 0; sin productos en la lista CHIP → no se
   distribuye y lo dice. Cualitativos de las líneas nuevas: tercero por regla, CPC 0 si el
   concepto no lo exige (si lo exige queda vacío), detalle sectorial y política pública 0; si
   el BPIN se envió en un periodo anterior de la vigencia, CPC, detalle y política se toman de
@@ -562,7 +571,7 @@ migración `cuipo/0004`, 19 pruebas en `cuipo/tests/test_distribucion.py`).
     repartirse entre varias vigencias de gasto.
   - La suma de las líneas de cada fila da su C, O y P.
   - Un corte con distribución no se reprocesa ni se borra, y lo dice.
-  - Los casos de la sección 6 dan la regla esperada; los de "varios productos, una fuente"
+  - Los casos de la sección 6 dan la regla esperada; los de "varios productos, un registro"
     quedan pendientes de digitar.
 
 **Fase 4 — Pantalla HTMX** — **hecha el 13/11** (rama `cuipo-fase4-pantalla`, sin migraciones, 19
@@ -585,7 +594,7 @@ pruebas en `cuipo/tests/test_pantalla.py`).
 - Lógica en `cuipo/distribucion.py`: `guardar_valor`, `asociar` (desasociar borra las líneas),
   `agregar_vigencia`, `quitar_linea`, `cambiar_cualitativo`, `antecedente` y `matriz`, y
   `repartir()` (mayor residuo, la usa el plano). Lo digitado queda con origen PIIP si la
-  regla es "varios productos, una fuente" y manual en los demás casos. Los botones
+  regla es "varios productos, un registro" y manual en los demás casos. Los botones
   "Proporcional a compromisos" y "Todo a un producto" se hicieron y se quitaron el mismo día:
   el reparto es manual.
 - Solo se edita una distribución en borrador y con permisos de agregar, cambiar y borrar

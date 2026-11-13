@@ -18,7 +18,7 @@ from cuipo.models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSecto
                           SituacionFondos, TerceroCUIPO, VersionListas, VigenciaGasto)
 from cuipo.models import DistribucionBPIN
 from siifweb.models import (CentroCosto, FormulacionProyecto, Fuente, IndicadorCatalogo, IndicadorProyecto,
-                            ProductoCatalogo, Rubro)
+                            MetaVigenciaIndicador, ProductoCatalogo, Rubro)
 
 D = Decimal
 
@@ -197,14 +197,21 @@ def listas_distribucion():
     return v
 
 
-def formular(bpin, *productos):
-    """La formulacion PIIP del BPIN con un indicador por producto."""
+VIGENCIAS_PROGRAMADAS = range(2022, 2028)
+
+
+def formular(bpin, *productos, metas=None):
+    """La formulacion PIIP del BPIN con un indicador por producto. Cada producto lleva meta 1 en
+    las vigencias 2022 a 2027, salvo que `metas` diga otra cosa: {producto: {vigencia: meta}}."""
     f = FormulacionProyecto.objects.create(bpin=bpin, nombre=f"Proyecto {bpin}")
     for codigo in productos:
         producto, _ = ProductoCatalogo.objects.get_or_create(codigo=codigo, defaults={"nombre": f"Producto {codigo}"})
         indicador, _ = IndicadorCatalogo.objects.get_or_create(codigo=f"{codigo}00",
                                                                defaults={"producto": producto, "nombre": "Indicador"})
-        IndicadorProyecto.objects.create(formulacion=f, indicador=indicador)
+        ip = IndicadorProyecto.objects.create(formulacion=f, indicador=indicador)
+        programado = (metas or {}).get(codigo, {v: 1 for v in VIGENCIAS_PROGRAMADAS})
+        MetaVigenciaIndicador.objects.bulk_create(
+            MetaVigenciaIndicador(indicador_proyecto=ip, vigencia=v, meta=m) for v, m in programado.items())
     return f
 
 

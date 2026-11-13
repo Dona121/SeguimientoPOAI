@@ -424,8 +424,8 @@ class DistribucionBPIN(Fechas):
 
     class Regla(models.TextChoices):
         UN_PRODUCTO = "un_producto", "Un producto: el 100 % a ese producto"
-        PIIP = "piip", "Varios productos, una fuente: se digita desde AporteProductos (PIIP)"
-        MANUAL = "manual", "Varios productos y varias fuentes: manual"
+        PIIP = "piip", "Varios productos, un registro: se digita desde AporteProductos (PIIP)"
+        MANUAL = "manual", "Varios productos y varios registros: manual"
         SIN_BPIN = "sin_bpin", "Sin BPIN: el 100 % al producto 0"
         SIN_PRODUCTOS = "sin_productos", "Sin productos en la lista CHIP: revisar la formulación PIIP"
 

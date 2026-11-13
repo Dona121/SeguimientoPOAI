@@ -40,7 +40,7 @@ class CasoDelPlan(TestCase):
     def distribuir(self):
         distribucion.precargar(self.corte)
         d = DistribucionBPIN.objects.get(bpin=BPIN)
-        self.assertEqual(d.regla, DistribucionBPIN.Regla.PIIP)       # varios productos, una fuente
+        self.assertEqual(d.regla, DistribucionBPIN.Regla.PIIP)       # varios productos, un registro
         f = d.filas().get()
         v1 = VigenciaGasto.objects.get(codigo="1").pk
         for codigo, (c, o) in DIGITADO.items():

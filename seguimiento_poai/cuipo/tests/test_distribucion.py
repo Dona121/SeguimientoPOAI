@@ -33,6 +33,41 @@ class PeriodoDelCorte(TestCase):
         self.assertIsNone(periodo_de(self.corte(date(2026, 1, 1), date(2026, 9, 29))))
 
 
+class ProductosProgramados(TestCase):
+    """Se distribuyen los productos con meta distinta de cero en la vigencia del corte, y la regla
+    cuenta registros del corte, no fuentes."""
+
+    def setUp(self):
+        listas_distribucion()
+
+    def precargar(self, *filas):
+        corte = corte_con(list(filas), fecha_fin=date(2026, 9, 30))
+        distribucion.precargar(corte)
+        return DistribucionBPIN.objects.get(corte=corte, bpin="202500000049907")
+
+    def test_el_producto_programado_en_otra_vigencia_no_entra(self):
+        formular("202500000049907", "2201006", "2201048", metas={"2201006": {2026: 10},
+                                                                  "2201048": {2026: 0, 2027: 5}})
+        d = self.precargar(fila(101, "2.3.2.02.02.009", Decimal("100"), "3", "2", "202500000049907"))
+        self.assertEqual(list(d.productos.values_list("codigo", flat=True)), ["2201006"])
+        self.assertEqual((d.regla, d.observacion), (DistribucionBPIN.Regla.UN_PRODUCTO,
+                                                     "Sin meta en 2026, no se distribuyen: 2201048."))
+        self.assertEqual(d.lineas.get().producto.codigo, "2201006")
+
+    def test_sin_productos_programados_en_la_vigencia(self):
+        formular("202500000049907", "2201006", metas={"2201006": {2025: 3, 2027: 5}})
+        d = self.precargar(fila(101, "2.3.2.02.02.009", Decimal("100"), "3", "2", "202500000049907"))
+        self.assertEqual((d.regla, d.observacion), (DistribucionBPIN.Regla.SIN_PRODUCTOS,
+                                                     "Ningún producto del PIIP tiene meta programada en 2026."))
+
+    def test_una_fuente_en_varios_rubros_es_manual(self):
+        formular("202500000049907", "2201006", "2201048")
+        d = self.precargar(fila(101, "2.3.2.02.02.009", Decimal("100"), "3", "2", "202500000049907"),
+                           fila(102, "2.3.2.01.01.001.02.08", Decimal("50"), "3", "2", "202500000049907"))
+        self.assertEqual(d.regla, DistribucionBPIN.Regla.MANUAL)
+        self.assertEqual(d.asociaciones.count(), 4)
+
+
 class Precarga(TestCase):
     def setUp(self):
         listas_distribucion()
@@ -52,8 +87,8 @@ class Precarga(TestCase):
 
     def test_resumen(self):
         self.assertEqual(self.mensaje, "Periodo 10909: 6 distribuciones nuevas y 2 líneas (1 un producto (100 %), "
-                                       "1 varios productos y una fuente (por digitar), 2 manuales, "
-                                       "1 sin BPIN (producto 0), 1 sin productos en la lista CHIP)")
+                                       "1 varios productos y un registro (por digitar), 2 manuales, "
+                                       "1 sin BPIN (producto 0), 1 sin productos programados)")
         self.assertEqual(set(DistribucionBPIN.objects.values_list("periodo", flat=True)), {"10909"})
 
     def test_202500000039332_queda_por_digitar_desde_el_piip(self):
@@ -93,7 +128,7 @@ class Precarga(TestCase):
     def test_sin_formulacion_no_se_distribuye(self):
         d = self.dist("202600000099999")
         self.assertEqual((d.regla, d.observacion), (DistribucionBPIN.Regla.SIN_PRODUCTOS,
-                                                     "El BPIN no tiene formulación PIIP."))
+                                                     "El BPIN no tiene productos en la formulación PIIP."))
 
     def test_precargar_otra_vez_no_toca_lo_que_existe(self):
         linea = self.dist("202600000018441").lineas.get()

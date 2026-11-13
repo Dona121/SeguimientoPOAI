@@ -218,9 +218,11 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
 
 
 def productos_piip():
-    """La fila tiene productos en la formulacion PIIP de su BPIN (tabla InfoGeneral)."""
-    from siifweb.models import ProductoCatalogo
-    return Exists(ProductoCatalogo.objects.filter(indicadores__en_proyectos__formulacion__bpin=OuterRef("proyecto")))
+    """La fila tiene productos programados (meta distinta de cero) en la vigencia de su corte, en la
+    formulacion PIIP de su BPIN (tabla InfoGeneral). Son los que se distribuyen."""
+    from siifweb.models import MetaVigenciaIndicador
+    return Exists(MetaVigenciaIndicador.objects.filter(indicador_proyecto__formulacion__bpin=OuterRef("proyecto"),
+                                                       vigencia=OuterRef("corte__vigencia")).exclude(meta=0))
 
 
 class ConProductosPIIP(admin.SimpleListFilter):
@@ -228,7 +230,7 @@ class ConProductosPIIP(admin.SimpleListFilter):
     parameter_name = "productos_piip"
 
     def lookups(self, request, model_admin):
-        return (("si", "Con productos en InfoGeneral"), ("no", "Sin productos en InfoGeneral"),
+        return (("si", "Con productos programados en la vigencia"), ("no", "Sin productos programados"),
                 ("0", "Sin BPIN (no aplica)"))
 
     def queryset(self, request, queryset):

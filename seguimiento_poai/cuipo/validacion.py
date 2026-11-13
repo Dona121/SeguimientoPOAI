@@ -61,7 +61,7 @@ def validar_distribucion(distribucion, derivador=None):
     if distribucion.bpin == "0":
         del_bpin = {PRODUCTO_SIN_BPIN}
     else:
-        del_bpin = set(productos_piip([distribucion.bpin]).get(distribucion.bpin, []))
+        del_bpin = set(productos_piip([distribucion.bpin], distribucion.corte.vigencia).get(distribucion.bpin, []))
 
     por_fila = defaultdict(list)
     for linea in distribucion.lineas.select_related("producto", "vigencia_gasto", "cpc", "detalle_sectorial",
@@ -90,7 +90,7 @@ def validar_distribucion(distribucion, derivador=None):
                 r.errores.append(Problema(f"{donde}: pagos ({pesos(linea.pagos)}) mayores que obligaciones "
                                           f"({pesos(linea.obligaciones)})", fila, linea))
             if linea.producto.codigo not in del_bpin:
-                r.errores.append(Problema(f"{donde}: el producto no es del BPIN según la formulación PIIP", fila, linea))
+                r.errores.append(Problema(f"{donde}: el producto no está programado en {distribucion.corte.vigencia} según la formulación PIIP", fila, linea))
             if not linea.producto.activo:
                 r.errores.append(Problema(f"{donde}: el producto está inactivo en la lista CHIP", fila, linea))
             if not linea.vigencia_gasto.activo:
