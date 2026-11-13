@@ -623,4 +623,8 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   "En el corte del CUIPO". La fuente cuenta como homologada si lo esta para la vigencia del corte
   que se reporta; el rubro, si tiene concepto valido por homologacion o por su mismo codigo.
 
-**Pruebas.** 540, todas pasan (149 del CUIPO).
+- Pendientes ya no lista los BPIN con ejecucion sin formulacion PIIP: la lista de **Filas de
+  ejecucion de gastos** trae la columna **Productos PIIP** (Si / No / No aplica para el BPIN 0),
+  segun la tabla InfoGeneral, con su filtro.
+
+**Pruebas.** 541, todas pasan (150 del CUIPO).

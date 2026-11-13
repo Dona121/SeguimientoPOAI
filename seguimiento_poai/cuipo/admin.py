@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Exists, OuterRef, Q, Sum
 from django.shortcuts import get_object_or_404, redirect
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
@@ -256,11 +256,43 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
         return format_html('<a href="{}" class="text-primary-600">Revisar</a>', url)
 
 
+def productos_piip():
+    """La fila tiene productos en la formulacion PIIP de su BPIN (tabla InfoGeneral)."""
+    from siifweb.models import ProductoCatalogo
+    return Exists(ProductoCatalogo.objects.filter(indicadores__en_proyectos__formulacion__bpin=OuterRef("proyecto")))
+
+
+class ConProductosPIIP(admin.SimpleListFilter):
+    title = "productos PIIP"
+    parameter_name = "productos_piip"
+
+    def lookups(self, request, model_admin):
+        return (("si", "Con productos en InfoGeneral"), ("no", "Sin productos en InfoGeneral"),
+                ("0", "Sin BPIN (no aplica)"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "0":
+            return queryset.filter(proyecto="0")
+        if self.value() in ("si", "no"):
+            return queryset.exclude(proyecto="0").filter(tiene_productos=self.value() == "si")
+        return queryset
+
+
 @admin.register(FilaEjecucionGastos)
 class FilaEjecucionGastosAdmin(SoloLectura):
-    list_display = ("rubro", "nombre_rubro_corto", "recurso", "centro_costo", "proyecto",
+    list_display = ("rubro", "nombre_rubro_corto", "recurso", "centro_costo", "proyecto", "productos_piip",
                     "apropiacion_definitiva", "cdp", "rp", "obligacion", "pago", "de_otra_vigencia")
-    list_filter = (("corte", RelatedDropdownFilter), "corte__vigencia", "de_otra_vigencia")
+    list_filter = (("corte", RelatedDropdownFilter), "corte__vigencia", ConProductosPIIP, "de_otra_vigencia")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(tiene_productos=productos_piip())
+
+    @display(description="Productos PIIP", label={"si": "success", "no": "danger", "na": "info"},
+             ordering="tiene_productos")
+    def productos_piip(self, obj):
+        if obj.proyecto == "0":
+            return "na", "No aplica"
+        return ("si", "Sí") if obj.tiene_productos else ("no", "No")
     search_fields = ("rubro", "nombre_rubro", "proyecto", "recurso", "nombre_recurso")
     list_select_related = ("corte",)
     list_per_page = 100

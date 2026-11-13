@@ -181,7 +181,7 @@ class Pendientes(TestCase):
         self.assertEqual([(r["recurso"], r["pista"], r["rp"]) for r in p["recursos"]],
                          [("108", "1.3.3.3.20", Decimal("40"))])
         self.assertEqual([r["rubro"] for r in p["rubros"]], ["2.3.3.05.09.054"])
-        self.assertEqual({r["bpin"] for r in p["sin_piip"]}, {"202500000039332", "202600000018441"})
+        self.assertNotIn("sin_piip", p)        # se ve en las filas de ejecucion (columna Productos PIIP)
         self.assertEqual([r["centro_costo"] for r in p["por_defecto"]], ["10", "2"])   # sin reglas de seccion
 
     def test_la_pagina_abre_y_redirige_al_ultimo_corte(self):

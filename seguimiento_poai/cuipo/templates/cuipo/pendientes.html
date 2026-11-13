@@ -62,7 +62,6 @@ CorteEjecucionGastosAdmin.pendientes y los datos salen de cuipo.derivacion.pendi
       <div class="cifra"><b>{{ p.filas|intcomma }}</b><span>filas de inversión con RP, obligación o pago</span></div>
       <div class="cifra"><b class="ok">{{ p.completas|intcomma }}</b><span>se derivan completas</span></div>
       <div class="cifra"><b class="{% if p.con_faltantes %}mal{% else %}ok{% endif %}">{{ p.con_faltantes|intcomma }}</b><span>tienen algo pendiente</span></div>
-      <div class="cifra"><b class="{% if p.sin_piip %}mal{% else %}ok{% endif %}">{{ p.sin_piip|length }}</b><span>BPIN sin formulación PIIP</span></div>
     </div>
   </section>
 
@@ -87,19 +86,6 @@ CorteEjecucionGastosAdmin.pendientes y los datos salen de cuipo.derivacion.pendi
     </table>
   </section>
   {% endif %}
-
-  <section class="caja">
-    <h2><span>BPIN con ejecución sin formulación PIIP</span></h2>
-    {% if p.sin_piip %}
-    <p class="nota">Sin formulación no hay productos para distribuir. El BPIN no está en la carga del PIIP: actualizar el exporte del PIIP y cargarlo.</p>
-    <table>
-      <tr><th>BPIN</th><th class="num">Filas</th><th class="num">RP</th></tr>
-      {% for r in p.sin_piip %}
-      <tr><td>{{ r.bpin }}</td><td class="num">{{ r.filas }}</td><td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
-      {% endfor %}
-    </table>
-    {% else %}<p class="vacio">Todos los BPIN con ejecución tienen formulación PIIP.</p>{% endif %}
-  </section>
 
   <section class="caja">
     <h2><span>Centros de costo que van a la sección por defecto (16.0)</span>

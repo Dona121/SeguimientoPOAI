@@ -193,18 +193,13 @@ def pendientes(corte):
       confiable, en 20 recursos no es la fuente correcta);
     - rubros sin concepto CUIPO valido;
     - recursos que no estan en SIIFWEB y otros faltantes;
-    - BPIN con ejecucion sin formulacion PIIP (sin productos para distribuir);
     - centros de costo que van a la seccion por defecto (informativo).
     """
-    from siifweb.models import FormulacionProyecto
-
     derivador = Derivador(corte.vigencia)
     codigos_fuente = set(FuenteCUIPO.objects.values_list("codigo", flat=True))
     filas = list(filas_cuipo(corte).order_by("rubro", "recurso", "centro_costo", "proyecto"))
-    recursos, rubros, otros, por_defecto, sin_piip = {}, {}, {}, {}, {}
+    recursos, rubros, otros, por_defecto = {}, {}, {}, {}
     completas = 0
-    formulados = set(FormulacionProyecto.objects.filter(bpin__in={f.proyecto for f in filas})
-                     .values_list("bpin", flat=True))
     for f in filas:
         d = derivador.derivar(f)
         completas += d.completa
@@ -220,8 +215,6 @@ def pendientes(corte):
                 _sumar(otros, faltante, f)
         if d.origen_seccion == "por defecto":
             _sumar(por_defecto, f.centro_costo, f, nombre=f.nombre_centro_costo)
-        if f.proyecto != "0" and f.proyecto not in formulados:
-            _sumar(sin_piip, f.proyecto, f)
 
     def lista(grupos, nombre_clave):
         return [{nombre_clave: k, **v} for k, v in sorted(grupos.items())]
@@ -229,7 +222,7 @@ def pendientes(corte):
     return {
         "filas": len(filas), "completas": completas, "con_faltantes": len(filas) - completas,
         "recursos": lista(recursos, "recurso"), "rubros": lista(rubros, "rubro"),
-        "otros": lista(otros, "faltante"), "sin_piip": lista(sin_piip, "bpin"),
+        "otros": lista(otros, "faltante"),
         "por_defecto": lista(por_defecto, "centro_costo"),
     }
 

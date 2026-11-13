@@ -247,3 +247,27 @@ class EnElMenu(TestCase):
             usuario.groups.add(Group.objects.get(name=rol))
             self.assertFalse(item["permission"](type("Peticion", (), {"user": usuario})()))
 
+
+class ProductosPIIPEnLasFilas(TestCase):
+    """La lista de filas de ejecucion dice si el BPIN tiene productos en InfoGeneral."""
+
+    def test_columna_y_filtro(self):
+        listas_distribucion()
+        formular("202500000039332", "2201006")
+        corte = corte_con([fila(101, "2.3.2.02.02.009", 10, "3", "2", "202500000039332"),
+                           fila(101, "2.3.2.02.02.009", 20, "1", "2", "202600000099999"),
+                           fila(102, "2.3.7.05.03", 30, "128", "1", "0")])
+        self.client.force_login(User.objects.create_superuser("admin", "admin@example.com", "clave"))
+        url = reverse("admin:cuipo_filaejecuciongastos_changelist")
+
+        def bpines(**filtro):
+            r = self.client.get(url, {"corte__id__exact": corte.pk, **filtro})
+            return sorted(f.proyecto for f in r.context["cl"].result_list)
+
+        self.assertEqual(bpines(productos_piip="si"), ["202500000039332"])
+        self.assertEqual(bpines(productos_piip="no"), ["202600000099999"])
+        self.assertEqual(bpines(productos_piip="0"), ["0"])
+        html = self.client.get(url, {"corte__id__exact": corte.pk}).content.decode()
+        self.assertIn("Productos PIIP", html)
+        self.assertIn("No aplica", html)
+
