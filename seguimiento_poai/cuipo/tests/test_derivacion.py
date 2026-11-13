@@ -187,8 +187,10 @@ class Pendientes(TestCase):
     def test_la_pagina_abre_y_redirige_al_ultimo_corte(self):
         url = reverse("admin:cuipo_corte_pendientes", args=(self.corte.pk,))
         respuesta = self.client.get(url)
-        self.assertContains(respuesta, "Recursos sin homologación de fuente")
-        self.assertContains(respuesta, "2.3.3.05.09.054")
+        self.assertNotContains(respuesta, "Recursos sin homologación de fuente")   # se ve en Fuentes y Rubros
+        self.assertContains(respuesta, "Recursos sin fuente CUIPO en este corte: 2")
+        self.assertContains(respuesta, "Rubros sin concepto CUIPO en este corte: 1")
+        self.assertContains(respuesta, reverse("admin:siifweb_fuente_changelist") + "?homologado=no&en_corte=si")
         self.assertRedirects(self.client.get(reverse("admin:cuipo_pendientes")), url)
 
     def test_sin_corte_abre_el_ultimo_que_cierra_trimestre(self):
@@ -267,3 +269,42 @@ class AdminDeLasReglas(TestCase):
         codigos = [r["text"].split(" - ")[0] for r in respuesta.json()["results"]]
         self.assertIn("1.2.4.1.01", codigos)
         self.assertNotIn("1.2.1.0.00", codigos)
+
+
+class HomologadoEnFuentesYRubros(TestCase):
+    """Las listas de Fuentes y Rubros de SIIFWEB dicen si cada uno ya tiene su codigo CUIPO."""
+
+    def setUp(self):
+        listas()
+        self.client.force_login(User.objects.create_superuser("admin", "admin@example.com", "clave"))
+        self.corte = corte_con([fila(101, "2.3.2.02.02.009", 1000, "3", "2", "202500000039332"),
+                                fila(102, "2.3.3.05.09.054", 40, "108", "10", "202600000018441")],
+                               fecha_fin=date(2026, 9, 30))
+        homologar("3", "1.2.4.1.01")
+
+    def codigos(self, lista, **filtros):
+        respuesta = self.client.get(reverse(f"admin:siifweb_{lista}_changelist"), filtros)
+        self.assertEqual(respuesta.status_code, 200)
+        return sorted(o.codigo for o in respuesta.context["cl"].result_list)
+
+    def test_fuentes(self):
+        self.assertEqual(self.codigos("fuente", homologado="si"), ["3"])
+        self.assertEqual(self.codigos("fuente", homologado="no"), ["1", "108", "114", "7"])
+        self.assertEqual(self.codigos("fuente", homologado="no", en_corte="si"), ["108"])
+        self.assertContains(self.client.get(reverse("admin:siifweb_fuente_changelist")), "1.2.4.1.01 (2026)")
+
+    def test_la_homologacion_de_otra_vigencia_no_cuenta(self):
+        homologar("108", "1.3.3.3.20", vigencia=2025)
+        self.assertIn("108", self.codigos("fuente", homologado="no"))
+
+    def test_rubros(self):
+        # 2.3.3.05.09.054 existe pero no esta habilitado para departamentos
+        self.assertEqual(self.codigos("rubro", homologado="no", en_corte="si"), ["2.3.3.05.09.054"])
+        self.assertIn("2.3.2.02.02.009", self.codigos("rubro", homologado="si"))
+        HomologacionRubro.objects.create(rubro=Rubro.objects.get(codigo="2.3.3.05.09.054"),
+                                         concepto=ConceptoCUIPO.objects.get(codigo="2.3.3.05.09.099"))
+        self.assertEqual(self.codigos("rubro", homologado="no", en_corte="si"), [])
+        html = self.client.get(reverse("admin:siifweb_rubro_changelist")).content.decode()
+        self.assertIn("2.3.3.05.09.099 (homologación)", html)
+        self.assertIn("2.3.2.02.02.009 (mismo código)", html)
+

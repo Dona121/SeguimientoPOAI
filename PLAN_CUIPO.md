@@ -71,7 +71,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 537.
+  disco temporal). Hoy son 540.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.
@@ -693,8 +693,9 @@ a `0004`.
 2. Cargar los consolidados al día y, si hay uno nuevo, el exporte del PIIP.
 3. CUIPO → Cortes: cargar el corte 01/01–30/09/2026 (completo, 22 columnas).
 4. CUIPO → Pendientes: "Crear las reglas que falten" (las 14 del plan y las 62 homologaciones
-   de fuente del T3) y homologar los recursos que falten (110, 125, 130, 160, 166, 35 y 91 al
-   11/11).
+   de fuente del T3). Lo que falte homologar se ve en SIIFWEB → Fuentes y SIIFWEB → Rubros,
+   columna **Homologado**, con los filtros "Homologado (CUIPO): No" y "En el corte del CUIPO:
+   Con filas en el corte" (al 30/09: los recursos 35 y 125).
 5. Cortes: acción "Precargar la distribución del CUIPO".
 6. Seguimiento → Distribuciones por BPIN CUIPO → Distribuir: digitar, elegir cualitativos y
    validar. (El enlace está en el menú Seguimiento desde el 13/11, a pedido del usuario.)

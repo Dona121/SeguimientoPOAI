@@ -30,6 +30,22 @@ SITUACION_POR_DEFECTO = "C"
 TERCERO_POR_DEFECTO = "1"   # NO APLICA
 
 
+def corte_de_trabajo():
+    """El corte que se esta reportando: el mas reciente que cierra un trimestre (si no hay
+    ninguno, el ultimo procesado). None si no hay cortes procesados."""
+    from .models import CorteEjecucionGastos, periodo_de
+    procesados = list(CorteEjecucionGastos.objects.filter(estado=CorteEjecucionGastos.Estado.PROCESADO)
+                      .order_by("-vigencia", "-fecha_fin", "-fecha_descarga", "-pk"))
+    return next((c for c in procesados if periodo_de(c)), procesados[0] if procesados else None)
+
+
+def vigencia_de_trabajo():
+    """La vigencia de las homologaciones de fuente que se revisan: la del corte de trabajo."""
+    from django.utils import timezone
+    corte = corte_de_trabajo()
+    return corte.vigencia if corte else timezone.localdate().year
+
+
 def filas_cuipo(corte):
     """Las filas del corte que entran al CUIPO: arbol de la vigencia, inversion (2.3) y con
     RP, obligacion o pago. Una fila con solo apropiacion o CDP no entra."""

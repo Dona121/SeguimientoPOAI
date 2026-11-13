@@ -1309,19 +1309,103 @@ class TerceroAdmin(ModelAdmin):
         return obj.n
 
 
+class HomologadoCUIPO(admin.SimpleListFilter):
+    """Si el recurso o el rubro ya tiene su codigo CUIPO (anotacion homologado_cuipo)."""
+    title = "homologado (CUIPO)"
+    parameter_name = "homologado"
+
+    def lookups(self, request, model_admin):
+        return (("si", "Sí"), ("no", "No"))
+
+    def queryset(self, request, queryset):
+        if self.value() in ("si", "no"):
+            return queryset.filter(homologado_cuipo=self.value() == "si")
+        return queryset
+
+
+class EnElCorteCUIPO(admin.SimpleListFilter):
+    """Solo los que tienen filas en el corte que se esta reportando (inversion con valores)."""
+    title = "en el corte del CUIPO"
+    parameter_name = "en_corte"
+    campo = None          # "recurso" o "rubro" de la fila de ejecucion
+
+    def lookups(self, request, model_admin):
+        return (("si", "Con filas en el corte"), ("no", "Sin filas en el corte"))
+
+    def queryset(self, request, queryset):
+        if self.value() not in ("si", "no"):
+            return queryset
+        from cuipo.derivacion import corte_de_trabajo, filas_cuipo
+        corte = corte_de_trabajo()
+        codigos = filas_cuipo(corte).values(self.campo) if corte else []
+        return queryset.filter(codigo__in=codigos) if self.value() == "si" else queryset.exclude(codigo__in=codigos)
+
+
+class RecursoEnElCorte(EnElCorteCUIPO):
+    campo = "recurso"
+
+
+class RubroEnElCorte(EnElCorteCUIPO):
+    campo = "rubro"
+
+
 @admin.register(Rubro)
 class RubroAdmin(ModelAdmin):
+    """Con la columna Homologado (CUIPO): si el rubro tiene concepto CUIPO valido, por una
+    homologacion o por su mismo codigo (activo y habilitado para departamentos)."""
     compressed_fields = True
-    list_display = ("codigo", "nombre", "tipo")
-    list_filter = (("tipo", ChoicesDropdownFilter),)
+    list_display = ("codigo", "nombre", "tipo", "homologado", "concepto_cuipo")
+    list_filter = (HomologadoCUIPO, RubroEnElCorte, ("tipo", ChoicesDropdownFilter))
     search_fields = ("codigo", "nombre")
+
+    def get_queryset(self, request):
+        from cuipo.models import ConceptoCUIPO, HomologacionRubro
+        valido = {"activo": True, "habilitado_departamentos": True}
+        excepcion = HomologacionRubro.objects.filter(rubro=OuterRef("pk"), **{f"concepto__{k}": v for k, v in valido.items()})
+        mismo = ConceptoCUIPO.objects.filter(codigo=OuterRef("codigo"), **valido)
+        return super().get_queryset(request).annotate(
+            homologado_cuipo=Exists(excepcion) | Exists(mismo),
+            por_excepcion=Subquery(HomologacionRubro.objects.filter(rubro=OuterRef("pk")).values("concepto__codigo")[:1]),
+            por_mismo=Exists(mismo))
+
+    @display(description="Homologado", boolean=True, ordering="homologado_cuipo")
+    def homologado(self, obj):
+        return obj.homologado_cuipo
+
+    @display(description="Concepto CUIPO")
+    def concepto_cuipo(self, obj):
+        if obj.por_excepcion:
+            return f"{obj.por_excepcion} (homologación)"
+        return f"{obj.codigo} (mismo código)" if obj.por_mismo else "—"
 
 
 @admin.register(Fuente)
 class FuenteAdmin(ModelAdmin):
+    """Con la columna Homologado (CUIPO): si el recurso tiene fuente CUIPO para la vigencia que
+    se esta reportando (la del ultimo corte que cierra trimestre)."""
     compressed_fields = True
-    list_display = ("codigo", "nombre")
+    list_display = ("codigo", "nombre", "homologado", "fuente_cuipo")
+    list_filter = (HomologadoCUIPO, RecursoEnElCorte)
     search_fields = ("codigo", "nombre")
+
+    def get_queryset(self, request):
+        from cuipo.derivacion import vigencia_de_trabajo
+        from cuipo.models import HomologacionFuente
+        homologacion = HomologacionFuente.objects.filter(fuente_siifweb=OuterRef("pk"), vigencia=vigencia_de_trabajo())
+        return super().get_queryset(request).annotate(
+            homologado_cuipo=Exists(homologacion),
+            fuente_cuipo_codigo=Subquery(homologacion.values("fuente_cuipo__codigo")[:1]))
+
+    @display(description="Homologado", boolean=True, ordering="homologado_cuipo")
+    def homologado(self, obj):
+        return obj.homologado_cuipo
+
+    @display(description="Fuente CUIPO")
+    def fuente_cuipo(self, obj):
+        if not obj.fuente_cuipo_codigo:
+            return "—"
+        from cuipo.derivacion import vigencia_de_trabajo
+        return f"{obj.fuente_cuipo_codigo} ({vigencia_de_trabajo()})"
 
 
 @admin.register(CentroCosto)

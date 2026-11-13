@@ -67,32 +67,13 @@ CorteEjecucionGastosAdmin.pendientes y los datos salen de cuipo.derivacion.pendi
   </section>
 
   <section class="caja">
-    <h2><span>Recursos sin homologación de fuente ({{ corte.vigencia }})</span>
-      <a class="enlace" href="{% url 'admin:cuipo_homologacionfuente_add' %}?vigencia={{ corte.vigencia }}">Agregar homologación</a></h2>
-    {% if p.recursos %}
-    <p class="nota">La pista es el código que trae el nombre del recurso cuando existe en las fuentes CUIPO. No es confiable: en varios recursos no es la fuente correcta.</p>
-    <table>
-      <tr><th>Recurso</th><th>Nombre</th><th>Pista</th><th class="num">Filas</th><th class="num">RP</th></tr>
-      {% for r in p.recursos %}
-      <tr><td>{{ r.recurso }}</td><td>{{ r.nombre }}</td><td>{{ r.pista|default:"—" }}</td>
-          <td class="num">{{ r.filas }}</td><td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
-      {% endfor %}
-    </table>
-    {% else %}<p class="vacio">Todos los recursos del corte tienen homologación.</p>{% endif %}
-  </section>
-
-  <section class="caja">
-    <h2><span>Rubros sin concepto CUIPO válido</span>
-      <a class="enlace" href="{% url 'admin:cuipo_homologacionrubro_add' %}">Agregar homologación de rubro</a></h2>
-    {% if p.rubros %}
-    <table>
-      <tr><th>Rubro</th><th>Nombre</th><th>Motivo</th><th class="num">Filas</th><th class="num">RP</th></tr>
-      {% for r in p.rubros %}
-      <tr><td>{{ r.rubro }}</td><td>{{ r.nombre }}</td><td>{{ r.motivo }}</td>
-          <td class="num">{{ r.filas }}</td><td class="num">{{ r.rp|floatformat:0|intcomma }}</td></tr>
-      {% endfor %}
-    </table>
-    {% else %}<p class="vacio">Todos los rubros del corte tienen concepto.</p>{% endif %}
+    <h2><span>Homologaciones</span></h2>
+    <p class="nota">Lo que falta homologar se revisa en las listas de SIIFWEB, con la columna Homologado y los filtros
+      "Homologado (CUIPO): No" y "En el corte del CUIPO: Con filas en el corte".</p>
+    <p class="vacio">
+      <a class="enlace" href="{% url 'admin:siifweb_fuente_changelist' %}?homologado=no&en_corte=si">Recursos sin fuente CUIPO en este corte: {{ p.recursos|length }}</a>
+      · <a class="enlace" href="{% url 'admin:siifweb_rubro_changelist' %}?homologado=no&en_corte=si">Rubros sin concepto CUIPO en este corte: {{ p.rubros|length }}</a>
+    </p>
   </section>
 
   {% if p.otros %}

@@ -94,9 +94,7 @@ class CorteEjecucionGastosAdmin(ModelAdmin):
         si no hay ninguno, del ultimo procesado."""
         if not self.has_view_permission(request):
             raise PermissionDenied
-        procesados = list(CorteEjecucionGastos.objects.filter(estado=CorteEjecucionGastos.Estado.PROCESADO)
-                          .order_by("-vigencia", "-fecha_fin", "-fecha_descarga", "-pk"))
-        corte = next((c for c in procesados if derivacion_periodo(c)), procesados[0] if procesados else None)
+        corte = derivacion.corte_de_trabajo()
         if corte is None:
             self.message_user(request, "No hay cortes de ejecución procesados.", messages.WARNING)
             return redirect("admin:cuipo_corteejecuciongastos_changelist")

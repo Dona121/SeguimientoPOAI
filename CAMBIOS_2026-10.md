@@ -617,4 +617,10 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
 - El enlace CUIPO -> Pendientes abre el corte mas reciente que cierra un trimestre (el que se
   distribuye), no el de fecha de fin mas reciente.
 
-**Pruebas.** 537, todas pasan (146 del CUIPO).
+- Pendientes ya no lista los recursos sin fuente CUIPO ni los rubros sin concepto: solo los
+  cuenta y enlaza a las listas de **Fuentes** y **Rubros** de SIIFWEB, que ahora traen la columna
+  **Homologado** (si/no), la fuente o el concepto CUIPO, y los filtros "Homologado (CUIPO)" y
+  "En el corte del CUIPO". La fuente cuenta como homologada si lo esta para la vigencia del corte
+  que se reporta; el rubro, si tiene concepto valido por homologacion o por su mismo codigo.
+
+**Pruebas.** 540, todas pasan (149 del CUIPO).
