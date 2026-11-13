@@ -173,6 +173,9 @@ class Proyecto(Fechas):
         if self.bpin:
             self.bpin = str(self.bpin).strip().removesuffix(".0")
         super().save(*args, **kwargs)
+        # La formulacion del PIIP que llego antes que el proyecto a SIIFWEB queda enlazada
+        if self.bpin:
+            FormulacionProyecto.objects.filter(bpin=self.bpin, proyecto__isnull=True).update(proyecto=self)
 
     def __str__(self):
         return f"{self.bpin} - {self.nombre or ''}"
@@ -1324,11 +1327,14 @@ class IndicadorCatalogo(Fechas):
 class FormulacionProyecto(Fechas):
     """Lo que el proyecto formulo en PIIP: datos generales e indicadores con sus metas.
 
-    Solo para proyectos que tambien estan en SIIFWEB: sin ejecucion no hay como seguirle
-    la traza presupuestal.
+    Se carga para todos los BPIN del PIIP. El enlace al proyecto de SIIFWEB se hace por el
+    BPIN cuando el proyecto existe; si llega despues, se enlaza al crearse (Proyecto.save).
+    Asi se ve que esta en el PIIP y no en SIIFWEB.
     """
-    proyecto = models.OneToOneField(Proyecto, on_delete=models.CASCADE, related_name="formulacion",
-                                    verbose_name="Proyecto")
+    bpin = models.CharField(max_length=25, unique=True, verbose_name="BPIN")
+    nombre = models.TextField(blank=True, default="", verbose_name="Nombre del proyecto (PIIP)")
+    proyecto = models.OneToOneField(Proyecto, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="formulacion", verbose_name="Proyecto de SIIFWEB")
     reporte = models.ForeignKey(CargaReporte, on_delete=models.PROTECT, null=True, blank=True,
                                 related_name="formulaciones", verbose_name="Carga")
     archivo_ficha = models.CharField(max_length=255, blank=True, verbose_name="Ficha del PIIP",
@@ -1349,10 +1355,10 @@ class FormulacionProyecto(Fechas):
     class Meta:
         verbose_name = "Formulación del proyecto (PIIP)"
         verbose_name_plural = "Formulación de los proyectos (PIIP)"
-        ordering = ("proyecto__bpin",)
+        ordering = ("bpin",)
 
     def __str__(self):
-        return f"Formulación de {self.proyecto}"
+        return f"Formulación de {self.bpin} - {self.nombre}"
 
 
 class IndicadorProyecto(Fechas):
@@ -1389,7 +1395,7 @@ class IndicadorProyecto(Fechas):
                                                name="indicador_unico_por_formulacion")]
 
     def __str__(self):
-        return f"{self.formulacion.proyecto.bpin} - {self.indicador.codigo}"
+        return f"{self.formulacion.bpin} - {self.indicador.codigo}"
 
     @property
     def producto(self):

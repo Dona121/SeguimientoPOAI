@@ -23,8 +23,12 @@ Dos restricciones definieron el diseño:
   llevarlo a la Asamblea. Los proyectos, en cambio, se formulan con el catálogo MGA
   completo. Por eso los productos e indicadores de los proyectos van en un catálogo aparte
   (el **Catálogo PIIP**) y cada indicador se vincula (homologa) con uno del plan.
-- **Solo proyectos con ejecución en SIIFWEB.** Un BPIN que está en el PIIP pero no tiene
-  documentos en SIIFWEB no tiene trazabilidad presupuestal, así que no se carga.
+- **Todos los proyectos del PIIP, con semáforo de SIIFWEB** (cambio del 13 de noviembre;
+  antes solo entraban los BPIN con documentos en SIIFWEB). La formulación guarda su propio
+  BPIN y el nombre del PIIP, y se enlaza con el `Proyecto` de SIIFWEB del mismo BPIN si
+  existe. Si el proyecto llega después a SIIFWEB, se enlaza solo al crearse. La lista de
+  formulaciones muestra en verde los BPIN con documentos en SIIFWEB y en rojo los que
+  están solo en el PIIP.
 
 ## 2. Modelos
 
@@ -34,7 +38,7 @@ Dos restricciones definieron el diseño:
 |---|---|---|
 | `ProductoCatalogo` | Producto MGA con que se formuló algún proyecto: código, nombre y "medido a través de" (UMP). De él cuelga el objetivo específico. | `codigo` único |
 | `IndicadorCatalogo` | Indicador de producto con que se formuló algún proyecto: código, nombre, unidad de medida del catálogo MGA, su producto y **su indicador del plan** (`indicador_pdd`), con `homologado_por_codigo` y `observacion`. | `codigo` único |
-| `FormulacionProyecto` | La ficha PIIP de un proyecto: sector y programa (texto, como los trae el PIIP), vigencias de inicio y fin, objetivo general, problema, descripción, poblaciones, municipios, archivo de la ficha y la carga que la dejó. | uno a uno con `Proyecto` |
+| `FormulacionProyecto` | La ficha PIIP de un proyecto: BPIN y nombre (del PIIP), sector y programa (texto, como los trae el PIIP), vigencias de inicio y fin, objetivo general, problema, descripción, poblaciones, municipios, archivo de la ficha y la carga que la dejó. | `bpin` único; uno a uno con `Proyecto`, opcional |
 | `IndicadorProyecto` | Un indicador del proyecto: indicador del catálogo, objetivo específico, etapa, UMI (texto), tipo, acumula, meta total. El producto **no se guarda aquí**: sale de `indicador.producto`. | (`formulacion`, `indicador`) único |
 | `MetaVigenciaIndicador` | Meta de un indicador del proyecto en una vigencia. | (`indicador_proyecto`, `vigencia`) único |
 | `Departamento` | Nombre y región. Hoy: Sucre (Caribe) y los que se agreguen por proyectos de fuera. | `nombre` único |
@@ -72,7 +76,7 @@ nombres, no metas.
 
 | Si se borra… | Efecto |
 |---|---|
-| Un `Proyecto` | Se borra su formulación, con sus indicadores y metas (CASCADE). |
+| Un `Proyecto` | Su formulación queda sin enlace a SIIFWEB (SET_NULL); no se borra. |
 | Una `FormulacionProyecto` | Se borran sus indicadores y metas. El catálogo no se toca. |
 | Un `IndicadorCatalogo` usado por algún proyecto | **No se deja** (PROTECT). |
 | Un `ProductoCatalogo` con indicadores | **No se deja** (PROTECT). |
@@ -112,13 +116,13 @@ Toda la carga corre en **una transacción**: si algo falla, no queda nada a medi
 carga queda "Con error" y el mensaje dice por qué.
 
 1. **Lee la tabla `InfoGeneral`** por su nombre, en la hoja que esté. Si falta la tabla o
-   alguna de sus 27 columnas, la carga se detiene con el nombre de lo que falta.
+   alguna de sus 28 columnas, la carga se detiene con el nombre de lo que falta.
 2. **Agrupa por BPIN.** Las filas sin BPIN se ignoran.
-3. **Filtra los proyectos:** solo sigue el BPIN que existe como `Proyecto` y tiene al
-   menos un CDP, RP, obligación, reserva o contrato en SIIFWEB. Los demás se cuentan y
-   se listan (los primeros 20) en el mensaje.
-4. **Reemplaza la formulación** de cada BPIN que pasa: actualiza o crea su
-   `FormulacionProyecto` con los datos generales, le pone sus municipios y borra sus
+3. **Enlaza con SIIFWEB:** cada BPIN se enlaza con el `Proyecto` del mismo BPIN si
+   existe. Los que no tienen ningún CDP, RP, obligación, reserva o contrato en SIIFWEB se
+   cuentan y se listan (los primeros 20) en el mensaje, pero entran igual.
+4. **Reemplaza la formulación** de cada BPIN: actualiza o crea su `FormulacionProyecto`
+   (por BPIN) con el nombre y los datos generales, le pone sus municipios y borra sus
    indicadores y metas anteriores. Los BPIN que no vienen en el archivo conservan la
    formulación que tenían.
 5. **Municipios:** la lista del PIIP se parte por comas, reconociendo primero los nombres
@@ -146,9 +150,9 @@ carga queda "Con error" y el mensaje dice por qué.
 
 | Validación | Qué pasa si falla |
 |---|---|
-| El libro trae la tabla `InfoGeneral` con sus 27 columnas | La carga se detiene con error. |
+| El libro trae la tabla `InfoGeneral` con sus 28 columnas | La carga se detiene con error. |
 | El mismo archivo ya se cargó como PIIP | El formulario lo rechaza (el mismo archivo sí se puede cargar como SECOP). |
-| El BPIN tiene ejecución en SIIFWEB | No se carga; se lista en el mensaje. |
+| El BPIN tiene documentos en SIIFWEB | Si no, entra igual, en rojo en la lista; se lista en el mensaje. |
 | El código del indicador está en el catálogo PIIP | Si no, se crea y se avisa. |
 | El código del producto está en el catálogo PIIP (solo al crear un indicador) | Si no, se crea y se avisa. |
 | El municipio existe en el admin | Si no, no se asocia y se avisa. |
@@ -180,7 +184,7 @@ carga queda "Con error" y el mensaje dice por qué.
 |---|---|
 | Catálogo PIIP → Productos | Agregar, editar y borrar (los que no tienen indicadores). |
 | Catálogo PIIP → Indicadores | Agregar, editar y borrar (los que no usa ningún proyecto). Elegir su **indicador del plan** y la observación. Ver la línea del plan (sector, programa, producto e indicador). |
-| Catálogo PIIP → Formulación de proyectos | Solo consulta: la llena la carga. Se puede borrar una formulación; la siguiente carga la vuelve a crear si el BPIN viene en el archivo. |
+| Catálogo PIIP → Formulación de proyectos | Solo consulta: la llena la carga. Columna **BPIN en SIIFWEB** con semáforo (verde: tiene documentos en SIIFWEB; rojo: solo está en el PIIP), filtros "En SIIFWEB" e indicador, y búsqueda por BPIN, nombre, programa o código de indicador. Se puede borrar una formulación; la siguiente carga la vuelve a crear si el BPIN viene en el archivo. |
 | Configuración → Departamentos y Municipios | Agregar, editar y borrar. El nombre del municipio debe ser como lo escribe el PIIP (sin importar tildes ni mayúsculas). |
 | Configuración → Cargas del reporte | Subir y procesar el libro como "Información general PIIP". |
 

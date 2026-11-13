@@ -77,8 +77,10 @@ El flujo es:
   `related_name="formulacion"`) → `IndicadorProyecto` (`formulacion.indicadores`) →
   `IndicadorCatalogo` (`related_name="en_proyectos"` desde `IndicadorProyecto`) →
   `ProductoCatalogo` (código de 7 dígitos). Los productos de un BPIN:
-  `ProductoCatalogo.objects.filter(indicadores__en_proyectos__formulacion__proyecto__bpin=bpin).distinct()`.
-  Se llenan con la carga "Información general PIIP" (tabla `InfoGeneral`).
+  `ProductoCatalogo.objects.filter(indicadores__en_proyectos__formulacion__bpin=bpin).distinct()`.
+  Se llenan con la carga "Información general PIIP" (tabla `InfoGeneral`). Entran todos
+  los BPIN del PIIP; la formulación se enlaza con el `Proyecto` de SIIFWEB del mismo BPIN,
+  también si este llega después (rama `piip-control-siifweb`).
 - **Reservas:** `Reserva` + `ReservaImputacion` (`valor_reserva_def`, `obligaciones_reserva`,
   `pagos_reserva`, `saldo_reserva`). No tienen centro de costo y cada carga sobrescribe la
   vigencia.
@@ -466,8 +468,10 @@ La fila del recurso 159 se registró después del 30/09: no estará en el corte 
    "Según PIIP", con qué columnas y para qué vigencia?
 5. **Inversión sin BPIN.** En 2026 hay 63 filas de 2.3 con proyecto 0 (173.848 M de RP):
    ¿van al CUIPO, con qué BPIN y con qué producto (¿0 - NO APLICA?)?
-6. **BPIN sin formulación PIIP** (9 de 128 en 2026): ¿se asignan productos a mano sin
-   validar que pertenezcan al BPIN?
+6. **BPIN con ejecución sin formulación PIIP.** Con los consolidados al 11/11/2026, los
+   101 BPIN de 2.3 con ejecución tienen formulación; quedan 5 sin ella, todos en cero. Si
+   aparece alguno con ejecución, ¿se asignan productos a mano sin validar que pertenezcan
+   al BPIN?
 7. **Reservas (vigencia de gasto 2).** ¿SIIFWEB tiene un reporte de ejecución de reservas
    por centro de costo y fondo? El consolidado de reservas no trae centro de costo.
 8. **Filas del árbol de otra vigencia** (2023: 27 filas, 22 con BPIN, obligación 16.890 M):

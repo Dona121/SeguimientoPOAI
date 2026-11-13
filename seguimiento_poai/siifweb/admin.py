@@ -8,7 +8,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import (Case, Count, DateField, DecimalField, F, IntegerField, OuterRef,
+from django.db.models import (Case, Count, DateField, DecimalField, Exists, F, IntegerField, OuterRef,
                               Prefetch, Q, Subquery, Sum, Value, When)
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.template.response import TemplateResponse
@@ -2653,31 +2653,65 @@ class IndicadorProyectoInline(ImputacionInline):
                 .select_related("indicador__producto", "indicador__indicador_pdd").prefetch_related("metas"))
 
 
+def en_siifweb():
+    """El BPIN tiene algun documento en SIIFWEB: CDP, RP, obligacion, reserva o contrato."""
+    expresion = None
+    for modelo in (CdpImputacion, CompromisoImputacion, ObligacionImputacion, ReservaImputacion,
+                   ContratoImputacion):
+        existe = Exists(modelo.objects.filter(proyecto_id=OuterRef("proyecto_id")))
+        expresion = existe if expresion is None else expresion | existe
+    return expresion
+
+
+class EnSiifweb(admin.SimpleListFilter):
+    title = "en SIIFWEB"
+    parameter_name = "en_siifweb"
+
+    def lookups(self, request, model_admin):
+        return (("si", "Está en SIIFWEB"), ("no", "Solo en PIIP"))
+
+    def queryset(self, request, queryset):
+        if self.value() in ("si", "no"):
+            return queryset.filter(en_siifweb=self.value() == "si")
+        return queryset
+
+
 @admin.register(FormulacionProyecto)
 class FormulacionProyectoAdmin(SoloLectura):
-    """Lo que cada proyecto formulo en PIIP. Se llena con la carga "Informacion general PIIP"."""
-    list_display = ("bpin", "nombre_proyecto", "programa", "vigencia_inicio", "vigencia_fin", "n_indicadores")
-    list_filter = ("sector", "vigencia_inicio", "vigencia_fin")
-    list_select_related = ("proyecto",)
-    search_fields = ("proyecto__bpin", "proyecto__nombre", "programa")
+    """Lo que cada proyecto formulo en PIIP. Se llena con la carga "Informacion general PIIP".
+
+    Entran todos los BPIN del PIIP; el semaforo dice cuales tienen documentos en SIIFWEB.
+    """
+    list_display = ("bpin", "nombre_proyecto", "bpin_siifweb", "programa", "vigencia_inicio", "vigencia_fin",
+                    "n_indicadores")
+    list_filter = (EnSiifweb, ("indicadores__indicador", RelatedDropdownFilter), "sector",
+                   "vigencia_inicio", "vigencia_fin")
+    list_filter_submit = True
+    search_fields = ("bpin", "nombre", "programa", "indicadores__indicador__codigo")
     inlines = (IndicadorProyectoInline,)
     fieldsets = (
-        (None, {"fields": ("proyecto", "sector", "programa", "vigencia_inicio", "vigencia_fin", "municipios",
-                           "poblacion_afectada", "poblacion_objetivo")}),
+        (None, {"fields": ("bpin", "nombre", "proyecto", "sector", "programa", "vigencia_inicio", "vigencia_fin",
+                           "municipios", "poblacion_afectada", "poblacion_objetivo")}),
         ("Formulación", {"fields": ("objetivo_general", "problema", "descripcion")}),
         ("Origen", {"fields": ("archivo_ficha", "reporte")}),
     )
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(n=Count("indicadores", distinct=True))
+        return super().get_queryset(request).annotate(n=Count("indicadores", distinct=True),
+                                                      en_siifweb=en_siifweb())
 
-    @display(description="BPIN", ordering="proyecto__bpin")
-    def bpin(self, obj):
-        return obj.proyecto.bpin
+    def get_search_results(self, request, queryset, search_term):
+        # Buscar por codigo de indicador cruza una relacion de muchos: sin distinct repite filas
+        resultados, _ = super().get_search_results(request, queryset, search_term)
+        return resultados.distinct(), False
 
-    @display(description="Proyecto", ordering="proyecto__nombre")
+    @display(description="Proyecto", ordering="nombre")
     def nombre_proyecto(self, obj):
-        return corto(obj.proyecto.nombre)
+        return corto(obj.nombre)
+
+    @display(description="BPIN en SIIFWEB", ordering="en_siifweb", label={"si": "success", "no": "danger"})
+    def bpin_siifweb(self, obj):
+        return ("si", obj.bpin) if obj.en_siifweb else ("no", "No está")
 
     @display(description="Indicadores", ordering="n")
     def n_indicadores(self, obj):

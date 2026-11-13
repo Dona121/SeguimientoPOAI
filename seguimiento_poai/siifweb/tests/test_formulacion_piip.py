@@ -27,6 +27,7 @@ FUERA_DEL_PLAN = "170201200"  # no esta en el plan: se homologa a mano
 FILA = {
     "NombreArchivo": "Reporte Ficha actualizada del proyecto_12112026164549.xlsx",
     "BPIN": "202500000000001",
+    "NombreProyecto": "Atención integral a la población con discapacidad",
     "SectorProyecto": "Inclusión social y reconciliación",
     "Programa": "4104 - Atención integral de población en situación permanente de desprotección social y/o familiar",
     "Inicio": "2025", "Fin": "2026",
@@ -113,12 +114,22 @@ class CargaPIIP(TestCase):
         self.assertEqual(list(i.metas.values_list("vigencia", "meta")),
                          [(2025, Decimal("100")), (2026, Decimal("200"))])
 
-    def test_solo_entran_los_bpin_con_documentos_en_siifweb(self):
-        proyecto(bpin="202500000000002", nombre="Sin ejecucion")   # en la base, sin documentos
+    def test_entran_todos_los_bpin_y_se_enlazan_los_que_estan_en_la_base(self):
+        sin_documentos = proyecto(bpin="202500000000002", nombre="Sin ejecucion")
         carga = carga_piip([fila(), fila(BPIN="202500000000002"), fila(BPIN="202500000000003")])
-        self.assertEqual(list(FormulacionProyecto.objects.values_list("proyecto__bpin", flat=True)),
-                         ["202500000000001"])
-        self.assertIn("2 BPIN sin ejecucion en SIIFWEB", carga.mensaje)
+        self.assertEqual(dict(FormulacionProyecto.objects.values_list("bpin", "proyecto")),
+                         {"202500000000001": self.proy.pk, "202500000000002": sin_documentos.pk,
+                          "202500000000003": None})
+        self.assertEqual(FormulacionProyecto.objects.get(bpin="202500000000003").nombre,
+                         "Atención integral a la población con discapacidad")
+        self.assertIn("3 proyectos (1 con documentos en SIIFWEB)", carga.mensaje)
+        self.assertIn("2 BPIN del PIIP sin documentos en SIIFWEB", carga.mensaje)
+
+    def test_el_proyecto_que_llega_despues_a_siifweb_se_enlaza_solo(self):
+        carga_piip([fila(BPIN="202500000000003")])
+        nuevo = proyecto(bpin="202500000000003", nombre="Llega con un CDP")
+        self.assertEqual(FormulacionProyecto.objects.get(bpin="202500000000003").proyecto, nuevo)
+        self.assertEqual(nuevo.formulacion.indicadores.count(), 1)
 
     def test_volver_a_cargar_reemplaza_la_formulacion_del_bpin(self):
         carga_piip([fila(), fila(Vigencia="2026", MetaVigencia="200")])
@@ -370,3 +381,47 @@ class LaCargaNoTocaLaHomologacion(TestCase):
         i = IndicadorCatalogo.objects.get(codigo=FUERA_DEL_PLAN)
         self.assertEqual((i.indicador_pdd, i.observacion), (del_plan, "Mide lo mismo"))
         self.assertEqual(IndicadorProyecto.objects.get(formulacion__proyecto=proy).indicador.indicador_pdd, del_plan)
+
+
+class ControlDeLaFormulacion(TestCase):
+    """La lista de formulaciones: semaforo de SIIFWEB y filtros."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser("admin", "a@b.co", "clave"))
+        self.proy = proyecto()
+        cadena(self.proy)
+        proyecto(bpin="202500000000002", nombre="Sin documentos")
+        carga_piip([fila(), fila(BPIN="202500000000002", CodigoIndicador=FUERA_DEL_PLAN, CodigoProducto="1702012"),
+                    fila(BPIN="202500000000003")])
+        self.url = reverse("admin:siifweb_formulacionproyecto_changelist")
+
+    def filas(self, **parametros):
+        respuesta = self.client.get(self.url, parametros)
+        self.assertEqual(respuesta.status_code, 200)
+        return list(respuesta.context["cl"].result_list)
+
+    def test_semaforo_verde_si_tiene_documentos_en_siifweb_y_rojo_si_no(self):
+        estado = {f.bpin: f.en_siifweb for f in self.filas()}
+        self.assertEqual(estado, {"202500000000001": True, "202500000000002": False, "202500000000003": False})
+        html = self.client.get(self.url).content.decode()
+        self.assertIn("No está", html)
+        self.assertIn("BPIN en SIIFWEB", html)
+
+    def test_filtro_por_si_esta_en_siifweb(self):
+        self.assertEqual([f.bpin for f in self.filas(en_siifweb="si")], ["202500000000001"])
+        self.assertEqual([f.bpin for f in self.filas(en_siifweb="no")], ["202500000000002", "202500000000003"])
+
+    def test_filtro_por_indicador(self):
+        indicador = IndicadorCatalogo.objects.get(codigo=FUERA_DEL_PLAN)
+        self.assertEqual([f.bpin for f in self.filas(indicadores__indicador__id__exact=indicador.pk)],
+                         ["202500000000002"])
+
+    def test_buscar_por_codigo_de_indicador_no_repite_filas(self):
+        carga_piip([fila(), fila(CodigoIndicador=FUERA_DEL_PLAN, CodigoProducto="1702012")])
+        self.assertEqual(sorted(f.bpin for f in self.filas(q=HOMOLOGADO)), ["202500000000001", "202500000000003"])
+
+    def test_la_ficha_de_la_formulacion_abre(self):
+        f = FormulacionProyecto.objects.get(bpin="202500000000003")
+        url = reverse("admin:siifweb_formulacionproyecto_change", args=(f.pk,))
+        self.assertEqual(self.client.get(url).status_code, 200)
+

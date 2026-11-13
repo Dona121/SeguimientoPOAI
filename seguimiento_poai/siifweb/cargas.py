@@ -740,7 +740,7 @@ ORDEN_DE_CARGA = ["cdp", "compromisos", "obligaciones", "reservas",
 # ---------- informacion general de los proyectos en PIIP ----------
 
 COLUMNAS_PIIP = [
-    "NombreArchivo", "BPIN", "SectorProyecto", "Programa", "Inicio", "Fin", "ObjetivoGeneral",
+    "NombreArchivo", "BPIN", "NombreProyecto", "SectorProyecto", "Programa", "Inicio", "Fin", "ObjetivoGeneral",
     "Problema", "Descripcion", "PoblacionAfectada", "PoblacionObjetivo", "Región", "Departamento",
     "Municipios", "ObjetivoEspecifico", "CodigoProducto", "Producto", "Etapa", "UMP", "CodigoIndicador",
     "Indicador", "UMI", "TipoIndicador", "Acumula", "MetaTotalIndicador", "Vigencia", "MetaVigencia",
@@ -767,11 +767,8 @@ def si_no(valor):
 
 
 def bpines_con_ejecucion(bpines):
-    """Los proyectos de esos BPIN que tienen algun documento en SIIFWEB.
-
-    Sin CDP, RP, obligacion, reserva o contrato no hay como seguirle la traza
-    presupuestal, asi que la formulacion de PIIP no se carga para ellos.
-    """
+    """Los proyectos de esos BPIN que tienen algun documento en SIIFWEB: CDP, RP,
+    obligacion, reserva o contrato."""
     proyectos = dict(Proyecto.objects.filter(bpin__in=bpines).values_list("pk", "bpin"))
     con = set()
     for modelo in (CdpImputacion, CompromisoImputacion, ObligacionImputacion, ReservaImputacion,
@@ -868,9 +865,10 @@ def cargar_piip(carga):
     """Informacion general de los proyectos en PIIP: la tabla `InfoGeneral` del libro.
 
     Una fila por proyecto, objetivo especifico, producto, indicador y vigencia; los datos
-    del proyecto se repiten en sus filas. Solo entran los BPIN que tambien estan en
-    SIIFWEB con algun documento. Cada BPIN que trae el archivo reemplaza su formulacion
-    anterior; los que no trae quedan como estaban.
+    del proyecto se repiten en sus filas. Entran todos los BPIN; cada formulacion se enlaza
+    con el proyecto de SIIFWEB del mismo BPIN si existe (si llega despues, se enlaza al
+    crearse). Cada BPIN que trae el archivo reemplaza su formulacion anterior; los que no
+    trae quedan como estaban.
     """
     filas = leer_filas(stream(carga.archivo), tabla="InfoGeneral", columnas=COLUMNAS_PIIP)
     por_bpin = defaultdict(list)
@@ -878,19 +876,19 @@ def cargar_piip(carga):
         if texto(f["BPIN"]):
             por_bpin[texto(f["BPIN"])].append(f)
     con_ejecucion = bpines_con_ejecucion(list(por_bpin))
-    omitidos = sorted(set(por_bpin) - set(con_ejecucion))
+    sin_ejecucion = sorted(set(por_bpin) - set(con_ejecucion))
+    proyectos = {p.bpin: p for p in Proyecto.objects.filter(bpin__in=list(por_bpin))}
     cat = CatalogoPIIP()
 
     n_indicadores = n_metas = 0
     avisos = []
     usados = set()
     for bpin, grupo in sorted(por_bpin.items()):
-        if bpin not in con_ejecucion:
-            continue
         f = grupo[0]
         formulacion, _ = FormulacionProyecto.objects.update_or_create(
-            proyecto_id=con_ejecucion[bpin],
+            bpin=bpin,
             defaults={
+                "proyecto": proyectos.get(bpin), "nombre": texto(f["NombreProyecto"]),
                 "reporte": carga, "archivo_ficha": texto(f["NombreArchivo"])[:255],
                 "sector": texto(f["SectorProyecto"])[:255], "programa": texto(f["Programa"])[:255],
                 "vigencia_inicio": entero(f["Inicio"]), "vigencia_fin": entero(f["Fin"]),
@@ -941,14 +939,15 @@ def cargar_piip(carga):
 
     homologados = IndicadorCatalogo.homologar_por_codigo(usados)
 
-    partes = [f"{len(con_ejecucion)} proyectos, {n_indicadores} indicadores, {n_metas} metas por vigencia"]
+    partes = [f"{len(por_bpin)} proyectos ({len(con_ejecucion)} con documentos en SIIFWEB), "
+              f"{n_indicadores} indicadores, {n_metas} metas por vigencia"]
     if cat.creados:
         partes.append("no estaban en el catalogo y se crearon: " + cat.resumen_creados())
     if homologados:
         partes.append(f"{homologados} indicadores homologados por codigo con el plan")
-    if omitidos:
-        partes.append(f"{len(omitidos)} BPIN sin ejecucion en SIIFWEB, no se cargan: "
-                      f"{', '.join(omitidos[:20])}{' ...' if len(omitidos) > 20 else ''}")
+    if sin_ejecucion:
+        partes.append(f"{len(sin_ejecucion)} BPIN del PIIP sin documentos en SIIFWEB: "
+                      f"{', '.join(sin_ejecucion[:20])}{' ...' if len(sin_ejecucion) > 20 else ''}")
     if cat.municipios_sin_cruce:
         partes.append(f"municipios que no estan en el admin: {', '.join(sorted(cat.municipios_sin_cruce))}")
     if cat.departamentos_asignados:

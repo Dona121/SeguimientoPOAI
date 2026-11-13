@@ -441,3 +441,26 @@ noviembre (1.127.765.686.152,76) es el mismo del consolidado de compromisos de e
 
 **Pruebas.** 404, todas pasan (`cuipo/tests/test_ejecucion_gastos.py`, 17 nuevas).
 
+## 20. Formulacion PIIP de todos los BPIN, con semaforo de SIIFWEB (13 de noviembre)
+
+Rama `piip-control-siifweb`. Para controlar que proyectos del PIIP estan en SIIFWEB y
+cuales no:
+
+- `FormulacionProyecto` guarda su `bpin` (unico) y su `nombre` (columna `NombreProyecto`
+  de `InfoGeneral`, que ahora es obligatoria). El `proyecto` de SIIFWEB pasa a ser
+  opcional (`SET_NULL`).
+- La carga del PIIP crea la formulacion de **todos** los BPIN y la enlaza con el `Proyecto`
+  del mismo BPIN si existe. Antes solo entraban los que tenian documentos en SIIFWEB.
+- `Proyecto.save()` enlaza la formulacion que estaba esperando su BPIN: cuando un reporte de
+  SIIFWEB crea el proyecto, queda asociado sin volver a procesar el PIIP.
+- Lista de formulaciones: columna **BPIN en SIIFWEB** con semaforo (verde si el BPIN tiene
+  algun CDP, RP, obligacion, reserva o contrato; rojo "No esta" si solo esta en el PIIP),
+  filtro "En SIIFWEB", filtro por indicador y busqueda por codigo de indicador.
+- Migracion `0023`: agrega los campos y llena BPIN y nombre de las formulaciones existentes
+  desde su proyecto.
+
+**En la base local** (PIIP del 11/11 y consolidados al 11/11): 488 formulaciones, 368 en
+verde y 120 en rojo (10 de ellas enlazadas a un proyecto que existe sin documentos). La
+carga no creo indicadores nuevos; los indicadores usados sin homologar pasan de 18 a 27.
+
+**Pruebas.** 410, todas pasan (`test_formulacion_piip.py`, 6 nuevas).

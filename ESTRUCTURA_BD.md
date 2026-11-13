@@ -357,7 +357,7 @@ carga y validaciones) está en `CATALOGO_PIIP.md`.
 |---|---|---|
 | `ProductoCatalogo` | `codigo` | → `MedidoATravesDe` |
 | `IndicadorCatalogo` | `codigo` | → `ProductoCatalogo`, → `UnidadMedida`, → `IndicadorMGA` (homologación con el plan) |
-| `FormulacionProyecto` | uno a uno con `Proyecto` | → `CargaReporte`, ↔ `Municipio` |
+| `FormulacionProyecto` | `bpin` (del PIIP) | uno a uno con `Proyecto`, opcional (SET_NULL); → `CargaReporte`, ↔ `Municipio` |
 | `IndicadorProyecto` | (`formulacion`, `indicador`) | → `FormulacionProyecto`, → `IndicadorCatalogo` |
 | `MetaVigenciaIndicador` | (`indicador_proyecto`, `vigencia`) | → `IndicadorProyecto` |
 | `Departamento` | `nombre` | ← `Municipio.departamento` |
