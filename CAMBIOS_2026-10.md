@@ -614,4 +614,7 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   (`cuipo/semillas.py`, el comando `cargar_semillas_cuipo` y la carga del libro), porque es
   una carga de una sola vez.
 
-**Pruebas.** 536, todas pasan (145 del CUIPO).
+- El enlace CUIPO -> Pendientes abre el corte mas reciente que cierra un trimestre (el que se
+  distribuye), no el de fecha de fin mas reciente.
+
+**Pruebas.** 537, todas pasan (146 del CUIPO).

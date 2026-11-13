@@ -1,4 +1,5 @@
 """Homologaciones y reglas: de la fila de ejecucion a los codigos CHIP (fase 2 del CUIPO)."""
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -189,6 +190,14 @@ class Pendientes(TestCase):
         self.assertContains(respuesta, "Recursos sin homologación de fuente")
         self.assertContains(respuesta, "2.3.3.05.09.054")
         self.assertRedirects(self.client.get(reverse("admin:cuipo_pendientes")), url)
+
+    def test_sin_corte_abre_el_ultimo_que_cierra_trimestre(self):
+        """Con un corte al 11/11 y otro al 30/09, abre el del 30/09: es el que se distribuye."""
+        al_30 = corte_con([fila(101, "2.3.2.02.02.009", 5, "3", "2", "202500000039332")], fecha_fin=date(2026, 9, 30))
+        al_11 = corte_con([fila(101, "2.3.2.02.02.009", 7, "3", "2", "202500000039332")], fecha_fin=date(2026, 11, 11))
+        self.assertGreater(al_11.fecha_fin, al_30.fecha_fin)
+        self.assertRedirects(self.client.get(reverse("admin:cuipo_pendientes")),
+                             reverse("admin:cuipo_corte_pendientes", args=(al_30.pk,)))
 
     def test_crea_las_reglas_iniciales_sin_duplicar(self):
         for codigo in ("5", "25"):
