@@ -190,7 +190,16 @@ class ElegirCualitativos(Base):
         html = self.client.get(reverse("admin:cuipo_distribuir", args=(self.d.pk,))).content.decode()
         self.assertIn(f"campo=detalle_sectorial&linea={self.linea.pk}", html)
         self.assertIn("<b>0</b>", html)
-        self.assertIn('title="NO APLICA">NO APLICA</span>', html)
+        self.assertIn('<span class="desc">NO APLICA</span>', html)
+
+    def test_la_descripcion_elegida_se_ve_completa(self):
+        larga = "SPC - E4 ATENCIÓN PRIMARIA SALUD - L1 DESARROLLO INSTITUCIONAL Y SECTORIAL - DESARROLLO DE CAPACIDADES"
+        detalle = DetalleSectorial.objects.create(codigo="19.02.01", descripcion=larga,
+                                                  version=self.linea.detalle_sectorial.version)
+        LineaCUIPO.objects.filter(pk=self.linea.pk).update(detalle_sectorial=detalle)
+        html = self.client.get(reverse("admin:cuipo_distribuir", args=(self.d.pk,))).content.decode()
+        self.assertIn(f'<span class="desc">{larga}</span>', html)
+        self.assertNotIn("line-clamp", html)
 
     def test_la_ventana_lista_con_la_descripcion_completa(self):
         larga = "SPC - E4 ATENCIÓN PRIMARIA SALUD - L1 DESARROLLO INSTITUCIONAL Y SECTORIAL - DESARROLLO DE CAPACIDADES"
