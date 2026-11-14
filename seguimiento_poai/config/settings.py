@@ -139,7 +139,8 @@ AWS_S3_FILE_OVERWRITE = False
 
 STORAGES = {
     "default": {
-        "BACKEND": "storages.backends.s3.S3Storage",
+        # S3Storage con nombres de archivo en ASCII: Supabase rechaza las tildes y la ñ
+        "BACKEND": "siifweb.almacenamiento.S3NombresSeguros",
         "OPTIONS": {
             "bucket_name": AWS_STORAGE_BUCKET_NAME,
             # Sin prefijo: el modelo ya sube con upload_to="reportes/". El bucket
@@ -181,7 +182,7 @@ else:
 if sys.argv[1:2] == ["test"]:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
     STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "default": {"BACKEND": "siifweb.almacenamiento.ArchivosLocalesNombresSeguros"},
         # El manifiesto de WhiteNoise exige un collectstatic previo: en pruebas estorba
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }

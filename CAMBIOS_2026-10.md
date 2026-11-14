@@ -648,5 +648,13 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   el menu CUIPO. Los activos aparecen en la ficha de distribucion, en "Recursos para el
   diligenciamiento". El enlace `/admin/cuipo/distribucionbpin/recursos/<id>/` pide un link
   firmado nuevo al abrir; lo usa quien ve las distribuciones (solo activos) o los recursos.
+- **Nombres de archivo sin tildes en todas las cargas.** Supabase responde 400 (Bad Request) a
+  las llaves con tildes o enes: un recurso llamado "Guia de diligenciamiento" con tilde no se
+  podia guardar, y lo mismo pasaba con cualquier reporte, corte o lista CHIP. El almacenamiento
+  ahora es `siifweb.almacenamiento.S3NombresSeguros` (en pruebas,
+  `ArchivosLocalesNombresSeguros`), que limpia el nombre antes de guardar: sin tildes ni enes,
+  espacios y simbolos a "_" y la extension en minusculas ("Guia ano 2026.PDF" con tildes queda
+  "Guia_ano_2026.pdf"). Aplica a los FileField y a cualquier `save()` del almacenamiento. Los
+  archivos que ya estan en el bucket no cambian.
 
-**Pruebas.** 553, todas pasan (162 del CUIPO).
+**Pruebas.** 558, todas pasan (163 del CUIPO).

@@ -65,6 +65,12 @@ class Recursos(TestCase):
         self.client.force_login(usuario)
         self.assertEqual(self.client.get(reverse("admin:cuipo_recurso", args=(self.activo.pk,))).status_code, 403)
 
+    def test_el_nombre_del_archivo_queda_sin_tildes(self):
+        """Supabase rechaza (400) las llaves con tildes o enes."""
+        r = RecursoCUIPO.objects.create(descripcion="Guía", archivo=archivo("Guía año 2026 (v2).PDF"))
+        self.assertEqual(r.archivo.name, "cuipo/recursos/Guia_ano_2026_v2.pdf")
+        self.assertEqual(r.archivo.name.encode("ascii").decode(), r.archivo.name)
+
     def test_admin_de_recursos(self):
         self.client.force_login(User.objects.create_superuser("admin", "a@example.com", "clave"))
         lista = self.client.get(reverse("admin:cuipo_recursocuipo_changelist"))
