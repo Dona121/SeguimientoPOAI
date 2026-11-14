@@ -2,5 +2,5 @@
   {% if valor %}<b>{{ valor.codigo }}</b>{% if not valor.activo %} <span class="mal">(inactivo)</span>{% endif %}{% else %}<span class="mal">Falta</span>{% endif %}
   {% if origen %}<span class="origen {{ origen }}">{{ origen_texto }}</span>{% endif %}
   {% if editable %}<button type="button" class="elegir" hx-get="{{ u_elegir }}?campo={{ campo }}&linea={{ l.pk }}" hx-target="#elegir" hx-swap="innerHTML">Elegir</button>{% endif %}
-  {% if valor %}<span class="desc" title="{{ valor.descripcion }}">{{ valor.descripcion }}</span>{% endif %}
+  {% if valor %}<span class="desc">{{ valor.descripcion }}</span>{% endif %}
 </td>

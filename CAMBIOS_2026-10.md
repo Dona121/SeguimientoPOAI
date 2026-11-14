@@ -657,4 +657,8 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   "Guia_ano_2026.pdf"). Aplica a los FileField y a cualquier `save()` del almacenamiento. Los
   archivos que ya estan en el bucket no cambian.
 
+- En la ficha de distribucion, la descripcion de lo elegido en CPC, detalle sectorial, tercero
+  y politica publica se ve completa (antes se cortaba en dos lineas y el resto solo salia al
+  pasar el cursor).
+
 **Pruebas.** 558, todas pasan (163 del CUIPO).

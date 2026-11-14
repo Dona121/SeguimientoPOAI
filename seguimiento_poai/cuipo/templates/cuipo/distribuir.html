@@ -63,10 +63,10 @@ actualizan fuera de banda. Vistas en DistribucionBPINAdmin; logica en cuipo/dist
                 background:var(--color-base-100); color:var(--color-base-600); margin-left:.25rem; }
   .ds .origen.manual { background:#e8f0fe; color:#1a56db; }
   .ds .origen.antecedente { background:#f3e8ff; color:#7e22ce; }
-  /* Descripciones largas: dos lineas y el texto completo al pasar el cursor */
-  .ds .desc { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-              font-size:.7rem; line-height:1.25; color:var(--color-base-500); max-width:15rem; white-space:normal; }
-  .ds td.cual { min-width:11rem; }
+  /* Descripcion completa de lo elegido (CPC, detalle sectorial, tercero, politica publica), sin recortar */
+  .ds .desc { display:block; margin-top:.15rem; font-size:.72rem; line-height:1.3; color:var(--color-base-600);
+              max-width:20rem; white-space:normal; overflow-wrap:anywhere; }
+  .ds td.cual { min-width:14rem; vertical-align:top; }
   /* Nombre completo, sin recortar */
   .ds .completo { white-space:normal; line-height:1.3; }
   .ds td.producto { min-width:18rem; max-width:26rem; white-space:normal; line-height:1.3; }
