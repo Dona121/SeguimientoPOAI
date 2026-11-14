@@ -541,6 +541,9 @@ UNFOLD = {
                     {"title": "Versiones de las listas CHIP", "icon": "upload_file",
                      "link": reverse_lazy("admin:cuipo_versionlistas_changelist"),
                      "permission": _con_permiso("cuipo.view_versionlistas")},
+                    {"title": "Recursos CUIPO", "icon": "menu_book",
+                     "link": reverse_lazy("admin:cuipo_recursocuipo_changelist"),
+                     "permission": _con_permiso("cuipo.view_recursocuipo")},
                 ],
             },
             {

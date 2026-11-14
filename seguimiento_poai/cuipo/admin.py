@@ -23,8 +23,8 @@ from . import derivacion, distribucion, ejecucion, listas, plano, validacion
 from .models import periodo_de as derivacion_periodo
 from .models import (CPC, ConceptoCUIPO, CorteEjecucionGastos, DetalleSectorial, DistribucionBPIN,
                      FilaEjecucionGastos, FuenteCUIPO, HomologacionFuente, LineaCUIPO, HomologacionRubro, PoliticaPublica, ProductoCUIPO, ReglaSeccion,
-                     ReglaSituacionFondos, ReglaTercero, SeccionPresupuestal, SituacionFondos, TerceroCUIPO,
-                     VersionListas, VigenciaGasto)
+                     RecursoCUIPO, ReglaSituacionFondos, ReglaTercero, SeccionPresupuestal, SituacionFondos,
+                     TerceroCUIPO, VersionListas, VigenciaGasto)
 
 
 class CorteEjecucionGastosForm(forms.ModelForm):
@@ -319,6 +319,25 @@ class VersionListasForm(forms.ModelForm):
                 raise forms.ValidationError(f"Este archivo ya está importado como '{previa}'.")
             self.instance.hash = digest
         return datos
+
+
+@admin.register(RecursoCUIPO)
+class RecursoCUIPOAdmin(ModelAdmin):
+    """Archivos de consulta para el diligenciamiento. Los activos se ven en la ficha de
+    distribucion de cada BPIN."""
+    compressed_fields = True
+    list_display = ("descripcion", "ver_archivo", "activo", "fecha_creacion", "fecha_actualizacion")
+    list_filter = ("activo",)
+    search_fields = ("descripcion", "archivo")
+    readonly_fields = ("fecha_creacion", "fecha_actualizacion")
+    fields = ("descripcion", "archivo", "activo", "fecha_creacion", "fecha_actualizacion")
+
+    @display(description="Archivo")
+    def ver_archivo(self, obj):
+        if not obj.archivo:
+            return "—"
+        return format_html('<a href="{}" target="_blank" class="text-primary-600">{}</a>',
+                           reverse("admin:cuipo_recurso", args=(obj.pk,)), obj.nombre_archivo)
 
 
 @admin.register(VersionListas)
@@ -715,8 +734,19 @@ class DistribucionBPINAdmin(ModelAdmin):
             ruta("cualitativo/", self.d_cualitativo, "_cualitativo"),
             ruta("estado/", self.d_estado, "_estado"),
             ruta("elegir/", self.d_elegir, "_elegir"),
+            path("recursos/<int:pk>/", self.admin_site.admin_view(self.abrir_recurso), name="cuipo_recurso"),
         ]
         return propias + super().get_urls()
+
+    def abrir_recurso(self, request, pk):
+        """Lleva al archivo con un enlace firmado nuevo (los del bucket vencen en una hora). Lo
+        abre quien ve las distribuciones (un recurso activo) o quien ve los recursos."""
+        puede_recursos = request.user.has_perm("cuipo.view_recursocuipo")
+        if not (puede_recursos or self.has_view_permission(request)):
+            raise PermissionDenied
+        recursos = RecursoCUIPO.objects.all() if puede_recursos else RecursoCUIPO.objects.filter(activo=True)
+        recurso = get_object_or_404(recursos.exclude(archivo=""), pk=pk)
+        return redirect(recurso.archivo.url)
 
     def _distribucion(self, request, pk):
         if not self.has_view_permission(request):
@@ -776,6 +806,7 @@ class DistribucionBPINAdmin(ModelAdmin):
             "nombre": "Inversión sin proyecto" if dist.bpin == "0" else (formulacion.nombre if formulacion else ""),
             "productos": list(dist.productos.order_by("codigo")),
             "anterior": anterior, "antecedente": antecedente,
+            "recursos": list(RecursoCUIPO.objects.filter(activo=True).exclude(archivo="")),
         }
         return TemplateResponse(request, "cuipo/distribuir.html", contexto)
 

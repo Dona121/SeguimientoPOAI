@@ -30,6 +30,7 @@ importador del reporte de ejecución ya está hecho (sección 3).
 | Roles | Por ahora sin roles nuevos: quien tenga los permisos de los modelos del CUIPO puede distribuir y validar |
 | Productos que se distribuyen | Los del PIIP con **meta distinta de cero en la vigencia del corte** (tabla InfoGeneral, decisión del 13/11). Un producto programado solo en otro año no entra en el CUIPO de esta vigencia |
 | Regla de la precarga | Cuenta **registros** (filas) del corte y no fuentes (decisión del 13/11): una misma fuente puede venir en varios rubros, como en el 202500000049907 |
+| Recursos CUIPO | Modelo `RecursoCUIPO` (descripción, archivo, fechas y activo) con material de consulta para el diligenciamiento. Los activos se listan en la ficha de distribución; el enlace pasa por el aplicativo y pide un link firmado nuevo al bucket (los firmados vencen en una hora) |
 | Reparto | **Manual** (decisión del 13/11): sin los botones "Proporcional a compromisos" ni "Todo a un producto", porque pueden generar confusión o errores. La precarga sigue haciendo el 100 % cuando hay un solo producto y en la inversión sin BPIN |
 | 2023002700021 | La fila de 15.251.706.362,76 (recurso 7, centro de costo 16) que aparecía duplicada en la ejecución al 30/09 se había agregado a mano. En el reporte oficial la llave de la fila es única |
 
@@ -73,7 +74,7 @@ El flujo es:
   `DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"`.
 - Servidor: `uv run python manage.py runserver 8010` (desde `seguimiento_poai/`, con esa variable).
 - Pruebas: `uv run python manage.py test` (unittest de Django; corren en SQLite en memoria y
-  disco temporal). Hoy son 547.
+  disco temporal). Hoy son 553.
 - **Cuidado:** el almacenamiento de archivos en local es el bucket de producción. Subir un
   archivo desde el admin local lo sube a producción. Para probar con archivos reales se lee
   del disco reemplazando `siifweb.cargas.stream` en un script, sin guardar el archivo.

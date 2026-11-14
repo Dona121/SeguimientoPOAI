@@ -643,5 +643,10 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   entran al CUIPO) y **Productos programados** (del PIIP con meta en la vigencia del corte), que
   se pueden ordenar y filtrar; las opciones del filtro son las cantidades que hay y se pueden
   elegir varias a la vez (por ejemplo 2, 3 y 7 productos).
+- Modelo nuevo **Recursos CUIPO** (`cuipo.RecursoCUIPO`, migracion `cuipo.0006`): descripcion,
+  archivo (en `cuipo/recursos/` del bucket), fechas de creacion y actualizacion y activo. Esta en
+  el menu CUIPO. Los activos aparecen en la ficha de distribucion, en "Recursos para el
+  diligenciamiento". El enlace `/admin/cuipo/distribucionbpin/recursos/<id>/` pide un link
+  firmado nuevo al abrir; lo usa quien ve las distribuciones (solo activos) o los recursos.
 
-**Pruebas.** 547, todas pasan (156 del CUIPO).
+**Pruebas.** 553, todas pasan (162 del CUIPO).

@@ -541,3 +541,23 @@ class LineaCUIPO(Fechas):
     def __str__(self):
         return f"{self.fila} -> {self.producto.codigo} (vigencia {self.vigencia_gasto.codigo})"
 
+
+class RecursoCUIPO(Fechas):
+    """Material de consulta para diligenciar el CUIPO: instructivos, guias, circulares, listas.
+    Los activos se ven en la ficha de distribucion de cada BPIN."""
+    descripcion = models.CharField(max_length=255, verbose_name="Descripción")
+    archivo = models.FileField(upload_to="cuipo/recursos/", verbose_name="Archivo")
+    activo = models.BooleanField(default=True, verbose_name="Activo",
+                                 help_text="Solo los activos aparecen en la ficha de distribución")
+
+    class Meta:
+        verbose_name = "Recurso CUIPO"
+        verbose_name_plural = "Recursos CUIPO"
+        ordering = ("descripcion",)
+
+    def __str__(self):
+        return self.descripcion
+
+    @property
+    def nombre_archivo(self):
+        return self.archivo.name.rsplit("/", 1)[-1] if self.archivo else ""
