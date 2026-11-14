@@ -660,5 +660,11 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
 - En la ficha de distribucion, la descripcion de lo elegido en CPC, detalle sectorial, tercero
   y politica publica se ve completa (antes se cortaba en dos lineas y el resto solo salia al
   pasar el cursor).
+- **Obligaciones <= compromisos y pagos <= obligaciones en cada linea.** La validacion ya lo
+  exigia con centavos. Faltaba el plano: redondea cada campo de la fila a pesos por separado, y
+  una linea correcta con centavos podia quedar con obligacion mayor que su compromiso (C 1,40 y
+  O 1,40 en una linea y C 1,60 y O 1,40 en la otra daban C 1 y O 2). `plano.respetar_orden` pasa
+  ese peso a otra linea de la misma fila con margen; los totales no cambian. En la ficha, la
+  casilla de obligaciones o pagos que rompe la regla se ve en rojo con su aviso al digitar.
 
-**Pruebas.** 558, todas pasan (163 del CUIPO).
+**Pruebas.** 565, todas pasan (170 del CUIPO).

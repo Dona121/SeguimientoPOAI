@@ -17,6 +17,37 @@ def lineas_d(texto):
     return [r.split("\t") for r in texto.splitlines() if r.startswith("D\t")]
 
 
+class OrdenAlRedondear(TestCase):
+    """En cada linea del plano: obligaciones <= compromisos y pagos <= obligaciones, tambien en pesos."""
+
+    def redondear(self, lineas):
+        """Como plano.detalle: cada campo de la fila se reparte a pesos por separado."""
+        enteros = [[0, 0, 0] for _ in lineas]
+        for i in range(3):
+            valores = [l[i] for l in lineas]
+            if not sum(valores):
+                continue
+            for k, e in enumerate(distribucion.repartir(plano.al_peso(sum(valores)), valores, decimales=0)):
+                enteros[k][i] = int(e)
+        return enteros
+
+    def test_el_redondeo_por_campo_puede_romper_el_orden(self):
+        # Con centavos las dos lineas cumplen (O <= C); a pesos la primera queda con O 2 y C 1
+        lineas = [[D("1.40"), D("1.40"), D("0")], [D("1.60"), D("1.40"), D("0")]]
+        self.assertEqual(self.redondear(lineas)[0][:2], [1, 2])
+        corregidas = plano.respetar_orden(self.redondear(lineas))
+        self.assertTrue(all(c >= o >= p for c, o, p in corregidas))
+        self.assertEqual([sum(v) for v in zip(*corregidas)], [3, 3, 0])       # los totales no cambian
+
+    def test_pasa_el_peso_a_otra_linea_de_la_fila(self):
+        valores = plano.respetar_orden([[1, 2, 2], [2, 1, 1]])
+        self.assertEqual(valores, [[1, 1, 1], [2, 2, 2]])
+
+    def test_sin_margen_en_la_fila_no_genera(self):
+        with self.assertRaises(plano.PlanoInvalido):
+            plano.respetar_orden([[1, 2, 0], [1, 1, 0]], "fila")
+
+
 class Generar(TestCase):
     def setUp(self):
         self.corte = preparar()

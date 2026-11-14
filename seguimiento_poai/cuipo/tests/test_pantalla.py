@@ -126,6 +126,45 @@ class Antecedente(TestCase):
         self.assertFalse(DistribucionBPIN.objects.get(corte=t3).lineas.exists())     # no se copia
 
 
+class CasillasExcedidas(TestCase):
+    """La ficha marca en rojo la casilla con obligaciones mayores que compromisos o pagos mayores
+    que obligaciones; la validacion lo cuenta como error."""
+
+    def setUp(self):
+        listas_distribucion()
+        formular("202500000039332", "2201006", "2201048")
+        distribucion.precargar(corte_t3())
+        self.d = DistribucionBPIN.objects.get(bpin="202500000039332")
+        self.client.force_login(User.objects.create_superuser("admin", "admin@example.com", "clave"))
+        fila, producto = self.d.filas().get(), self.d.productos.get(codigo="2201006")
+        vigencia = VigenciaGasto.objects.get(codigo="1")
+        self.guardar = lambda campo, valor: distribucion.guardar_valor(self.d, fila.pk, producto.pk, vigencia.pk,
+                                                                       campo, valor)
+
+    def html(self):
+        return self.client.get(reverse("admin:cuipo_distribuir", args=(self.d.pk,))).content.decode()
+
+    def test_obligaciones_mayores_que_compromisos(self):
+        self.guardar("compromisos", "100")
+        self.guardar("obligaciones", "150")
+        html = self.html()
+        self.assertIn("Mayor que compromisos", html)
+        self.assertIn("valor excede", html)
+        self.assertIn("obligaciones (150,00) mayores que compromisos (100,00)", html)
+
+    def test_pagos_mayores_que_obligaciones(self):
+        for campo, valor in (("compromisos", "100"), ("obligaciones", "80"), ("pagos", "90")):
+            self.guardar(campo, valor)
+        html = self.html()
+        self.assertIn("Mayor que obligaciones", html)
+        self.assertNotIn("Mayor que compromisos", html)
+
+    def test_en_orden_no_marca(self):
+        for campo, valor in (("compromisos", "100"), ("obligaciones", "80"), ("pagos", "80")):
+            self.guardar(campo, valor)
+        self.assertNotIn("excede", self.html().replace(".entrada.excede", "").replace("excede-nota {", ""))
+
+
 class Pantalla(TestCase):
     def setUp(self):
         listas_distribucion()

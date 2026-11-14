@@ -85,6 +85,28 @@ def al_peso(valor):
     return int(Decimal(valor).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
+def respetar_orden(valores, donde=""):
+    """Cada campo se redondea por separado, asi que una linea puede quedar con obligaciones
+    mayores que compromisos (o pagos mayores que obligaciones) por un peso, aunque con centavos
+    estuviera bien. Se pasa ese peso a otra linea de la misma fila que tenga margen: los totales
+    de la fila no cambian. `valores` es la lista [C, O, P] en enteros de cada linea; se modifica.
+    """
+    for alto, bajo in ((1, 0), (2, 1)):          # primero O <= C, luego P <= O
+        while True:
+            excedidas = [i for i, v in enumerate(valores) if v[alto] > v[bajo]]
+            if not excedidas:
+                break
+            con_margen = [j for j, v in enumerate(valores) if v[alto] < v[bajo]]
+            if not con_margen:     # solo pasa si la fila de SIIFWEB ya trae O > C o P > O
+                nombres = ("compromisos", "obligaciones", "pagos")
+                raise PlanoInvalido([f"{donde}: {nombres[alto]} mayores que {nombres[bajo]} al redondear a pesos"])
+            i = excedidas[0]
+            j = max(con_margen, key=lambda j: valores[j][bajo] - valores[j][alto])
+            valores[i][alto] -= 1
+            valores[j][alto] += 1
+    return valores
+
+
 def revisar(corte):
     """Los problemas que impiden generar el plano del corte (lista vacia si ninguno)."""
     problemas = []
@@ -125,6 +147,7 @@ def detalle(corte):
                 continue
             for linea, entero in zip(lineas, repartir(al_peso(sum(valores)), valores, decimales=0)):
                 enteros[linea.pk][i] = int(entero)
+        respetar_orden(list(enteros.values()), f"{fila.rubro} {fila.recurso} {fila.centro_costo} {fila.proyecto}")
         for linea in lineas:
             cualitativos = (linea.producto.codigo, linea.cpc.codigo, linea.detalle_sectorial.codigo, d.fuente.codigo,
                             fila.proyecto, d.situacion.codigo, linea.politica_publica.codigo, linea.tercero.codigo)

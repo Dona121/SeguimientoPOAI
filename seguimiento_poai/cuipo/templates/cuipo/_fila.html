@@ -38,12 +38,14 @@
     <td class="num"><input class="entrada valor" name="valor" value="{{ l.compromisos|unlocalize }}"{% if not editable %} disabled{% endif %}
       hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
       hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "compromisos"}'></td>
-    <td class="num"><input class="entrada valor" name="valor" value="{{ l.obligaciones|unlocalize }}"{% if not editable %} disabled{% endif %}
+    <td class="num"><input class="entrada valor{% if l.obligaciones > l.compromisos %} excede{% endif %}" name="valor" value="{{ l.obligaciones|unlocalize }}"{% if not editable %} disabled{% endif %}
       hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
-      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "obligaciones"}'></td>
-    <td class="num"><input class="entrada valor" name="valor" value="{{ l.pagos|unlocalize }}"{% if not editable %} disabled{% endif %}
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "obligaciones"}'>
+      {% if l.obligaciones > l.compromisos %}<span class="excede-nota">Mayor que compromisos</span>{% endif %}</td>
+    <td class="num"><input class="entrada valor{% if l.pagos > l.obligaciones %} excede{% endif %}" name="valor" value="{{ l.pagos|unlocalize }}"{% if not editable %} disabled{% endif %}
       hx-post="{{ u_celda }}" hx-trigger="change" hx-target="#fila-{{ d.fila.pk }}" hx-swap="outerHTML"
-      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "pagos"}'></td>
+      hx-vals='{"fila": {{ d.fila.pk }}, "producto": {{ l.producto_id }}, "vigencia": {{ l.vigencia_gasto_id }}, "campo": "pagos"}'>
+      {% if l.pagos > l.obligaciones %}<span class="excede-nota">Mayor que obligaciones</span>{% endif %}</td>
     {% include "cuipo/_cualitativo.html" with campo="cpc" valor=l.cpc origen=l.origen_cpc origen_texto=l.get_origen_cpc_display %}
     {% include "cuipo/_cualitativo.html" with campo="detalle_sectorial" valor=l.detalle_sectorial origen=l.origen_detalle_sectorial origen_texto=l.get_origen_detalle_sectorial_display %}
     {% include "cuipo/_cualitativo.html" with campo="tercero" valor=l.tercero origen=l.origen_tercero origen_texto=l.get_origen_tercero_display %}
