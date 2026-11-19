@@ -120,6 +120,8 @@ siifweb/programacion_financiera.py.
     <div class="cab">
       <h2>{{ proyecto.bpin|default:"Sin BPIN" }} · {{ proyecto.nombre|default:"(sin nombre)" }}</h2>
       {% if proyecto.dependencia_responsable %}<span class="dato">Responsable <b>{{ proyecto.dependencia_responsable }}</b></span>{% endif %}
+      <a href="{% url 'admin:siifweb_proyecto_change' proyecto.pk %}" class="border font-medium px-3 py-2 rounded-default text-sm
+         text-base-700 dark:text-base-300 dark:border-base-700" style="margin-left:auto">Volver al detalle</a>
     </div>
     <div class="cab" style="padding-top:0">
       {% include "siifweb/_programacion_totales.html" %}

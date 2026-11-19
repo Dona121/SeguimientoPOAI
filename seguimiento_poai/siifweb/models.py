@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -1551,7 +1553,12 @@ def actualizar_valor_programado(sender, instance, **kwargs):
 class ObservacionProyectoSiifweb(Fechas):
     """Lo que el equipo anota sobre un proyecto de SIIFWEB. Se escriben y consultan en la
     pantalla "Observaciones" del proyecto. (ObservacionProyecto es otra: la de la programacion
-    de proyectos que vino de Access.)"""
+    de proyectos que vino de Access.)
+
+    Pasados DIAS_EDITABLE dias desde que se escribio ya no se modifica ni se borra: queda como
+    registro. Lo revisan la pantalla y el admin con `editable`.
+    """
+    DIAS_EDITABLE = 3
     proyecto = models.ForeignKey(Proyecto, on_delete=models.CASCADE, related_name="observaciones_siifweb",
                                  verbose_name="Proyecto")
     texto = models.TextField(verbose_name="Observación")
@@ -1563,3 +1570,12 @@ class ObservacionProyectoSiifweb(Fechas):
 
     def __str__(self):
         return f"{self.proyecto.bpin}: {self.texto[:60]}"
+
+    @property
+    def editable_hasta(self):
+        return self.fecha_creacion + timedelta(days=self.DIAS_EDITABLE) if self.fecha_creacion else None
+
+    @property
+    def editable(self):
+        """Se puede modificar o borrar hasta DIAS_EDITABLE dias despues de escrita."""
+        return self.editable_hasta is None or timezone.now() <= self.editable_hasta

@@ -1,11 +1,12 @@
 """Los campos de radicacion, ejecucion y tramite del proyecto y sus observaciones."""
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from siifweb.models import TRAMITES, MedidaTiempo, ObservacionProyectoSiifweb, Proyecto
 
@@ -91,6 +92,39 @@ class Observaciones(Base):
         self.client.post(self.url, {"accion": "borrar", "id": o.pk})
         self.assertFalse(ObservacionProyectoSiifweb.objects.exists())
 
+    def vieja(self, texto="Nota vieja", dias=4):
+        o = ObservacionProyectoSiifweb.objects.create(proyecto=self.proy, texto=texto)
+        ObservacionProyectoSiifweb.objects.filter(pk=o.pk).update(fecha_creacion=timezone.now() - timedelta(days=dias))
+        return ObservacionProyectoSiifweb.objects.get(pk=o.pk)
+
+    def test_pasados_tres_dias_no_se_modifica_ni_se_borra(self):
+        self.client.force_login(self.admin)
+        o = self.vieja()
+        self.assertFalse(o.editable)
+        self.assertTrue(self.vieja("Reciente", dias=2).editable)
+        respuesta = self.client.post(self.url, {"accion": "editar", "id": o.pk, "texto": "Cambiada"}, follow=True)
+        self.assertContains(respuesta, "ya no se puede modificar ni borrar")
+        self.client.post(self.url, {"accion": "borrar", "id": o.pk})
+        o.refresh_from_db()
+        self.assertEqual(o.texto, "Nota vieja")
+        # La pantalla no ofrece editar ni borrar la vieja, y si la reciente
+        html = self.client.get(self.url).content.decode()
+        self.assertEqual(html.count('value="borrar"'), 1)
+        self.assertEqual(html.count('value="editar"'), 1)
+        self.assertIn("se puede modificar hasta el", html)
+
+    def test_en_el_admin_tampoco(self):
+        self.client.force_login(self.admin)
+        o = self.vieja()
+        cambio = reverse("admin:siifweb_observacionproyectosiifweb_change", args=(o.pk,))
+        self.client.post(cambio, {"proyecto": self.proy.pk, "texto": "Cambiada"})
+        o.refresh_from_db()
+        self.assertEqual(o.texto, "Nota vieja")
+        self.assertEqual(self.client.post(reverse("admin:siifweb_observacionproyectosiifweb_delete", args=(o.pk,)),
+                                          {"post": "yes"}).status_code, 403)
+        lista = self.client.get(reverse("admin:siifweb_observacionproyectosiifweb_changelist"))
+        self.assertNotIn("delete_selected", lista.context["cl"].model_admin.get_actions(lista.wsgi_request))
+
     def test_vacia_no_se_agrega(self):
         self.client.force_login(self.admin)
         respuesta = self.client.post(self.url, {"accion": "agregar", "texto": "   "}, follow=True)
@@ -103,6 +137,7 @@ class Observaciones(Base):
         ObservacionProyectoSiifweb.objects.create(proyecto=self.proy, texto="Segunda")
         html = self.client.get(self.url).content.decode()
         self.assertLess(html.index("Segunda"), html.index("Primera"))
+        self.assertIn("Volver al detalle", html)
         self.assertContains(self.client.get(reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,))), self.url)
 
     def test_solo_ver_no_escribe(self):

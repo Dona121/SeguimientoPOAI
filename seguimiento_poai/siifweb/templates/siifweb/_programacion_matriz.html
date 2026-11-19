@@ -16,9 +16,7 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
 
   <section class="caja">
     <div class="barra">
-      <span class="titulo">Programación
-        {% include "siifweb/_ayuda.html" with etiqueta="Cómo se diligencia" texto="Cada vigencia tiene sus propias fuentes y metas: agréguelas con los botones de la vigencia y escriba el valor de cada fuente en cada meta. Nada se guarda hasta oprimir Guardar. Sin separador de miles y con punto decimal (1500000.50), como en las distribuciones del CUIPO. Vacío o cero borra el valor. Quitar una vigencia, fuente o meta borra sus valores al guardar." %}
-      </span>
+      <span class="titulo">Programación</span>
       {% if m.bloques|length > 1 %}<span class="dato">Total en pantalla <b class="num">{{ m.total|floatformat:"2g" }}</b></span>{% endif %}
       {% if editable %}
       <span class="acciones">

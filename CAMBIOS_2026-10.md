@@ -717,9 +717,15 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   quita solo de esa vigencia (antes eran comunes y quitar la fuente en 2027 la quitaba de 2026
   con lo digitado). Las metas programadas del proyecto ya no se agregan solas al abrir: salen
   primero en el listado de "+ Meta", marcadas como programadas.
+- **Observaciones: 3 dias para modificar o borrar.** Pasados 3 dias desde que se escribio
+  (`ObservacionProyectoSiifweb.DIAS_EDITABLE`), una observacion queda como registro: la pantalla
+  ya no ofrece editar ni borrar (y dice hasta cuando se puede) y el admin la deja de solo lectura,
+  sin borrado masivo.
+- Programacion financiera y Observaciones llevan el boton "Volver al detalle", como la ficha de
+  ejecucion. La programacion financiera ya no tiene el globo de ayuda.
 - **Distribuciones del CUIPO:** la ventana para elegir CPC, detalle sectorial, tercero, politica
   publica o vigencia del gasto muestra de 50 en 50 con Anterior / Siguiente (antes las primeras
   60 y "escriba para acotar").
 
-**Pruebas.** 595, todas pasan.
+**Pruebas.** 600, todas pasan.
 

@@ -1364,7 +1364,10 @@ class ProyectoAdmin(ModelAdmin):
                 observacion = proyecto.observaciones_siifweb.filter(pk=request.POST.get("id") or 0).first()
                 if observacion is None:
                     raise Http404("Esa observación ya no existe.")
-                if accion == "borrar":
+                if not observacion.editable:
+                    self.message_user(request, f"Pasados {observacion.DIAS_EDITABLE} días una observación ya no "
+                                               f"se puede modificar ni borrar.", messages.ERROR)
+                elif accion == "borrar":
                     observacion.delete()
                     self.message_user(request, "Observación borrada.", messages.SUCCESS)
                 elif texto:
@@ -2751,6 +2754,19 @@ class ObservacionProyectoSiifwebAdmin(ModelAdmin):
     autocomplete_fields = ("proyecto",)
     fields = ("proyecto", "texto", "fecha_creacion", "fecha_actualizacion")
     readonly_fields = ("fecha_creacion", "fecha_actualizacion")
+
+    # Pasados 3 dias no se modifica ni se borra (ObservacionProyectoSiifweb.editable)
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and (obj is None or obj.editable)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and (obj is None or obj.editable)
+
+    def get_actions(self, request):
+        # El borrado masivo no revisa cada observacion: se quita
+        acciones = super().get_actions(request)
+        acciones.pop("delete_selected", None)
+        return acciones
 
     @display(description="Proyecto", ordering="proyecto__bpin")
     def proyecto_bpin(self, obj):

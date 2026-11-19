@@ -52,8 +52,12 @@ ProyectoAdmin.observaciones.
 
 <div class="ob">
   <section class="caja">
-    <h2>{{ proyecto.bpin|default:"Sin BPIN" }} · {{ proyecto.nombre|default:"(sin nombre)" }}</h2>
-    <span class="dato">{{ observaciones|length }} observaci{{ observaciones|length|pluralize:"ón,ones" }}</span>
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem 2rem;align-items:baseline">
+      <h2>{{ proyecto.bpin|default:"Sin BPIN" }} · {{ proyecto.nombre|default:"(sin nombre)" }}</h2>
+      <span class="dato">{{ observaciones|length }} observaci{{ observaciones|length|pluralize:"ón,ones" }}</span>
+      <a href="{% url 'admin:siifweb_proyecto_change' proyecto.pk %}" class="border font-medium px-3 py-2 rounded-default text-sm
+         text-base-700 dark:text-base-300 dark:border-base-700" style="margin-left:auto">Volver al detalle</a>
+    </div>
     {% if puede.add %}
     <form method="post" style="margin-top:.8rem">{% csrf_token %}
       <input type="hidden" name="accion" value="agregar">
@@ -67,15 +71,16 @@ ProyectoAdmin.observaciones.
   {% for o in observaciones %}
   <article class="caja">
     <div class="cabeza">
-      <span class="dato">{{ o.fecha_creacion|date:"d/m/Y H:i" }}{% if o.fecha_actualizacion|date:"YmdHi" != o.fecha_creacion|date:"YmdHi" %} · editada el {{ o.fecha_actualizacion|date:"d/m/Y H:i" }}{% endif %}</span>
-      {% if puede.delete %}
+      <span class="dato">{{ o.fecha_creacion|date:"d/m/Y H:i" }}{% if o.fecha_actualizacion|date:"YmdHi" != o.fecha_creacion|date:"YmdHi" %} · editada el {{ o.fecha_actualizacion|date:"d/m/Y H:i" }}{% endif %}
+        {% if o.editable %}{% if puede.change or puede.delete %} · se puede modificar hasta el {{ o.editable_hasta|date:"d/m/Y H:i" }}{% endif %}{% endif %}</span>
+      {% if puede.delete and o.editable %}
       <form method="post" onsubmit="return confirm('¿Borrar esta observación?');">{% csrf_token %}
         <input type="hidden" name="accion" value="borrar"><input type="hidden" name="id" value="{{ o.pk }}">
         <button class="boton rojo" type="submit">Borrar</button>
       </form>
       {% endif %}
     </div>
-    {% if puede.change %}
+    {% if puede.change and o.editable %}
     <details>
       <summary><p class="nota ver">{{ o.texto|linebreaksbr }}</p><span class="dato ver">Clic para editar</span></summary>
       <form method="post" style="margin-top:.4rem">{% csrf_token %}

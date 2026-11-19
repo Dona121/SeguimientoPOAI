@@ -130,6 +130,9 @@ class Pantalla(Base):
         self.assertContains(respuesta, f"Vigencia {ANIO}")               # la del anio en curso
         self.assertContains(respuesta, "Sin fuentes ni metas.")
         self.assertNotContains(respuesta, "MT001")                       # la programada no se agrega sola
+        self.assertContains(respuesta, "Volver al detalle")
+        self.assertContains(respuesta, reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,)))
+        self.assertNotContains(respuesta, "Cada vigencia tiene sus propias fuentes")
 
     def test_al_abrir_con_valores_cada_vigencia_trae_lo_suyo(self):
         self.programar("10", meta=self.meta2, vigencia=ANIO + 1)
