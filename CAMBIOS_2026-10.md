@@ -668,3 +668,34 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   casilla de obligaciones o pagos que rompe la regla se ve en rojo con su aviso al digitar.
 
 **Pruebas.** 565, todas pasan (170 del CUIPO).
+
+## 27. Detalle del proyecto y programacion financiera (19 de noviembre)
+
+- **Detalle del proyecto sin textos de relleno.** Se quitan las descripciones de las secciones
+  Proyecto y Responsables. La nota "Si registras aqui un proyecto nuevo..." pasa de la seccion
+  Origen a un globo de ayuda al lado del BPIN (regla `.ayuda` en `static/css/admin_styles.css`).
+- **Programacion financiera** (`siifweb.ProgramacionFinanciera`, migracion `siifweb.0023`):
+  proyecto, vigencia, fuente de SIIFWEB, meta del plan y valor (20 digitos: 15 enteros y 5
+  decimales), con sus fechas. Un valor por proyecto, vigencia, fuente y meta. El equipo programa
+  a principios de anio o durante el anio cuanto va de cada fuente a cada meta; no se contrasta
+  con SIIFWEB.
+- **Valor programado del proyecto** (`Proyecto.valor_programado`, no editable): la suma de su
+  programacion financiera en todas las vigencias. Lo recalculan las senales post_save y
+  post_delete del modelo (tambien en un borrado masivo del admin). Se ve en el detalle del
+  proyecto, seccion "Programacion financiera", con lo de cada vigencia.
+- **Pantalla "Programacion financiera"**: boton en el detalle del proyecto (accion de detalle).
+  Matriz con tres listados que arma el equipo: vigencias (un bloque cada una), fuentes (filas)
+  y metas (columnas), con totales por fuente, por meta, por vigencia y del total. Se agregan
+  con una ventana de busqueda con paginas (Anterior / Siguiente, 50 por pagina) y se quitan con
+  la x. Al abrir salen las vigencias, fuentes y metas con valores y las metas en que el
+  proyecto esta programado (Programacion de proyectos, por el BPIN), marcadas "programada".
+  Nada se guarda hasta oprimir **Guardar**, que deja la programacion como se ve: crea, cambia y
+  borra (vacios, ceros y lo quitado). Con un error en alguna casilla no se guarda nada y las
+  casillas con error quedan en rojo. Hay aviso de cambios sin guardar. Punto para miles y coma
+  para decimales. Ver pide `view_programacionfinanciera`; guardar, agregar, cambiar y borrar.
+  Logica en `siifweb/programacion_financiera.py`.
+- La lista **Programacion financiera** del admin (`/admin/siifweb/programacionfinanciera/`)
+  muestra todos los valores, con filtros por vigencia y fuente. No esta en el menu.
+
+**Pruebas.** 584, todas pasan.
+

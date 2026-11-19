@@ -10,7 +10,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import (Case, Count, DateField, DecimalField, Exists, F, IntegerField, OuterRef,
                               Prefetch, Q, Subquery, Sum, Value, When)
-from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
 from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -26,7 +26,7 @@ from unfold.contrib.filters.admin import (ChoicesDropdownFilter, RangeDateFilter
 from unfold.decorators import action, display
 from unfold.sections import TableSection
 
-from . import cargas, tablero
+from . import cargas, programacion_financiera, tablero
 from .models import (BpinProceso, CargaReporte, Cdp, CdpImputacion, CentroCosto, Clasificacion,
                      Compromiso, CompromisoImputacion, Contrato, ContratoActa, ContratoImputacion,
                      ContratoSecop, DependenciaResponsable, Fuente, Obligacion, ObligacionImputacion,
@@ -37,7 +37,7 @@ from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MedidoATraves
 from .models import (MESES, Municipio, ObservacionProyecto, PeriodoReporte, ProgramacionMeta,
                      ProgramacionProyectos, SeguimientoMeta, TipoBanco, listado_vigencias_metas)
 from .models import (Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
-                     ProductoCatalogo)
+                     ProductoCatalogo, ProgramacionFinanciera)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import User, Group
@@ -606,15 +606,27 @@ class ProyectoAdmin(ModelAdmin):
     autocomplete_fields = ("dependencia_responsable",)
     list_filter_sheet = True
     filter_horizontal = ("clasificaciones",)
-    actions_detail = ("ficha_ejecucion",)
+    actions_detail = ("ficha_ejecucion", "programacion_financiera")
     list_filter_submit = True
     ordering = ("bpin",)
+    readonly_fields = ("programado",)
     fieldsets = (
         ("Proyecto", {"fields": ("bpin", "nombre")}),
         ("Responsables y clasificacion", {
             "fields": ("dependencia", "dependencia_responsable", "clasificaciones")}),
+        ("Programación financiera", {"fields": ("programado",)}),
         ("Origen", {"fields": ("origen",)}),
     )
+
+    @display(description="Valor programado")
+    def programado(self, obj):
+        """La suma de la programacion financiera (todas las vigencias) y lo de cada vigencia."""
+        if obj is None or not obj.pk:
+            return "-"
+        formato = programacion_financiera.formato
+        partes = (obj.programacion_financiera.values("vigencia").annotate(t=Sum("valor")).order_by("vigencia"))
+        detalle = " · ".join(f"{p['vigencia']}: $ {formato(p['t']) or '0'}" for p in partes)
+        return f"$ {formato(obj.valor_programado) or '0'}" + (f"  ({detalle})" if detalle else "")
 
     AYUDA_BPIN = ("Si registras aqui un proyecto nuevo, la proxima carga buscara su BPIN y le "
                   "enganchara la ejecucion. Lo que escribas en nombre y responsable no se sobreescribe.")
@@ -1295,8 +1307,95 @@ class ProyectoAdmin(ModelAdmin):
             path("<path:object_id>/ficha-ejecucion/",
                  self.admin_site.admin_view(self.ficha_ejecucion),
                  name="siifweb_proyecto_ficha_ejecucion"),
+            path("<int:pk>/programacion-financiera/matriz/", self.admin_site.admin_view(self.pf_matriz),
+                 name="siifweb_proyecto_pf_matriz"),
+            path("<int:pk>/programacion-financiera/guardar/", self.admin_site.admin_view(self.pf_guardar),
+                 name="siifweb_proyecto_pf_guardar"),
+            path("<int:pk>/programacion-financiera/elegir/", self.admin_site.admin_view(self.pf_elegir),
+                 name="siifweb_proyecto_pf_elegir"),
+            path("<path:object_id>/programacion-financiera/",
+                 self.admin_site.admin_view(self.programacion_financiera),
+                 name="siifweb_proyecto_programacion_financiera"),
         ]
         return propia + super().get_urls()
+
+    # -- Programacion financiera: pantalla propia con HTMX, como las distribuciones del CUIPO,
+    # pero con un boton Guardar y con las vigencias como un listado mas (vigencias, fuentes y
+    # metas). Logica en siifweb/programacion_financiera.py. Ver pide view_programacionfinanciera;
+    # guardar, agregar, cambiar y borrar.
+
+    def has_ver_programacion_financiera_permission(self, request, object_id=None):
+        return request.user.has_perm("siifweb.view_programacionfinanciera")
+
+    @staticmethod
+    def _puede_programar(request):
+        return all(request.user.has_perm(f"siifweb.{p}_programacionfinanciera") for p in ("add", "change", "delete"))
+
+    def _proyecto_programable(self, request, object_id):
+        if not self.has_ver_programacion_financiera_permission(request):
+            raise PermissionDenied
+        proyecto = self.get_object(request, str(object_id))
+        if proyecto is None:
+            raise Http404("No hay proyecto con ese id.")
+        return proyecto
+
+    def _matriz_pf(self, request, proyecto, mensaje="", **kwargs):
+        contexto = {"proyecto": proyecto, "m": programacion_financiera.matriz(proyecto, **kwargs),
+                    "editable": self._puede_programar(request), "parcial": True, "mensaje": mensaje}
+        return HttpResponse(render_to_string("siifweb/_programacion_matriz.html", contexto, request=request))
+
+    @action(description="Programación financiera", url_path="programacion-financiera", icon="account_balance_wallet",
+            permissions=["ver_programacion_financiera"])
+    def programacion_financiera(self, request, object_id):
+        """Cuanto va de cada fuente a cada meta del plan en el proyecto, por vigencia."""
+        proyecto = self._proyecto_programable(request, object_id)
+        proyecto.refresh_from_db(fields=["valor_programado"])
+        contexto = {**self.admin_site.each_context(request), "title": f"Programación financiera {proyecto.bpin or ''}",
+                    "proyecto": proyecto, "m": programacion_financiera.matriz(proyecto),
+                    "editable": self._puede_programar(request)}
+        return TemplateResponse(request, "siifweb/programacion_financiera.html", contexto)
+
+    def pf_matriz(self, request, pk):
+        """La matriz otra vez, sin guardar: con una vigencia, fuente o meta agregada o quitada y
+        con lo que ya se habia digitado."""
+        proyecto = self._proyecto_programable(request, pk)
+        datos = request.GET
+        listados = {}
+        for nombre in ("vigencia", "fuente", "meta"):
+            quitar = datos.get(f"quitar_{nombre}", "")
+            listados[nombre + "s"] = [x for x in datos.getlist(nombre + "s") + [datos.get(f"agregar_{nombre}", "")]
+                                      if x != quitar]
+        return self._matriz_pf(request, proyecto, digitados=programacion_financiera.digitados_de(datos), **listados)
+
+    def pf_guardar(self, request, pk):
+        """Deja la programacion como se ve en la matriz. Con un error en alguna casilla no guarda nada."""
+        proyecto = self._proyecto_programable(request, pk)
+        if request.method != "POST":
+            return HttpResponseBadRequest("Solo POST")
+        if not self._puede_programar(request):
+            raise PermissionDenied
+        datos = request.POST
+        listados = {n: datos.getlist(n) for n in ("vigencias", "fuentes", "metas")}
+        digitados = programacion_financiera.digitados_de(datos)
+        errores, mensaje = programacion_financiera.guardar(proyecto, digitados=digitados, **listados)
+        proyecto.refresh_from_db(fields=["valor_programado"])
+        if errores:
+            return self._matriz_pf(request, proyecto, digitados=digitados, errores=errores, **listados)
+        return self._matriz_pf(request, proyecto, mensaje=mensaje, **listados)
+
+    def pf_elegir(self, request, pk):
+        """La ventana para agregar una vigencia, una fuente o una meta: buscador y listado por
+        paginas. Con solo=resultados devuelve solo el listado (al buscar o cambiar de pagina)."""
+        proyecto = self._proyecto_programable(request, pk)
+        tipo = request.GET.get("tipo")
+        tipo = tipo if tipo in ("vigencia", "meta") else "fuente"
+        texto = request.GET.get("q", "")
+        opciones = programacion_financiera.opciones(tipo, texto, request.GET.getlist(tipo + "s"),
+                                                    request.GET.get("pagina", 1))
+        contexto = {"proyecto": proyecto, "tipo": tipo, "texto": texto, **opciones}
+        plantilla = "siifweb/_programacion_opciones.html" if request.GET.get("solo") == "resultados" \
+            else "siifweb/_programacion_elegir.html"
+        return HttpResponse(render_to_string(plantilla, contexto, request=request))
 
 
 @admin.register(Tercero)
@@ -2572,6 +2671,29 @@ class PeriodoReporteAdmin(ModelAdmin):
     @display(description="Abierto hoy", boolean=True)
     def abierto_hoy(self, obj):
         return obj.esta_abierto()
+
+
+@admin.register(ProgramacionFinanciera)
+class ProgramacionFinancieraAdmin(ModelAdmin):
+    """Todos los valores programados. Se diligencian en la pantalla de cada proyecto; aqui se
+    revisan. Al guardar o borrar, el proyecto recalcula su valor programado (senales del modelo)."""
+    compressed_fields = True
+    list_fullwidth = True
+    list_display = ("proyecto_bpin", "vigencia", "fuente", "meta", "valor_texto", "fecha_actualizacion")
+    list_filter = (("vigencia", ChoicesDropdownFilter), ("fuente", RelatedDropdownFilter))
+    list_filter_submit = True
+    search_fields = ("proyecto__bpin", "proyecto__nombre", "meta__codigo", "fuente__codigo", "fuente__nombre")
+    list_select_related = ("proyecto", "fuente", "meta")
+    autocomplete_fields = ("proyecto", "fuente", "meta")
+    fields = ("proyecto", "vigencia", "fuente", "meta", "valor")
+
+    @display(description="Proyecto", ordering="proyecto__bpin")
+    def proyecto_bpin(self, obj):
+        return corto(str(obj.proyecto), 90)
+
+    @display(description="Valor", ordering="valor")
+    def valor_texto(self, obj):
+        return f"$ {programacion_financiera.formato(obj.valor) or '0'}"
 
 
 @admin.register(SeguimientoMeta)

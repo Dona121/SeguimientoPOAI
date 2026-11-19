@@ -1,0 +1,22 @@
+{% url 'admin:siifweb_proyecto_pf_matriz' proyecto.pk as u_matriz %}{% url 'admin:siifweb_proyecto_pf_elegir' proyecto.pk as u_elegir %}
+{% for pk, codigo, nombre in lista %}
+<button type="button" class="opcion"
+        hx-get="{{ u_matriz }}" hx-vals='{"agregar_{{ tipo }}": "{{ pk }}"}'
+        hx-include="#pf-matriz" hx-target="#pf-matriz" hx-swap="outerHTML"
+        hx-on::after-request="document.getElementById('pf-elegir').innerHTML = ''">
+  <b>{{ codigo }}</b><span>{{ nombre }}</span>
+</button>
+{% empty %}
+<p class="nota">{% if texto %}Nada coincide con «{{ texto }}».{% else %}No hay más para agregar.{% endif %}</p>
+{% endfor %}
+{% if paginas > 1 %}
+<div class="paginas">
+  <button type="button" class="boton gris"{% if pagina <= 1 %} disabled{% endif %}
+          hx-get="{{ u_elegir }}?tipo={{ tipo }}&solo=resultados&pagina={{ pagina|add:-1 }}&q={{ texto|urlencode }}"
+          hx-include="#pf-matriz" hx-target="#pf-resultados">Anterior</button>
+  <span class="nota">{{ desde }}–{{ hasta }} de {{ total }}</span>
+  <button type="button" class="boton gris"{% if pagina >= paginas %} disabled{% endif %}
+          hx-get="{{ u_elegir }}?tipo={{ tipo }}&solo=resultados&pagina={{ pagina|add:1 }}&q={{ texto|urlencode }}"
+          hx-include="#pf-matriz" hx-target="#pf-resultados">Siguiente</button>
+</div>
+{% endif %}

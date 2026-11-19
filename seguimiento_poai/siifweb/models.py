@@ -2,7 +2,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Sum
-from django.db.models.signals import m2m_changed
+from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
 from django.utils import timezone
 from django.utils.html import strip_tags
@@ -162,10 +162,22 @@ class Proyecto(Fechas):
                                              verbose_name="Clasificaciones (POAI)")
     origen = models.CharField(max_length=10, choices=Origen.choices, default=Origen.MANUAL,
                               verbose_name="Origen del registro")
+    # La suma de su programacion financiera (todas las vigencias, fuentes y metas). No se
+    # digita: la pone al dia cada cambio de ProgramacionFinanciera (ver las senales al final)
+    valor_programado = models.DecimalField(max_digits=20, decimal_places=5, default=0, editable=False,
+                                           verbose_name="Valor programado")
 
     class Meta:
         verbose_name = "Proyecto"
         verbose_name_plural = "Proyectos"
+
+    def actualizar_valor_programado(self):
+        """Recalcula el valor programado con su programacion financiera. Con update() y no
+        save(): no toca la fecha de actualizacion ni vuelve a enlazar la formulacion."""
+        total = self.programacion_financiera.aggregate(t=Sum("valor"))["t"] or 0
+        Proyecto.objects.filter(pk=self.pk).update(valor_programado=total)
+        self.valor_programado = total
+        return total
 
     def save(self, *args, **kwargs):
         # El BPIN es la llave con la que las cargas enganchan la ejecucion.
@@ -1417,3 +1429,47 @@ class MetaVigenciaIndicador(Fechas):
 
     def __str__(self):
         return f"{self.indicador_proyecto} - {self.vigencia}: {self.meta}"
+
+
+# 9 - Programacion financiera: los recursos de cada proyecto por vigencia, fuente y meta
+#
+# A principios de anio (o durante el anio, si cambian los recursos) el equipo programa cuanto
+# va de cada fuente de SIIFWEB a cada meta del plan en el proyecto. Se diligencia en la
+# pantalla "Programacion financiera" del proyecto (siifweb/programacion_financiera.py).
+
+class ProgramacionFinanciera(Fechas):
+    proyecto = models.ForeignKey(Proyecto, on_delete=models.CASCADE, related_name="programacion_financiera",
+                                 verbose_name="Proyecto")
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
+    fuente = models.ForeignKey(Fuente, on_delete=models.PROTECT, related_name="programacion_financiera",
+                               verbose_name="Fuente")
+    meta = models.ForeignKey(MetaIndicador, on_delete=models.PROTECT, related_name="programacion_financiera",
+                             verbose_name="Meta")
+    # 20 digitos: 15 enteros y 5 decimales
+    valor = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="Valor")
+
+    class Meta:
+        verbose_name = "Programación financiera"
+        verbose_name_plural = "Programación financiera"
+        ordering = ("proyecto__bpin", "-vigencia", "fuente__codigo", "meta__codigo")
+        constraints = [models.UniqueConstraint(fields=["proyecto", "vigencia", "fuente", "meta"],
+                                               name="programacion_financiera_unica",
+                                               violation_error_message="Ya hay un valor programado para ese "
+                                               "proyecto, vigencia, fuente y meta.")]
+
+    def __str__(self):
+        return f"{self.proyecto.bpin} · {self.vigencia} · {self.fuente.codigo} · {self.meta.codigo}: {self.valor}"
+
+    def clean(self):
+        if self.valor is not None and self.valor < 0:
+            raise ValidationError({"valor": "El valor no puede ser negativo."})
+
+
+@receiver(post_save, sender=ProgramacionFinanciera)
+@receiver(post_delete, sender=ProgramacionFinanciera)
+def actualizar_valor_programado(sender, instance, **kwargs):
+    """Al guardar, cambiar o borrar un valor (tambien en un borrado masivo del admin, que
+    dispara post_delete por cada fila), el proyecto recalcula su valor programado. Si el
+    proyecto se esta borrando, el update no encuentra la fila y no hace nada."""
+    proyecto = Proyecto(pk=instance.proyecto_id)
+    proyecto.actualizar_valor_programado()

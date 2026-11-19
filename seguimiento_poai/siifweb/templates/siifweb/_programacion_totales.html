@@ -1,0 +1,5 @@
+{# Lo guardado del proyecto. Va en el encabezado y se actualiza fuera de banda al guardar. #}
+<span id="pf-totales" class="dato"{% if oob %} hx-swap-oob="true"{% endif %}>
+  Valor programado (guardado) <b class="num">$ {{ m.total_proyecto }}</b>
+  {% if m.por_vigencia %}({% for v, t in m.por_vigencia %}{{ v }}: $ {{ t }}{% if not forloop.last %} · {% endif %}{% endfor %}){% endif %}
+</span>
