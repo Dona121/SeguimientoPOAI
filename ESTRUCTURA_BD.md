@@ -46,6 +46,12 @@ después. La versión normalizada:
 | bpin | CharField, unique | '0' o null = funcionamiento/sin proyecto |
 | nombre | CharField | de historial e IndicadoresProyectos |
 | dependencia | CharField, null | |
+| valor_programado | Decimal(20,5), no editable | suma de su `ProgramacionFinanciera` (todas las vigencias); la recalculan las señales del modelo (sección 11) |
+| fecha_radicacion, fecha_registro | DateField, null | |
+| tiempo_ejecucion | Decimal(5,2), null | 3 enteros y 2 decimales, en la `medida_tiempo` |
+| medida_tiempo | FK → MedidaTiempo, null, PROTECT | Días, Meses, Años |
+| contratacion_directa | Boolean | |
+| 10 pasos del trámite | Boolean + DateField, null | `TRAMITES` en models.py: decreto de liquidación inicial, gestión de recursos en PIIP, asignación ajuste a decreto ET, solicitud y concepto de traslado, decreto de traslado, asignación ajuste con trámite presupuestal, cargado en SIIFWEB, estudios previos, radicado en contratación, terminado. Sin la casilla, la fecha se borra al guardar |
 
 ### Tercero
 | campo | tipo | nota |
@@ -408,6 +414,12 @@ código). Lo que deja de venir queda inactivo; nada se borra.
 Todas con `observacion`. Las FK a catálogos son PROTECT. Los valores por defecto (sección 16.0,
 situación C, tercero 1 - NO APLICA) no se guardan: los aplica `cuipo/derivacion.py`.
 
+### Recursos CUIPO (app `cuipo`)
+
+| modelo | llave natural | relaciones |
+|---|---|---|
+| `RecursoCUIPO` | — | `descripcion`, `archivo` (en `cuipo/recursos/` del bucket), `activo` y fechas. Los activos se listan en la ficha de distribución |
+
 ### Distribución (app `cuipo`, fase 3 del CUIPO)
 
 | modelo | llave natural | relaciones |
@@ -417,3 +429,26 @@ situación C, tercero 1 - NO APLICA) no se guardan: los aplica `cuipo/derivacion
 | `LineaCUIPO` | (`distribucion`, `fila`, `producto`, `vigencia_gasto`) | → `DistribucionBPIN` (CASCADE), → `FilaEjecucionGastos` (PROTECT), → `ProductoCUIPO`, → `VigenciaGasto`, → `CPC`, `DetalleSectorial`, `TerceroCUIPO`, `PoliticaPublica` (opcionales); C, O y P en `Decimal(20,2)`; `origen_valores` y un `origen_*` por cualitativo |
 
 Un corte con distribuciones no se borra (PROTECT) ni se reprocesa (lo impide el importador).
+
+
+## 11. Programación y seguimiento del proyecto (noviembre de 2026)
+
+App `siifweb`. Lo diligencia el equipo desde el detalle del proyecto; no viene de ningún reporte.
+
+| modelo | llave natural | relaciones |
+|---|---|---|
+| `ProgramacionFinanciera` | (`proyecto`, `vigencia`, `fuente`, `meta`) | → `Proyecto` (CASCADE), → `Fuente` (PROTECT), → `MetaIndicador` (PROTECT); `valor` Decimal(20,5) (15 enteros, 5 decimales) |
+| `ProgramacionFisica` | (`proyecto`, `vigencia`, `meta`) | → `Proyecto` (CASCADE), → `MetaIndicador` (PROTECT); `valor` Decimal(20,5) |
+| `MedidaTiempo` | `nombre` | ← `Proyecto.medida_tiempo` |
+| `ObservacionProyectoSiifweb` | — | → `Proyecto` (CASCADE); `texto` y fechas. Pasados 3 días (`DIAS_EDITABLE`) ya no se modifica ni se borra |
+
+- Las dos programaciones guardan solo valores distintos de cero: vacío o cero borra la fila.
+- `Proyecto.valor_programado` se recalcula con las señales `post_save` y `post_delete` de
+  `ProgramacionFinanciera` (también en un borrado masivo). La física no suma: cada meta tiene
+  su propia unidad.
+- Las metas de la programación financiera y de la física deben ser las mismas en cada
+  vigencia. No es un constraint (son dos tablas, y se puede llenar primero cualquiera): lo
+  avisa la pantalla (`programacion_financiera.descuadres`) y nada se borra en cascada entre
+  las dos.
+- `ObservacionProyectoSiifweb` es distinta de `ObservacionProyecto`, que cuelga de
+  `ProgramacionProyectos` (lo que vino del Access).

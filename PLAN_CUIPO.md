@@ -600,13 +600,13 @@ pruebas en `cuipo/tests/test_pantalla.py`).
   el reparto es manual.
 - Solo se edita una distribución en borrador y con permisos de agregar, cambiar y borrar
   líneas; sin permiso de ver distribuciones, 403.
-- Cualitativos: cada celda muestra el código, la descripción completa (en dos líneas, entera
-  al pasar el cursor) y su origen, con un botón **Elegir** que abre una ventana con buscador
+- Cualitativos: cada celda muestra el código, la descripción completa (sin recortar) y su
+  origen, con un botón **Elegir** que abre una ventana con buscador
   (por código o por palabras de la descripción) y la lista de opciones con la descripción
   completa; clic en una opción la guarda y cierra; Esc o clic fuera cierra
   (`distribuir/elegir/`). La vigencia del gasto usa la misma ventana: "Elegir" en la línea la
   cambia (`cambiar_vigencia`, sin repetir vigencia para la misma fila y producto) y
-  "+ vigencia" agrega una línea en una vigencia que la fila y el producto todavía no tienen. Solo ofrece códigos activos y muestra hasta 60 coincidencias. Se
+  "+ vigencia" agrega una línea en una vigencia que la fila y el producto todavía no tienen. Solo ofrece códigos activos, de 50 en 50 con Anterior / Siguiente. Se
   probó antes con listas desplegables, pero los nombres largos no se leían.
 - La lista de distribuciones vacía explica cómo se crean (con la precarga del corte).
 - Ayudas en globo (el mismo de la ficha del proyecto): junto a "Validación", las reglas que

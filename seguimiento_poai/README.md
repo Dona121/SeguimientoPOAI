@@ -41,6 +41,11 @@ SECRET_KEY=desarrollo-local DEBUG=True DATABASE_URL="sqlite:///$PWD/seguimiento_
 Con el `.env` presente, la subida de reportes desde el admin va al bucket S3 de
 produccion; sin el, falla por falta de llaves. Para revisar paginas no hace falta.
 
+El bucket de Supabase rechaza (400) los nombres de archivo con tildes o enes. El
+almacenamiento es `siifweb.almacenamiento.S3NombresSeguros`, que limpia el nombre antes de
+guardar ("Guia ano 2026.pdf" con tildes queda "Guia_ano_2026.pdf"); en pruebas,
+`ArchivosLocalesNombresSeguros`.
+
 ### Retomar en otra maquina
 
 El codigo esta en GitHub, pero el `.env` y las memorias del asistente no: viven en
@@ -286,10 +291,25 @@ identidades internas y la conciliacion padre-hijo, que siguen dando cero descuad
 `Proyectos` es la entrada del admin. El listado muestra certificado, obligado y una barra
 de avance por proyecto; cada fila tiene enlace a su ficha.
 
-**Detalle del proyecto**: solo los datos del proyecto — BPIN, nombre, dependencias,
-clasificaciones y origen. Nada mas. Tuvo seis inlines (disponibilidades, compromisos,
-obligaciones, contratos, reservas y SECOP II) recortados a 20 filas cada uno, y se
-quitaron: repetian a medias lo que la ficha muestra completo y agregado.
+**Detalle del proyecto**: solo los datos del proyecto, sin inlines ni textos de relleno.
+Tuvo seis inlines (disponibilidades, compromisos, obligaciones, contratos, reservas y SECOP II)
+recortados a 20 filas cada uno, y se quitaron: repetian a medias lo que la ficha muestra
+completo y agregado. Secciones:
+
+- **Proyecto**: BPIN y nombre. El BPIN lleva un globo de ayuda ("Si registras aqui un proyecto
+  nuevo...").
+- **Responsables y clasificacion**: dependencia de SIIFWEB, dependencia responsable (POAI) y
+  clasificaciones.
+- **Radicacion y ejecucion**: fecha de radicacion, fecha de registro, tiempo de ejecucion
+  (3 enteros y 2 decimales, punto decimal como los demas formularios) con su medida de tiempo
+  (Dias, Meses, Anios; se agregan mas con el "+") y contratacion directa.
+- **Tramite**: diez pasos, cada uno con su casilla y su fecha en la misma linea. La fecha solo
+  aparece con la casilla marcada (`conditional_fields` de unfold) y se borra si la casilla se
+  desmarca. La lista esta en `TRAMITES` (models.py).
+- **Programacion financiera**: el valor programado (solo lectura), con lo de cada vigencia.
+- **Origen**.
+
+Arriba, tres botones: **Ficha de ejecucion**, **Programacion** y **Observaciones**.
 
 **Ficha de ejecucion** (boton en el detalle, o el enlace del listado): una vista propia,
 hecha con una changeform action de unfold, porque los inlines muestran filas sueltas y
@@ -726,6 +746,43 @@ $1.092.325.482 y la reserva 1 de 2025 constituida exactamente por ese saldo.
 `prueba_admin_unfold.py` verifica que las 22 paginas de listado cargan con unfold y que
 los inlines traen datos.
 
+### Programacion financiera y fisica
+
+Boton **Programacion** del detalle (`<id>/programacion-financiera/`). Dos pestanas sobre la
+misma URL (`?panel=financiera|fisica`), como la ficha de ejecucion. Logica en
+`siifweb/programacion_financiera.py`.
+
+- **Financiera**: un bloque por vigencia, independiente, con sus fuentes en filas y sus metas
+  en columnas; el valor en cada cruce y totales por fuente, por meta y de la vigencia.
+  `Proyecto.valor_programado` suma todas las vigencias.
+- **Fisica**: un bloque por vigencia con sus metas y un valor por meta, con la unidad de
+  medida; sin totales (cada meta tiene su unidad).
+- Se agregan vigencias, fuentes y metas con una ventana de busqueda (50 por pagina, Anterior /
+  Siguiente) y se quitan con la x, solo de su vigencia. Las metas en que el proyecto esta
+  programado (Programacion de proyectos, por el BPIN) salen primero en el listado, marcadas;
+  no se agregan solas.
+- **Nada se guarda hasta oprimir Guardar**, que deja la pestana como se ve (crea, cambia y
+  borra vacios, ceros y lo quitado). Con un error en alguna casilla no se guarda nada. Hay
+  aviso de cambios sin guardar y el navegador pide confirmar al salir con cambios.
+- Los valores se escriben como en las distribuciones del CUIPO: sin separador de miles y con
+  punto decimal (`siifweb.cargas.decimal`); los totales se muestran como en el CUIPO.
+- **Mismas metas en las dos pestanas** por vigencia: cada pestana trae las metas que la otra
+  tiene guardadas, cada vigencia avisa las que no coinciden y al guardar sale una advertencia.
+  Quitar en una nunca borra la otra.
+- Permisos: cada pestana se ve con el permiso de ver de su modelo y se edita con agregar,
+  cambiar y borrar. Las listas `/admin/siifweb/programacionfinanciera/` y
+  `/admin/siifweb/programacionfisica/` no estan en el menu.
+
+### Observaciones del proyecto
+
+Boton **Observaciones** del detalle (`<id>/observaciones/`): una pantalla propia, no un
+inline. Agregar arriba y la lista de la mas reciente a la mas antigua, con editar y borrar.
+Pasados 3 dias desde que se escribio una observacion ya no se modifica ni se borra (tampoco
+desde el admin, que ademas no tiene borrado masivo). Ver pide
+`view_observacionproyectosiifweb`; cada accion, su permiso.
+
+Programacion y Observaciones llevan el boton "Volver al detalle", como la ficha de ejecucion.
+
 ## Roles y permisos
 
 Dos grupos que crea la migracion `0009`, para no repartir permisos a mano:
@@ -762,6 +819,10 @@ Dos detalles de implementacion:
 
 Los roles se prueban en `siifweb/tests/test_roles.py`, que verifica tanto lo que abre
 como lo que responde 403.
+
+Los modelos de noviembre (programacion financiera y fisica, observaciones del proyecto,
+medidas de tiempo, recursos del CUIPO) no estan en los roles de la migracion `0009`: se
+asignan en Usuarios y roles a quien corresponda.
 
 ## Estructura
 
