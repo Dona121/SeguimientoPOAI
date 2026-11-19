@@ -1540,6 +1540,35 @@ class ProgramacionFinanciera(Fechas):
             raise ValidationError({"valor": "El valor no puede ser negativo."})
 
 
+class ProgramacionFisica(Fechas):
+    """Lo que el proyecto programa avanzar en cada meta del plan, por vigencia: como la
+    programacion financiera, pero sin fuente. Se diligencia en la pestana Fisica de la pantalla
+    de programacion del proyecto."""
+    proyecto = models.ForeignKey(Proyecto, on_delete=models.CASCADE, related_name="programacion_fisica",
+                                 verbose_name="Proyecto")
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
+    meta = models.ForeignKey(MetaIndicador, on_delete=models.PROTECT, related_name="programacion_fisica",
+                             verbose_name="Meta")
+    # Como la financiera: 20 digitos, 15 enteros y 5 decimales
+    valor = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="Valor")
+
+    class Meta:
+        verbose_name = "Programación física"
+        verbose_name_plural = "Programación física"
+        ordering = ("proyecto__bpin", "-vigencia", "meta__codigo")
+        constraints = [models.UniqueConstraint(fields=["proyecto", "vigencia", "meta"],
+                                               name="programacion_fisica_unica",
+                                               violation_error_message="Ya hay un valor programado para ese "
+                                               "proyecto, vigencia y meta.")]
+
+    def __str__(self):
+        return f"{self.proyecto.bpin} · {self.vigencia} · {self.meta.codigo}: {self.valor}"
+
+    def clean(self):
+        if self.valor is not None and self.valor < 0:
+            raise ValidationError({"valor": "El valor no puede ser negativo."})
+
+
 @receiver(post_save, sender=ProgramacionFinanciera)
 @receiver(post_delete, sender=ProgramacionFinanciera)
 def actualizar_valor_programado(sender, instance, **kwargs):

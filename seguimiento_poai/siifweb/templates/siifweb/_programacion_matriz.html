@@ -7,6 +7,7 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
 <form class="pf-matriz" id="pf-matriz" autocomplete="off"{% if editable %} hx-post="{{ u_guardar }}" hx-target="this" hx-swap="outerHTML"{% else %} onsubmit="return false"{% endif %}>
   {# Lo que se ve: viaja en cada pedido para no perder lo agregado sin guardar #}
   <div hidden>
+    <input type="hidden" name="panel" value="financiera">
     {% for b in m.bloques %}
     <input type="hidden" name="vigencias" value="{{ b.vigencia }}">
     {% for f in b.fuentes %}<input type="hidden" name="fuentes-{{ b.vigencia }}" value="{{ f }}">{% endfor %}
@@ -16,7 +17,7 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
 
   <section class="caja">
     <div class="barra">
-      <span class="titulo">Programación</span>
+      <span class="titulo">Programación financiera</span>
       {% if m.bloques|length > 1 %}<span class="dato">Total en pantalla <b class="num">{{ m.total|floatformat:"2g" }}</b></span>{% endif %}
       {% if editable %}
       <span class="acciones">

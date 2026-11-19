@@ -1,12 +1,12 @@
 {% extends "admin/base_site.html" %}
 {% comment %}
-Programacion financiera del proyecto: un bloque por vigencia, fuentes en filas, metas en
+Programacion del proyecto en dos pestanas (?panel=financiera|fisica). La financiera: un bloque por vigencia, fuentes en filas, metas en
 columnas y el valor en cada cruce. Agregar o quitar vigencias, fuentes y metas no guarda; el
 boton Guardar si (HTMX, que unfold ya carga). Vistas en ProyectoAdmin; logica en
 siifweb/programacion_financiera.py.
 {% endcomment %}
 
-{% block title %}Programación financiera {{ proyecto.bpin }} | POAI{% endblock %}
+{% block title %}Programación {{ proyecto.bpin }} | POAI{% endblock %}
 
 {% block breadcrumbs %}
 <div class="px-4">
@@ -18,7 +18,7 @@ siifweb/programacion_financiera.py.
       <li class="mx-2">/</li>
       <li><a href="{% url 'admin:siifweb_proyecto_change' proyecto.pk %}" class="font-medium text-primary-600">{{ proyecto.bpin|default:proyecto.pk }}</a></li>
       <li class="mx-2">/</li>
-      <li>Programación financiera</li>
+      <li>Programación</li>
     </ul>
   </div>
 </div>
@@ -123,12 +123,24 @@ siifweb/programacion_financiera.py.
       <a href="{% url 'admin:siifweb_proyecto_change' proyecto.pk %}" class="border font-medium px-3 py-2 rounded-default text-sm
          text-base-700 dark:text-base-300 dark:border-base-700" style="margin-left:auto">Volver al detalle</a>
     </div>
+    {% if panel == "financiera" %}
     <div class="cab" style="padding-top:0">
       {% include "siifweb/_programacion_totales.html" %}
     </div>
+    {% endif %}
   </section>
 
-  {% include "siifweb/_programacion_matriz.html" %}
+  {% if paneles|length > 1 %}
+  <div class="flex gap-6 border-b dark:border-base-800">
+    {% for clave, titulo in paneles %}
+    <a href="?panel={{ clave }}"
+       class="pb-3 -mb-px text-sm font-medium border-b-2 {% if panel == clave %}border-primary-600 text-primary-600{% else %}border-transparent text-base-500 hover:text-base-700 dark:hover:text-base-300{% endif %}">
+      {{ titulo }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if panel == "fisica" %}{% include "siifweb/_programacion_fisica.html" %}{% else %}{% include "siifweb/_programacion_matriz.html" %}{% endif %}
   <div id="pf-elegir"></div>
 </div>
 <script>

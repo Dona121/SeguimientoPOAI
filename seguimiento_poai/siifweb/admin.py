@@ -37,7 +37,8 @@ from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MedidoATraves
 from .models import (MESES, Municipio, ObservacionProyecto, PeriodoReporte, ProgramacionMeta,
                      ProgramacionProyectos, SeguimientoMeta, TipoBanco, listado_vigencias_metas)
 from .models import (TRAMITES, Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
-                     MedidaTiempo, ObservacionProyectoSiifweb, ProductoCatalogo, ProgramacionFinanciera)
+                     MedidaTiempo, ObservacionProyectoSiifweb, ProductoCatalogo, ProgramacionFinanciera,
+                     ProgramacionFisica)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import User, Group
@@ -1381,65 +1382,91 @@ class ProyectoAdmin(ModelAdmin):
                     "proyecto": proyecto, "observaciones": list(proyecto.observaciones_siifweb.all()), "puede": puede}
         return TemplateResponse(request, "siifweb/observaciones_proyecto.html", contexto)
 
-    def has_ver_programacion_financiera_permission(self, request, object_id=None):
-        return request.user.has_perm("siifweb.view_programacionfinanciera")
+    # Las pestanas de la pantalla de programacion: (clave, titulo, modelo de sus permisos)
+    PANELES_PROGRAMACION = (("financiera", "Financiera", "programacionfinanciera"),
+                            ("fisica", "Física", "programacionfisica"))
 
-    @staticmethod
-    def _puede_programar(request):
-        return all(request.user.has_perm(f"siifweb.{p}_programacionfinanciera") for p in ("add", "change", "delete"))
+    def _paneles_pf(self, request):
+        """Las pestanas que el usuario puede ver."""
+        return [(clave, titulo) for clave, titulo, modelo in self.PANELES_PROGRAMACION
+                if request.user.has_perm(f"siifweb.view_{modelo}")]
+
+    def has_ver_programacion_permission(self, request, object_id=None):
+        return bool(self._paneles_pf(request))
+
+    def _panel_pf(self, request, datos):
+        """La pestana pedida si el usuario la puede ver; si no, la primera que pueda."""
+        paneles = [clave for clave, _ in self._paneles_pf(request)]
+        if not paneles:
+            raise PermissionDenied
+        return datos.get("panel") if datos.get("panel") in paneles else paneles[0]
+
+    def _puede_programar(self, request, panel="financiera"):
+        modelo = {clave: modelo for clave, _, modelo in self.PANELES_PROGRAMACION}[panel]
+        return all(request.user.has_perm(f"siifweb.{p}_{modelo}") for p in ("add", "change", "delete"))
 
     def _proyecto_programable(self, request, object_id):
-        if not self.has_ver_programacion_financiera_permission(request):
+        if not self.has_ver_programacion_permission(request):
             raise PermissionDenied
         proyecto = self.get_object(request, str(object_id))
         if proyecto is None:
             raise Http404("No hay proyecto con ese id.")
         return proyecto
 
-    def _matriz_pf(self, request, proyecto, mensaje="", **kwargs):
-        contexto = {"proyecto": proyecto, "m": programacion_financiera.matriz(proyecto, **kwargs),
-                    "editable": self._puede_programar(request), "parcial": True, "mensaje": mensaje}
-        return HttpResponse(render_to_string("siifweb/_programacion_matriz.html", contexto, request=request))
+    def _contexto_pf(self, request, proyecto, panel, mensaje="", parcial=False, **kwargs):
+        matriz = programacion_financiera.matriz_fisica if panel == "fisica" else programacion_financiera.matriz
+        return {"proyecto": proyecto, "panel": panel, "m": matriz(proyecto, **kwargs), "mensaje": mensaje,
+                "parcial": parcial, "editable": self._puede_programar(request, panel)}
 
-    @action(description="Programación financiera", url_path="programacion-financiera", icon="account_balance_wallet",
-            permissions=["ver_programacion_financiera"])
+    def _matriz_pf(self, request, proyecto, panel, **kwargs):
+        contexto = self._contexto_pf(request, proyecto, panel, parcial=True, **kwargs)
+        plantilla = "siifweb/_programacion_fisica.html" if panel == "fisica" else "siifweb/_programacion_matriz.html"
+        return HttpResponse(render_to_string(plantilla, contexto, request=request))
+
+    @action(description="Programación", url_path="programacion-financiera", icon="account_balance_wallet",
+            permissions=["ver_programacion"])
     def programacion_financiera(self, request, object_id):
-        """Cuanto va de cada fuente a cada meta del plan en el proyecto, por vigencia."""
+        """La programacion del proyecto por vigencia, en dos pestanas: financiera (fuente por meta)
+        y fisica (valor por meta)."""
         proyecto = self._proyecto_programable(request, object_id)
+        panel = self._panel_pf(request, request.GET)
         proyecto.refresh_from_db(fields=["valor_programado"])
-        contexto = {**self.admin_site.each_context(request), "title": f"Programación financiera {proyecto.bpin or ''}",
-                    "proyecto": proyecto, "m": programacion_financiera.matriz(proyecto),
-                    "editable": self._puede_programar(request)}
+        contexto = {**self.admin_site.each_context(request), "title": f"Programación {proyecto.bpin or ''}",
+                    "paneles": self._paneles_pf(request), **self._contexto_pf(request, proyecto, panel)}
         return TemplateResponse(request, "siifweb/programacion_financiera.html", contexto)
 
     def pf_matriz(self, request, pk):
-        """La pantalla otra vez, sin guardar: con una vigencia agregada o quitada, o una fuente o
+        """La pestana otra vez, sin guardar: con una vigencia agregada o quitada, o una fuente o
         meta agregada o quitada en una vigencia (en=<vigencia>), y con lo que ya se habia digitado."""
         proyecto = self._proyecto_programable(request, pk)
         datos = request.GET
         estado = programacion_financiera.cambiar_estado(programacion_financiera.estado_de(datos), datos)
-        return self._matriz_pf(request, proyecto, estado=estado, digitados=programacion_financiera.digitados_de(datos))
+        return self._matriz_pf(request, proyecto, self._panel_pf(request, datos), estado=estado,
+                               digitados=programacion_financiera.digitados_de(datos))
 
     def pf_guardar(self, request, pk):
-        """Deja la programacion como se ve. Con un error en alguna casilla no guarda nada."""
+        """Deja la programacion de la pestana como se ve. Con un error en alguna casilla no guarda nada."""
         proyecto = self._proyecto_programable(request, pk)
         if request.method != "POST":
             return HttpResponseBadRequest("Solo POST")
-        if not self._puede_programar(request):
+        panel = self._panel_pf(request, request.POST)
+        if not self._puede_programar(request, panel):
             raise PermissionDenied
         estado = programacion_financiera.estado_de(request.POST)
         digitados = programacion_financiera.digitados_de(request.POST)
-        errores, mensaje = programacion_financiera.guardar(proyecto, estado, digitados)
+        guardar = programacion_financiera.guardar_fisica if panel == "fisica" else programacion_financiera.guardar
+        errores, mensaje = guardar(proyecto, estado, digitados)
         proyecto.refresh_from_db(fields=["valor_programado"])
         if errores:
-            return self._matriz_pf(request, proyecto, estado=estado, digitados=digitados, errores=errores)
-        return self._matriz_pf(request, proyecto, mensaje=mensaje, estado=estado)
+            return self._matriz_pf(request, proyecto, panel, estado=estado, digitados=digitados, errores=errores)
+        return self._matriz_pf(request, proyecto, panel, mensaje=mensaje, estado=estado)
 
     def pf_elegir(self, request, pk):
         """La ventana para agregar una vigencia, o una fuente o una meta a una vigencia (en=):
         buscador y listado por paginas. Con solo=resultados devuelve solo el listado."""
         proyecto = self._proyecto_programable(request, pk)
         datos = request.GET
+        self._panel_pf(request, datos)
         tipo = datos.get("tipo")
         tipo = tipo if tipo in ("vigencia", "meta") else "fuente"
         estado = programacion_financiera.estado_de(datos)
@@ -2775,6 +2802,29 @@ class ObservacionProyectoSiifwebAdmin(ModelAdmin):
     @display(description="Observación")
     def texto_corto(self, obj):
         return corto(obj.texto, 120)
+
+
+@admin.register(ProgramacionFisica)
+class ProgramacionFisicaAdmin(ModelAdmin):
+    """Todos los valores fisicos programados. Se diligencian en la pestana Fisica de la pantalla
+    de programacion de cada proyecto; aqui se revisan."""
+    compressed_fields = True
+    list_fullwidth = True
+    list_display = ("proyecto_bpin", "vigencia", "meta", "valor_texto", "fecha_actualizacion")
+    list_filter = (("vigencia", ChoicesDropdownFilter),)
+    list_filter_submit = True
+    search_fields = ("proyecto__bpin", "proyecto__nombre", "meta__codigo")
+    list_select_related = ("proyecto", "meta")
+    autocomplete_fields = ("proyecto", "meta")
+    fields = ("proyecto", "vigencia", "meta", "valor")
+
+    @display(description="Proyecto", ordering="proyecto__bpin")
+    def proyecto_bpin(self, obj):
+        return corto(str(obj.proyecto), 90)
+
+    @display(description="Valor", ordering="valor")
+    def valor_texto(self, obj):
+        return cifra(obj.valor)
 
 
 @admin.register(ProgramacionFinanciera)

@@ -1,4 +1,6 @@
-"""Programacion financiera de un proyecto: cuanto va de cada fuente a cada meta, por vigencia.
+"""Programacion de un proyecto por vigencia: financiera (cuanto va de cada fuente a cada meta)
+y fisica (cuanto se programa avanzar en cada meta; como la financiera, pero sin fuente). Las
+dos son pestanas de la misma pantalla; la fisica esta al final de este modulo.
 
 La pantalla (ProyectoAdmin.programacion_financiera) tiene un bloque por vigencia. Cada bloque es
 independiente: sus propias fuentes (filas) y metas (columnas), con el valor en cada cruce y sus
@@ -26,7 +28,8 @@ from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Sum, Value, When
 from django.utils import timezone
 
-from .models import Fuente, MetaIndicador, ProgramacionFinanciera, ProgramacionMeta, listado_vigencias_metas
+from .models import (Fuente, MetaIndicador, ProgramacionFinanciera, ProgramacionFisica, ProgramacionMeta,
+                     listado_vigencias_metas)
 
 CERO = Decimal(0)
 ENTEROS = 15
@@ -138,11 +141,12 @@ def cambiar_estado(estado, datos):
 
 
 def digitados_de(datos):
-    """{(vigencia, fuente, meta): texto} de las casillas del formulario (v-<vig>-<fuente>-<meta>)."""
+    """Las casillas del formulario: {(vigencia, fuente, meta): texto} en la financiera
+    (v-<vig>-<fuente>-<meta>) y {(vigencia, meta): texto} en la fisica (v-<vig>-<meta>)."""
     digitados = {}
     for clave in datos:
         partes = clave.split("-")
-        if len(partes) == 4 and partes[0] == "v" and all(p.isdigit() for p in partes[1:]):
+        if len(partes) in (3, 4) and partes[0] == "v" and all(p.isdigit() for p in partes[1:]):
             digitados[tuple(int(p) for p in partes[1:])] = datos.get(clave, "")
     return digitados
 
@@ -290,3 +294,78 @@ def opciones(tipo, texto="", excluir=(), pagina=1, programadas=()):
         lista = list(tramo)
     return {"lista": lista, "pagina": pagina, "paginas": paginas, "total": total,
             "desde": (pagina - 1) * POR_PAGINA + 1 if total else 0, "hasta": (pagina - 1) * POR_PAGINA + len(lista)}
+
+
+# ---------------------------------------------------------------------------
+# Programacion fisica: un bloque por vigencia con sus metas y un valor por meta
+# ---------------------------------------------------------------------------
+
+def estado_guardado_fisica(proyecto):
+    """Las vigencias con valores fisicos, cada una con sus metas. Sin nada, el anio en curso vacio."""
+    estado = {}
+    for v, m in proyecto.programacion_fisica.values_list("vigencia", "meta_id"):
+        metas = estado.setdefault(v, {"fuentes": [], "metas": []})["metas"]
+        if m not in metas:
+            metas.append(m)
+    return estado or {timezone.localdate().year: {"fuentes": [], "metas": []}}
+
+
+def matriz_fisica(proyecto, estado=None, digitados=None, errores=None):
+    """Un bloque por vigencia con una fila por meta y su valor. Como `matriz`, sin fuentes; no
+    lleva totales: cada meta tiene su propia unidad de medida."""
+    estado = estado_guardado_fisica(proyecto) if estado is None else estado
+    guardados = {(r.vigencia, r.meta_id): r.valor for r in proyecto.programacion_fisica.all()}
+    todas = {m.pk: m for m in MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})
+             .select_related("indicador_mga__unidad_medida")}
+    digitados, errores = digitados or {}, errores or {}
+    bloques, visibles = [], set()
+    for v in sorted(estado):
+        programadas = metas_programadas(proyecto, v)
+        filas = []
+        for m in sorted((todas[x] for x in estado[v]["metas"] if x in todas), key=lambda m: m.codigo):
+            clave = (v, m.pk)
+            visibles.add(clave)
+            guardado = guardados.get(clave)
+            texto = digitados[clave] if clave in digitados else en_casilla(guardado)
+            leido = _leer_o_none(texto)
+            filas.append({"meta": m, "texto": texto, "nombre": f"v-{v}-{m.pk}", "con": bool(leido),
+                          "cambio": leido is None or leido != (guardado or CERO), "error": errores.get(clave, ""),
+                          "programada": m.pk in programadas})
+        bloques.append({"vigencia": v, "filas": filas, "metas": [f["meta"].pk for f in filas]})
+    por_borrar = [clave for clave in guardados if clave not in visibles]
+    return {"bloques": bloques, "por_borrar": len(por_borrar), "errores": len(errores),
+            "pendiente": bool(por_borrar) or any(f["cambio"] for b in bloques for f in b["filas"])}
+
+
+def guardar_fisica(proyecto, estado, digitados):
+    """Deja la programacion fisica como se ve. Devuelve ({casilla: error}, mensaje). Con algun
+    error no cambia nada; vacio o cero borra."""
+    validas = set(MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})
+                  .values_list("pk", flat=True))
+    valores, errores = {}, {}
+    for v, bloque in estado.items():
+        for m in bloque["metas"]:
+            if m in validas:
+                try:
+                    valores[(v, m)] = leer_valor(digitados.get((v, m), ""))
+                except ValueError as e:
+                    errores[(v, m)] = str(e)
+    if errores:
+        return errores, ""
+    creados = cambiados = borrados = 0
+    with transaction.atomic():
+        for r in list(proyecto.programacion_fisica.all()):
+            nuevo = valores.pop((r.vigencia, r.meta_id), CERO)
+            if not nuevo:
+                r.delete()
+                borrados += 1
+            elif nuevo != r.valor:
+                r.valor = nuevo
+                r.save(update_fields=["valor", "fecha_actualizacion"])
+                cambiados += 1
+        for (v, m), valor in valores.items():
+            if valor:
+                ProgramacionFisica.objects.create(proyecto=proyecto, vigencia=v, meta_id=m, valor=valor)
+                creados += 1
+    partes = [f"{n} {texto}" for n, texto in ((creados, "nuevos"), (cambiados, "cambiados"), (borrados, "borrados")) if n]
+    return {}, ("Guardado: " + ", ".join(partes) + ".") if partes else "Sin cambios."

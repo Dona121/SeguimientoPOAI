@@ -723,9 +723,18 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   sin borrado masivo.
 - Programacion financiera y Observaciones llevan el boton "Volver al detalle", como la ficha de
   ejecucion. La programacion financiera ya no tiene el globo de ayuda.
+- **Programacion fisica** (`siifweb.ProgramacionFisica`, migracion `siifweb.0026`): proyecto,
+  vigencia, meta y valor (20 digitos, 5 decimales), con sus fechas; un valor por proyecto,
+  vigencia y meta. Va como pestana "Fisica" de la misma pantalla (`?panel=fisica`), al lado de
+  "Financiera": era lo menos complejo, porque reutiliza el encabezado, la ventana para agregar,
+  los avisos y el boton Guardar. Cada vigencia con sus metas y un valor por meta, con su unidad
+  de medida y sin totales (cada meta tiene su unidad). No suma al valor programado del proyecto,
+  que sigue siendo solo el financiero. El boton del detalle pasa a llamarse "Programacion". Cada
+  pestana se ve con el permiso de ver de su modelo y se edita con agregar, cambiar y borrar; la
+  lista `/admin/siifweb/programacionfisica/` no esta en el menu.
 - **Distribuciones del CUIPO:** la ventana para elegir CPC, detalle sectorial, tercero, politica
   publica o vigencia del gasto muestra de 50 en 50 con Anterior / Siguiente (antes las primeras
   60 y "escriba para acotar").
 
-**Pruebas.** 600, todas pasan.
+**Pruebas.** 606, todas pasan.
 

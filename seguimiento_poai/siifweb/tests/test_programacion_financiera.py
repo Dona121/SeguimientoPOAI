@@ -12,8 +12,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from siifweb import programacion_financiera as pf
-from siifweb.models import (Fuente, MetaIndicador, ProgramacionFinanciera, ProgramacionMeta, ProgramacionProyectos,
-                            Proyecto)
+from siifweb.models import (Fuente, MetaIndicador, ProgramacionFinanciera, ProgramacionFisica, ProgramacionMeta,
+                            ProgramacionProyectos, Proyecto)
 
 from .fabricas import catalogos, proyecto
 
@@ -245,6 +245,74 @@ class Pantalla(Base):
         self.assertIn(f"<b>{meta_tardia.codigo}</b>", primeras)
 
 
+class Fisica(Base):
+    """La pestana Fisica: como la financiera, sin fuentes."""
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+        self.url = reverse("admin:siifweb_proyecto_programacion_financiera", args=(self.proy.pk,))
+        self.guardar_url = reverse("admin:siifweb_proyecto_pf_guardar", args=(self.proy.pk,))
+        self.matriz = reverse("admin:siifweb_proyecto_pf_matriz", args=(self.proy.pk,))
+        self.elegir = reverse("admin:siifweb_proyecto_pf_elegir", args=(self.proy.pk,))
+
+    def casilla(self, vigencia=ANIO, meta=None):
+        return f"v-{vigencia}-{(meta or self.meta).pk}"
+
+    def estado(self, bloques=None, **extra):
+        bloques = {ANIO: [self.meta]} if bloques is None else bloques
+        datos = {"panel": "fisica", "vigencias": list(bloques)}
+        for v, metas in bloques.items():
+            datos[f"metas-{v}"] = [m.pk for m in metas]
+        return {**datos, **extra}
+
+    def guardar(self, valores, bloques=None):
+        return self.client.post(self.guardar_url, self.estado(bloques, **valores))
+
+    def test_las_pestanas(self):
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, "?panel=fisica")
+        self.assertContains(respuesta, "Programación financiera")
+        fisica = self.client.get(self.url, {"panel": "fisica"})
+        self.assertContains(fisica, "Programación física")
+        self.assertContains(fisica, "Sin metas.")
+        self.assertContains(fisica, 'name="panel" value="fisica"')
+        self.assertNotContains(fisica, "Valor programado (guardado)")      # el total es de la financiera
+
+    def test_agregar_guardar_y_no_tocar_la_financiera(self):
+        self.programar("1000")                                             # financiera
+        respuesta = self.client.get(self.matriz, self.estado({ANIO: []}, en=ANIO, agregar_meta=self.meta.pk))
+        self.assertContains(respuesta, f'name="{self.casilla()}"')
+        self.assertContains(respuesta, "programada")                      # MT001 esta programada en ANIO
+        respuesta = self.guardar({self.casilla(): "12.5"})
+        self.assertContains(respuesta, "Guardado: 1 nuevos.")
+        self.assertEqual(list(ProgramacionFisica.objects.values_list("vigencia", "meta", "valor")),
+                         [(ANIO, self.meta.pk, D("12.5"))])
+        self.assertEqual(ProgramacionFinanciera.objects.get().valor, D("1000"))
+        self.assertEqual(self.total(), D("1000"))                        # el valor programado es solo financiero
+        self.assertContains(self.guardar({self.casilla(): ""}), "Guardado: 1 borrados.")
+        self.assertFalse(ProgramacionFisica.objects.exists())
+        self.assertTrue(ProgramacionFinanciera.objects.exists())
+
+    def test_quitar_la_meta_de_una_vigencia_no_toca_la_otra(self):
+        bloques = {ANIO: [self.meta], ANIO + 1: [self.meta]}
+        respuesta = self.client.get(self.matriz, self.estado(bloques, **{
+            self.casilla(): "3", self.casilla(ANIO + 1): "4", "quitar_meta": self.meta.pk, "en": ANIO + 1}))
+        self.assertContains(respuesta, 'value="3"')
+        self.assertNotContains(respuesta, f'name="{self.casilla(ANIO + 1)}"')
+
+    def test_con_un_error_no_se_guarda_nada(self):
+        respuesta = self.guardar({self.casilla(): "abc"})
+        self.assertContains(respuesta, "1 casilla con error")
+        self.assertFalse(ProgramacionFisica.objects.exists())
+
+    def test_al_abrir_trae_lo_guardado(self):
+        ProgramacionFisica.objects.create(proyecto=self.proy, vigencia=ANIO + 1, meta=self.meta2, valor=D("7"))
+        respuesta = self.client.get(self.url, {"panel": "fisica"})
+        self.assertContains(respuesta, f"Vigencia {ANIO + 1}")
+        self.assertContains(respuesta, f'name="{self.casilla(ANIO + 1, self.meta2)}"')
+        self.assertContains(respuesta, 'value="7"')
+
+
 class Permisos(Base):
     def usuario(self, *codigos):
         u = get_user_model().objects.create_user("u" + "".join(codigos)[:20], "u@b.co", "clave", is_staff=True)
@@ -257,6 +325,17 @@ class Permisos(Base):
         url = reverse("admin:siifweb_proyecto_programacion_financiera", args=(self.proy.pk,))
         self.assertEqual(self.client.get(url).status_code, 403)
         self.assertNotContains(self.client.get(reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,))), url)
+
+    def test_solo_la_fisica(self):
+        """Con permiso solo de la fisica: entra, ve solo esa pestana y no edita sin permiso de cambio."""
+        self.usuario("view_proyecto", "view_programacionfisica")
+        url = reverse("admin:siifweb_proyecto_programacion_financiera", args=(self.proy.pk,))
+        self.assertContains(self.client.get(reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,))), url)
+        respuesta = self.client.get(url, {"panel": "financiera"})
+        self.assertContains(respuesta, "Programación física")
+        self.assertNotContains(respuesta, "?panel=financiera")
+        guardar = reverse("admin:siifweb_proyecto_pf_guardar", args=(self.proy.pk,))
+        self.assertEqual(self.client.post(guardar, {"panel": "fisica", "vigencias": [ANIO]}).status_code, 403)
 
     def test_solo_ver_consulta_pero_no_edita(self):
         self.programar("10")
