@@ -609,14 +609,9 @@ class ProyectoAdmin(ModelAdmin):
     list_filter_submit = True
     ordering = ("bpin",)
     fieldsets = (
-        ("Proyecto", {"fields": ("bpin", "nombre"),
-                      "description": "Aqui solo se editan los datos del proyecto. La cadena de "
-                                     "gasto, los contratos y sus pagos se revisan "
-                                     "en la ficha de ejecucion, con el boton de arriba."}),
+        ("Proyecto", {"fields": ("bpin", "nombre")}),
         ("Responsables y clasificacion", {
-            "fields": ("dependencia", "dependencia_responsable", "clasificaciones"),
-            "description": "La dependencia de SIIFWEB es la que ejecuta el gasto; la responsable "
-                           "es la del POAI, la asigna el equipo y en algunos casos difiere."}),
+            "fields": ("dependencia", "dependencia_responsable", "clasificaciones")}),
         ("Origen", {"fields": ("origen",),
                     "description": "Si registras aqui un proyecto nuevo, la proxima carga "
                                    "buscara su BPIN y le enganchara la ejecucion. Lo que "
