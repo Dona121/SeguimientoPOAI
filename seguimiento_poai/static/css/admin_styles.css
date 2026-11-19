@@ -382,3 +382,26 @@ aside ul.absolute.bg-white li a:hover span {
 #nav-sidebar nav.absolute button[type="submit"]:hover {
   background-color: #fee2e2 !important;
 }
+
+/* Ayuda en un globo al lado de la etiqueta de un campo del formulario (por ejemplo el BPIN
+   del proyecto). Las fichas propias traen la misma regla en su plantilla. La etiqueta del
+   campo no parte lineas (whitespace-nowrap): el globo si. */
+.ayuda { position: relative; display: inline-flex; vertical-align: middle; cursor: help; }
+.ayuda .globo {
+  position: absolute;
+  left: 0;
+  top: 1.75rem;
+  z-index: 40;
+  width: 24rem;
+  max-width: 78vw;
+  padding: .75rem 1rem;
+  font-size: .8125rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: none;
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.ayuda:hover .globo, .ayuda:focus-within .globo { visibility: visible; opacity: 1; }

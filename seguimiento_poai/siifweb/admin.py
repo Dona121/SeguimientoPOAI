@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models import (Case, Count, DateField, DecimalField, Exists, F, IntegerField, OuterRef,
                               Prefetch, Q, Subquery, Sum, Value, When)
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
@@ -612,11 +613,19 @@ class ProyectoAdmin(ModelAdmin):
         ("Proyecto", {"fields": ("bpin", "nombre")}),
         ("Responsables y clasificacion", {
             "fields": ("dependencia", "dependencia_responsable", "clasificaciones")}),
-        ("Origen", {"fields": ("origen",),
-                    "description": "Si registras aqui un proyecto nuevo, la proxima carga "
-                                   "buscara su BPIN y le enganchara la ejecucion. Lo que "
-                                   "escribas en nombre y responsable no se sobreescribe."}),
+        ("Origen", {"fields": ("origen",)}),
     )
+
+    AYUDA_BPIN = ("Si registras aqui un proyecto nuevo, la proxima carga buscara su BPIN y le "
+                  "enganchara la ejecucion. Lo que escribas en nombre y responsable no se sobreescribe.")
+
+    def get_form(self, request, obj=None, **kwargs):
+        """El BPIN lleva su ayuda en un globo al lado de la etiqueta."""
+        form = super().get_form(request, obj, **kwargs)
+        if "bpin" in form.base_fields:
+            ayuda = render_to_string("siifweb/_ayuda.html", {"texto": self.AYUDA_BPIN, "etiqueta": "Ayuda del BPIN"})
+            form.base_fields["bpin"].label = format_html("BPIN {}", ayuda)
+        return form
 
     @display(description="Origen", label={"Ingresado por el equipo": "success",
                                           "Detectado en un reporte de SIIFWEB": "info",

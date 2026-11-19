@@ -107,6 +107,17 @@ class PaginasQueYaExistian(AdminBase):
         self.assertContains(respuesta,
                             reverse("admin:siifweb_proyecto_ficha_ejecucion", args=(self.proy.pk,)))
 
+    def test_la_ayuda_del_proyecto_nuevo_va_en_el_globo_del_bpin(self):
+        """Sin textos de relleno en las secciones: la nota del proyecto nuevo va al lado del BPIN."""
+        for url in (reverse("admin:siifweb_proyecto_add"),
+                    reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,))):
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertEqual(html.count("la proxima carga buscara su BPIN"), 1)
+                self.assertIn('aria-label="Ayuda del BPIN"', html)
+                self.assertNotIn("Aqui solo se editan", html)
+                self.assertNotIn("la responsable es la del POAI", html)
+
     def test_la_pagina_de_cargas_muestra_el_tipo_secop(self):
         url = reverse("admin:siifweb_cargareporte_changelist")
         respuesta = self.client.get(url)
