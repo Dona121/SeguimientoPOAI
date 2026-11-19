@@ -1,0 +1,98 @@
+{% extends "admin/base_site.html" %}
+{% comment %}
+Observaciones del proyecto: agregar arriba y la lista de la mas reciente a la mas antigua, con
+editar y borrar. Formularios normales (POST y vuelve a la misma pagina con un mensaje). Vista en
+ProyectoAdmin.observaciones.
+{% endcomment %}
+
+{% block title %}Observaciones {{ proyecto.bpin }} | POAI{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url 'admin:siifweb_proyecto_changelist' %}" class="font-medium text-primary-600">Proyectos</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url 'admin:siifweb_proyecto_change' proyecto.pk %}" class="font-medium text-primary-600">{{ proyecto.bpin|default:proyecto.pk }}</a></li>
+      <li class="mx-2">/</li>
+      <li>Observaciones</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .ob { display:flex; flex-direction:column; gap:1rem; max-width:56rem; }
+  .ob .caja { background:#fff; border:1px solid var(--color-base-200); border-radius:6px; padding:1rem 1.25rem; }
+  .dark .ob .caja { background:var(--color-base-900); border-color:var(--color-base-800); }
+  .ob h2 { font-size:1.05rem; font-weight:600; }
+  .ob .dato { font-size:.8rem; color:var(--color-base-500); }
+  .ob textarea { width:100%; min-height:5.5rem; border:1px solid var(--color-base-200); border-radius:6px; padding:.55rem .7rem;
+                 font-size:.875rem; line-height:1.5; background:#fff; color:var(--color-base-800); resize:vertical; }
+  .dark .ob textarea { background:var(--color-base-900); border-color:var(--color-base-700); color:var(--color-base-100); }
+  .ob textarea:focus { outline:2px solid var(--color-primary-600); outline-offset:-1px; border-color:transparent; }
+  .ob .acciones { display:flex; gap:.5rem; justify-content:flex-end; margin-top:.6rem; align-items:center; }
+  .ob .boton { display:inline-flex; align-items:center; gap:.3rem; background:var(--color-primary-600); color:#fff;
+               border-radius:6px; padding:.4rem .85rem; font-size:.85rem; font-weight:500; cursor:pointer; }
+  .ob .boton:hover { background:var(--color-primary-700); }
+  .ob .boton.gris { background:var(--color-base-100); color:var(--color-base-700); border:1px solid var(--color-base-200); }
+  .dark .ob .boton.gris { background:var(--color-base-800); color:var(--color-base-200); border-color:var(--color-base-700); }
+  .ob .boton.rojo { background:transparent; color:#b42318; border:1px solid #f3c1bb; }
+  .ob .boton.rojo:hover { background:#fdecea; }
+  .ob .nota { white-space:normal; font-size:.9rem; line-height:1.55; margin:.4rem 0 0; overflow-wrap:anywhere; }
+  .ob .cabeza { display:flex; justify-content:space-between; gap:1rem; align-items:baseline; flex-wrap:wrap; }
+  .ob details > summary { list-style:none; cursor:pointer; }
+  .ob details > summary::-webkit-details-marker { display:none; }
+  .ob details[open] .ver { display:none; }
+  .ob .vacio { font-size:.875rem; color:var(--color-base-500); }
+</style>
+
+<div class="ob">
+  <section class="caja">
+    <h2>{{ proyecto.bpin|default:"Sin BPIN" }} · {{ proyecto.nombre|default:"(sin nombre)" }}</h2>
+    <span class="dato">{{ observaciones|length }} observaci{{ observaciones|length|pluralize:"ón,ones" }}</span>
+    {% if puede.add %}
+    <form method="post" style="margin-top:.8rem">{% csrf_token %}
+      <input type="hidden" name="accion" value="agregar">
+      <label for="ob-nueva" class="dato">Nueva observación</label>
+      <textarea id="ob-nueva" name="texto" required></textarea>
+      <div class="acciones"><button class="boton" type="submit"><span class="material-symbols-outlined" style="font-size:18px">add</span>Agregar</button></div>
+    </form>
+    {% endif %}
+  </section>
+
+  {% for o in observaciones %}
+  <article class="caja">
+    <div class="cabeza">
+      <span class="dato">{{ o.fecha_creacion|date:"d/m/Y H:i" }}{% if o.fecha_actualizacion|date:"YmdHi" != o.fecha_creacion|date:"YmdHi" %} · editada el {{ o.fecha_actualizacion|date:"d/m/Y H:i" }}{% endif %}</span>
+      {% if puede.delete %}
+      <form method="post" onsubmit="return confirm('¿Borrar esta observación?');">{% csrf_token %}
+        <input type="hidden" name="accion" value="borrar"><input type="hidden" name="id" value="{{ o.pk }}">
+        <button class="boton rojo" type="submit">Borrar</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if puede.change %}
+    <details>
+      <summary><p class="nota ver">{{ o.texto|linebreaksbr }}</p><span class="dato ver">Clic para editar</span></summary>
+      <form method="post" style="margin-top:.4rem">{% csrf_token %}
+        <input type="hidden" name="accion" value="editar"><input type="hidden" name="id" value="{{ o.pk }}">
+        <textarea name="texto" required aria-label="Editar la observación">{{ o.texto }}</textarea>
+        <div class="acciones">
+          <button class="boton gris" type="button" onclick="this.closest('details').open = false">Cancelar</button>
+          <button class="boton" type="submit">Guardar</button>
+        </div>
+      </form>
+    </details>
+    {% else %}
+    <p class="nota">{{ o.texto|linebreaksbr }}</p>
+    {% endif %}
+  </article>
+  {% empty %}
+  <p class="vacio">Sin observaciones.</p>
+  {% endfor %}
+</div>
+{% endblock %}

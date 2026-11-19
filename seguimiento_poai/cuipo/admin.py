@@ -810,14 +810,16 @@ class DistribucionBPINAdmin(ModelAdmin):
         }
         return TemplateResponse(request, "cuipo/distribuir.html", contexto)
 
+    POR_PAGINA = 50
     ELEGIBLES = {"cpc": ("CPC", CPC), "detalle_sectorial": ("detalle sectorial", DetalleSectorial),
                  "tercero": ("tercero", TerceroCUIPO), "politica_publica": ("política pública", PoliticaPublica),
                  "vigencia_gasto": ("vigencia del gasto", VigenciaGasto)}
 
     def d_elegir(self, request, pk):
         """La ventana para elegir un cualitativo o la vigencia del gasto de la linea: buscador y
-        lista con la descripcion completa. Con solo=resultados devuelve solo la lista (al escribir
-        en el buscador). Con fila y producto (sin linea) es para agregar una linea en otra
+        lista con la descripcion completa, de 50 en 50 (Anterior / Siguiente). Con
+        solo=resultados devuelve solo la lista (al buscar o cambiar de pagina). Con fila y
+        producto (sin linea) es para agregar una linea en otra
         vigencia del gasto: solo ofrece las que esa fila y producto todavia no tienen."""
         dist = self._distribucion(request, pk)
         if request.GET.get("campo") not in self.ELEGIBLES:
@@ -839,10 +841,16 @@ class DistribucionBPINAdmin(ModelAdmin):
         for palabra in texto.split():
             opciones = opciones.filter(Q(codigo__startswith=palabra) | Q(descripcion__icontains=palabra))
         total = opciones.count()
+        paginas = max(1, -(-total // self.POR_PAGINA))
+        pedida = request.GET.get("pagina", "")
+        pagina = min(max(int(pedida) if pedida.isdigit() else 1, 1), paginas)
+        desde = (pagina - 1) * self.POR_PAGINA
+        lista = list(opciones.order_by("codigo")[desde:desde + self.POR_PAGINA])
         contexto = {"dist": dist, "linea": linea, "fila": fila, "producto": producto, "campo": campo,
                     "titulo": titulo, "actual": actual, "accion": accion,
-                    "opciones": opciones.order_by("codigo")[:60], "total": total, "texto": texto,
-                    "editable": self._puede_editar(request, dist)}
+                    "opciones": lista, "total": total, "texto": texto,
+                    "pagina": pagina, "paginas": paginas, "desde": desde + 1 if total else 0,
+                    "hasta": desde + len(lista), "editable": self._puede_editar(request, dist)}
         plantilla = "cuipo/_opciones.html" if request.GET.get("solo") == "resultados" else "cuipo/_elegir.html"
         return TemplateResponse(request, plantilla, contexto)
 

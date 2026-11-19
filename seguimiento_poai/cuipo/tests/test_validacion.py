@@ -192,6 +192,19 @@ class ElegirCualitativos(Base):
         self.assertIn("<b>0</b>", html)
         self.assertIn('<span class="desc">NO APLICA</span>', html)
 
+    def test_el_listado_pasa_de_pagina(self):
+        version = self.linea.detalle_sectorial.version
+        CPC.objects.bulk_create(CPC(codigo=f"9{n:04d}", descripcion=f"Servicio {n}", version=version) for n in range(60))
+        total = CPC.objects.filter(activo=True).count()
+        datos = {"campo": "cpc", "linea": self.linea.pk, "solo": "resultados"}
+        primera = self.client.get(self.url, datos)
+        self.assertContains(primera, f"1–50 de {total}")
+        self.assertContains(primera, "Siguiente")
+        self.assertContains(primera, "&pagina=2")
+        segunda = self.client.get(self.url, {**datos, "pagina": 2})
+        self.assertContains(segunda, f"51–{total} de {total}")
+        self.assertContains(segunda, "&pagina=1")
+
     def test_la_descripcion_elegida_se_ve_completa(self):
         larga = "SPC - E4 ATENCIÓN PRIMARIA SALUD - L1 DESARROLLO INSTITUCIONAL Y SECTORIAL - DESARROLLO DE CAPACIDADES"
         detalle = DetalleSectorial.objects.create(codigo="19.02.01", descripcion=larga,

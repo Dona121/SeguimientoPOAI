@@ -14,7 +14,9 @@ no se contrastan con SIIFWEB.
 - El boton Guardar deja la programacion del proyecto exactamente como se ve: crea o cambia los
   valores y borra los vacios o en cero y los de vigencias, fuentes o metas quitadas. Si una
   casilla tiene un error no se guarda nada.
-- Los numeros se escriben como en Colombia: punto para miles y coma para decimales.
+- Los numeros se escriben como en las casillas del CUIPO: sin separador de miles y con punto
+  decimal (1500000.50); se leen con siifweb.cargas.decimal. Los totales se muestran como en la
+  pantalla del CUIPO (floatformat "2g").
 """
 import re
 from decimal import Decimal, InvalidOperation
@@ -36,19 +38,19 @@ POR_PAGINA = 50
 # ---------------------------------------------------------------------------
 
 def leer_valor(texto):
-    """'1.500.000,5' -> Decimal('1500000.5'). Vacio -> cero. Lo que no se puede leer, ValueError."""
+    """'1500000.5' -> Decimal('1500000.5'). Vacio -> cero. Lo que no se puede leer, ValueError.
+
+    Se lee igual que las casillas del CUIPO (siifweb.cargas.decimal): el punto es el decimal."""
+    from .cargas import decimal
     limpio = re.sub(r"[\s$]", "", texto or "")
     if not limpio:
         return CERO
-    if limpio.count(",") > 1:
-        raise ValueError("Use la coma solo para los decimales (por ejemplo 1.500.000,50).")
-    if not re.fullmatch(r"-?[\d.]*(,\d*)?", limpio):
-        raise ValueError("El valor tiene que ser un número (por ejemplo 1.500.000,50).")
-    normal = limpio.replace(".", "").replace(",", ".")
     try:
-        valor = Decimal(normal)
-    except InvalidOperation:
-        raise ValueError("El valor tiene que ser un número (por ejemplo 1.500.000,50).")
+        valor = decimal(limpio)
+    except (ValueError, ArithmeticError):
+        valor = None
+    if valor is None or not valor.is_finite():
+        raise ValueError("El valor tiene que ser un número (por ejemplo 1500000.50).")
     if valor < 0:
         raise ValueError("El valor no puede ser negativo.")
     if valor.as_tuple().exponent < -DECIMALES:
@@ -65,16 +67,14 @@ def _leer_o_none(texto):
         return None
 
 
-def formato(valor):
-    """Decimal('1500000.50000') -> '1.500.000,5'. Sin ceros de mas; cero o None, vacio."""
+def en_casilla(valor):
+    """Decimal('1500000.50000') -> '1500000.5': como se escribe en la casilla, sin ceros de mas.
+    Cero o None, vacio."""
     if not valor:
         return ""
     valor = Decimal(valor)
     valor = valor.quantize(Decimal(1)) if valor == valor.to_integral_value() else valor.normalize()
-    entero, _, decimales = format(valor, "f").partition(".")
-    signo = "-" if entero.startswith("-") else ""
-    entero = f"{int(entero.lstrip('-')):,}".replace(",", ".")
-    return signo + entero + (f",{decimales}" if decimales else "")
+    return format(valor, "f")
 
 
 # ---------------------------------------------------------------------------
@@ -147,33 +147,33 @@ def matriz(proyecto, vigencias=None, fuentes=None, metas=None, digitados=None, e
             for m in lista_metas:
                 clave = (v, f.pk, m.pk)
                 guardado = guardados.get(clave)
-                texto = digitados[clave] if clave in digitados else formato(guardado)
+                texto = digitados[clave] if clave in digitados else en_casilla(guardado)
                 leido = _leer_o_none(texto)
                 celdas.append({"meta": m, "texto": texto, "nombre": f"v-{v}-{f.pk}-{m.pk}", "con": bool(leido),
                                "cambio": leido is None or leido != (guardado or CERO), "error": errores.get(clave, "")})
                 subtotales[m.pk] += leido or CERO
                 total_fila += leido or CERO
-            filas.append({"fuente": f, "celdas": celdas, "total_texto": formato(total_fila) or "0"})
+            filas.append({"fuente": f, "celdas": celdas, "total": total_fila})
         for m_id, valor in subtotales.items():
             por_meta[m_id] += valor
-        bloques.append({"vigencia": v, "filas": filas, "total_texto": formato(sum(subtotales.values(), CERO)) or "0",
-                        "subtotales": [formato(subtotales[m.pk]) or "0" for m in lista_metas],
+        bloques.append({"vigencia": v, "filas": filas, "total": sum(subtotales.values(), CERO),
+                        "subtotales": [subtotales[m.pk] for m in lista_metas],
                         "guardada": any(vi == v for vi, _, _ in guardados)})
 
-    columnas = [{"meta": m, "total_texto": formato(por_meta[m.pk]) or "0", "programada": programadas.get(m.pk, []),
+    columnas = [{"meta": m, "total": por_meta[m.pk], "programada": programadas.get(m.pk, []),
                  "guardada": any(me == m.pk for _, _, me in guardados)} for m in lista_metas]
     visibles = {(v, f.pk, m.pk) for v in ids_vigencias for f in lista_fuentes for m in lista_metas}
     por_borrar = [clave for clave in guardados if clave not in visibles]
     pendiente = bool(por_borrar) or any(c["cambio"] for b in bloques for f in b["filas"] for c in f["celdas"])
     por_vigencia = list(proyecto.programacion_financiera.values("vigencia").annotate(t=Sum("valor")).order_by("vigencia"))
     return {
-        "bloques": bloques, "columnas": columnas, "total_texto": formato(sum(por_meta.values(), CERO)) or "0",
+        "bloques": bloques, "columnas": columnas, "total": sum(por_meta.values(), CERO),
         "fuentes_guardadas": {fu for _, fu, _ in guardados},
         "vigencias": ids_vigencias, "fuentes": [f.pk for f in lista_fuentes], "metas": [m.pk for m in lista_metas],
         "sin_fuentes": not lista_fuentes, "sin_metas": not lista_metas,
         "pendiente": pendiente, "por_borrar": len(por_borrar), "errores": len(errores),
-        "por_vigencia": [(p["vigencia"], formato(p["t"]) or "0") for p in por_vigencia],
-        "total_proyecto": formato(proyecto.valor_programado) or "0",
+        "por_vigencia": [(p["vigencia"], p["t"]) for p in por_vigencia],
+        "total_proyecto": proyecto.valor_programado,
     }
 
 

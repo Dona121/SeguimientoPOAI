@@ -142,6 +142,35 @@ class Clasificacion(Fechas):
         return self.nombre
 
 
+class MedidaTiempo(Fechas):
+    """En que se cuenta el tiempo de ejecucion del proyecto: dias, meses, anios."""
+    nombre = models.CharField(max_length=60, unique=True, verbose_name="Nombre")
+
+    class Meta:
+        verbose_name = "Medida de tiempo"
+        verbose_name_plural = "Medidas de tiempo"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
+# Los pasos del tramite del proyecto: (casilla, fecha). La fecha solo se pide con la casilla
+# marcada (conditional_fields del admin) y se borra si la casilla se desmarca (Proyecto.save).
+TRAMITES = (
+    ("decreto_liquidacion_inicial", "fecha_decreto_liquidacion_inicial"),
+    ("gestion_recursos_piip", "fecha_gestion_recursos_piip"),
+    ("asignacion_ajuste_decreto_et", "fecha_asignacion_ajuste_decreto_et"),
+    ("solicitud_concepto_traslado", "fecha_solicitud_concepto_traslado"),
+    ("decreto_traslado", "fecha_decreto_traslado"),
+    ("asignacion_ajuste_tramite_presupuestal", "fecha_asignacion_ajuste_tramite_presupuestal"),
+    ("cargado_siifweb", "fecha_cargue_siifweb"),
+    ("estudios_previos", "fecha_estudios_previos"),
+    ("radicado_contratacion", "fecha_radicado_contratacion"),
+    ("terminado", "fecha_terminacion"),
+)
+
+
 class Proyecto(Fechas):
     class Origen(models.TextChoices):
         MANUAL = "manual", _("Ingresado por el equipo")
@@ -167,6 +196,46 @@ class Proyecto(Fechas):
     valor_programado = models.DecimalField(max_digits=20, decimal_places=5, default=0, editable=False,
                                            verbose_name="Valor programado")
 
+    # Radicacion y ejecucion
+    fecha_radicacion = models.DateField(null=True, blank=True, verbose_name="Fecha de radicación")
+    fecha_registro = models.DateField(null=True, blank=True, verbose_name="Fecha de registro")
+    # 3 enteros y 2 decimales (por ejemplo 12,5), en la medida de tiempo de al lado
+    tiempo_ejecucion = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
+                                           verbose_name="Tiempo de ejecución")
+    medida_tiempo = models.ForeignKey(MedidaTiempo, on_delete=models.PROTECT, null=True, blank=True,
+                                      related_name="proyectos", verbose_name="Medida de tiempo")
+    contratacion_directa = models.BooleanField(default=False, verbose_name="Contratación directa")
+
+    # Tramite: cada paso con su fecha (ver TRAMITES)
+    decreto_liquidacion_inicial = models.BooleanField(default=False, verbose_name="En decreto de liquidación inicial")
+    fecha_decreto_liquidacion_inicial = models.DateField(null=True, blank=True,
+                                                         verbose_name="Fecha del decreto de liquidación inicial")
+    gestion_recursos_piip = models.BooleanField(default=False, verbose_name="Gestión de recursos en PIIP")
+    fecha_gestion_recursos_piip = models.DateField(null=True, blank=True,
+                                                   verbose_name="Fecha de gestión de recursos en PIIP")
+    asignacion_ajuste_decreto_et = models.BooleanField(default=False,
+                                                       verbose_name="Asignación de recursos ajuste a decreto ET")
+    fecha_asignacion_ajuste_decreto_et = models.DateField(
+        null=True, blank=True, verbose_name="Fecha de asignación de recursos ajuste a decreto ET")
+    solicitud_concepto_traslado = models.BooleanField(default=False, verbose_name="Solicitud y concepto de traslado")
+    fecha_solicitud_concepto_traslado = models.DateField(null=True, blank=True,
+                                                         verbose_name="Fecha de solicitud y concepto de traslado")
+    decreto_traslado = models.BooleanField(default=False, verbose_name="Decreto de traslado")
+    fecha_decreto_traslado = models.DateField(null=True, blank=True, verbose_name="Fecha del decreto de traslado")
+    asignacion_ajuste_tramite_presupuestal = models.BooleanField(
+        default=False, verbose_name="Asignación de recursos ajuste con trámite presupuestal")
+    fecha_asignacion_ajuste_tramite_presupuestal = models.DateField(
+        null=True, blank=True, verbose_name="Fecha de asignación de recursos ajuste con trámite presupuestal")
+    cargado_siifweb = models.BooleanField(default=False, verbose_name="Cargado en SIIFWEB")
+    fecha_cargue_siifweb = models.DateField(null=True, blank=True, verbose_name="Fecha de cargue en SIIFWEB")
+    estudios_previos = models.BooleanField(default=False, verbose_name="Estudios previos")
+    fecha_estudios_previos = models.DateField(null=True, blank=True, verbose_name="Fecha de estudios previos")
+    radicado_contratacion = models.BooleanField(default=False, verbose_name="Radicado en contratación")
+    fecha_radicado_contratacion = models.DateField(null=True, blank=True,
+                                                   verbose_name="Fecha de radicado en contratación")
+    terminado = models.BooleanField(default=False, verbose_name="Terminado")
+    fecha_terminacion = models.DateField(null=True, blank=True, verbose_name="Fecha de terminación")
+
     class Meta:
         verbose_name = "Proyecto"
         verbose_name_plural = "Proyectos"
@@ -184,6 +253,10 @@ class Proyecto(Fechas):
         # Si el equipo lo teclea con espacios o Excel le deja un ".0", no cruzaria.
         if self.bpin:
             self.bpin = str(self.bpin).strip().removesuffix(".0")
+        # Un paso del tramite sin marcar no lleva fecha
+        for casilla, fecha in TRAMITES:
+            if not getattr(self, casilla):
+                setattr(self, fecha, None)
         super().save(*args, **kwargs)
         # La formulacion del PIIP que llego antes que el proyecto a SIIFWEB queda enlazada
         if self.bpin:
@@ -1473,3 +1546,20 @@ def actualizar_valor_programado(sender, instance, **kwargs):
     proyecto se esta borrando, el update no encuentra la fila y no hace nada."""
     proyecto = Proyecto(pk=instance.proyecto_id)
     proyecto.actualizar_valor_programado()
+
+
+class ObservacionProyectoSiifweb(Fechas):
+    """Lo que el equipo anota sobre un proyecto de SIIFWEB. Se escriben y consultan en la
+    pantalla "Observaciones" del proyecto. (ObservacionProyecto es otra: la de la programacion
+    de proyectos que vino de Access.)"""
+    proyecto = models.ForeignKey(Proyecto, on_delete=models.CASCADE, related_name="observaciones_siifweb",
+                                 verbose_name="Proyecto")
+    texto = models.TextField(verbose_name="Observación")
+
+    class Meta:
+        verbose_name = "Observación del proyecto (SIIFWEB)"
+        verbose_name_plural = "Observaciones del proyecto (SIIFWEB)"
+        ordering = ("-fecha_creacion", "-pk")
+
+    def __str__(self):
+        return f"{self.proyecto.bpin}: {self.texto[:60]}"

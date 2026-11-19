@@ -22,15 +22,15 @@ ANIO = timezone.localdate().year
 
 
 class LeerYFormatear(SimpleTestCase):
-    def test_punto_para_miles_y_coma_para_decimales(self):
-        casos = {"1.500.000,5": D("1500000.5"), "1500000": D("1500000"), "$ 2.000": D("2000"),
-                 " 7,12345 ": D("7.12345"), "": D(0), "0": D(0)}
+    def test_punto_decimal_como_en_el_cuipo(self):
+        casos = {"1500000.5": D("1500000.5"), "1500000": D("1500000"), "$ 2000": D("2000"),
+                 " 7.12345 ": D("7.12345"), "7,5": D("7.5"), "": D(0), "0": D(0)}
         for texto, esperado in casos.items():
             with self.subTest(texto=texto):
                 self.assertEqual(pf.leer_valor(texto), esperado)
 
     def test_lo_que_no_se_acepta(self):
-        casos = {"-5": "negativo", "1,2,3": "coma solo para los decimales", "abc": "tiene que ser un número",
+        casos = {"-5": "negativo", "1,2a": "tiene que ser un número", "abc": "tiene que ser un número",
                  "1,123456": "hasta 5 decimales", "1234567890123456": "hasta 15 dígitos enteros"}
         for texto, mensaje in casos.items():
             with self.subTest(texto=texto):
@@ -38,13 +38,13 @@ class LeerYFormatear(SimpleTestCase):
                     pf.leer_valor(texto)
 
     def test_quince_enteros_y_cinco_decimales_si_caben(self):
-        self.assertEqual(pf.leer_valor("999.999.999.999.999,99999"), D("999999999999999.99999"))
+        self.assertEqual(pf.leer_valor("999999999999999.99999"), D("999999999999999.99999"))
 
-    def test_formato(self):
-        self.assertEqual(pf.formato(D("1500000.50000")), "1.500.000,5")
-        self.assertEqual(pf.formato(D("2000.00000")), "2.000")
-        self.assertEqual(pf.formato(D("0")), "")
-        self.assertEqual(pf.formato(None), "")
+    def test_en_la_casilla(self):
+        self.assertEqual(pf.en_casilla(D("1500000.50000")), "1500000.5")
+        self.assertEqual(pf.en_casilla(D("2000.00000")), "2000")
+        self.assertEqual(pf.en_casilla(D("0")), "")
+        self.assertEqual(pf.en_casilla(None), "")
 
 
 class Base(TestCase):
@@ -115,7 +115,7 @@ class Pantalla(Base):
         respuesta = self.client.get(reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,)))
         self.assertContains(respuesta, self.url)
         self.assertContains(respuesta, "Valor programado")
-        self.assertContains(respuesta, "$ 1.500.000")
+        self.assertContains(respuesta, "$1,500,000")             # como las demas columnas del proyecto
 
     def test_al_abrir_sin_nada_guardado(self):
         respuesta = self.client.get(self.url)
@@ -149,14 +149,16 @@ class Pantalla(Base):
         self.assertFalse(ProgramacionFinanciera.objects.exists())
 
     def test_guardar_crea_cambia_y_borra(self):
-        respuesta = self.guardar({self.casilla(): "1.500.000,5", self.casilla(meta=self.meta2): ""},
+        respuesta = self.guardar({self.casilla(): "1500000.5", self.casilla(meta=self.meta2): ""},
                                  metas=[self.meta, self.meta2])
         self.assertContains(respuesta, "Guardado: 1 nuevos.")
         self.assertContains(respuesta, 'hx-swap-oob="true"')            # el total del encabezado
         self.assertEqual(self.total(), D("1500000.5"))
-        self.assertContains(self.guardar({self.casilla(): "2.000.000"}), "Guardado: 1 cambiados.")
+        self.assertContains(respuesta, 'value="1500000.5"')
+        self.assertContains(respuesta, "1.500.000,50")                  # el total, como en el CUIPO
+        self.assertContains(self.guardar({self.casilla(): "2000000"}), "Guardado: 1 cambiados.")
         self.assertEqual(ProgramacionFinanciera.objects.get().valor, D("2000000"))
-        self.assertContains(self.guardar({self.casilla(): "2.000.000"}), "Sin cambios.")
+        self.assertContains(self.guardar({self.casilla(): "2000000"}), "Sin cambios.")
         self.assertContains(self.guardar({self.casilla(): ""}), "Guardado: 1 borrados.")
         self.assertEqual(self.total(), D(0))
 

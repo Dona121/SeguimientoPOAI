@@ -691,11 +691,30 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   proyecto esta programado (Programacion de proyectos, por el BPIN), marcadas "programada".
   Nada se guarda hasta oprimir **Guardar**, que deja la programacion como se ve: crea, cambia y
   borra (vacios, ceros y lo quitado). Con un error en alguna casilla no se guarda nada y las
-  casillas con error quedan en rojo. Hay aviso de cambios sin guardar. Punto para miles y coma
-  para decimales. Ver pide `view_programacionfinanciera`; guardar, agregar, cambiar y borrar.
+  casillas con error quedan en rojo. Hay aviso de cambios sin guardar. Los valores se escriben
+  como en las casillas del CUIPO: sin separador de miles y con punto decimal (1500000.50), y se
+  leen con `siifweb.cargas.decimal`; los totales se muestran como en la pantalla del CUIPO. Ver
+  pide `view_programacionfinanciera`; guardar, agregar, cambiar y borrar.
   Logica en `siifweb/programacion_financiera.py`.
 - La lista **Programacion financiera** del admin (`/admin/siifweb/programacionfinanciera/`)
   muestra todos los valores, con filtros por vigencia y fuente. No esta en el menu.
 
-**Pruebas.** 584, todas pasan.
+- **Radicacion, ejecucion y tramite del proyecto** (migraciones `siifweb.0024` y `0025`): fecha
+  de radicacion, fecha de registro, tiempo de ejecucion (3 enteros y 2 decimales, punto decimal
+  como los demas formularios del admin) con su medida de tiempo (`siifweb.MedidaTiempo`, con
+  Dias, Meses y Anios) y contratacion directa. Diez pasos del tramite, cada uno con una casilla y
+  su fecha (`TRAMITES` en models.py): decreto de liquidacion inicial, gestion de recursos en PIIP,
+  asignacion de recursos ajuste a decreto ET, solicitud y concepto de traslado, decreto de
+  traslado, asignacion de recursos ajuste con tramite presupuestal, cargado en SIIFWEB, estudios
+  previos, radicado en contratacion y terminado. La fecha solo aparece con la casilla marcada
+  (`conditional_fields` de unfold) y se borra si la casilla se desmarca (`Proyecto.save`).
+- **Observaciones del proyecto** (`siifweb.ObservacionProyectoSiifweb`: proyecto, texto y
+  fechas). Boton "Observaciones" en el detalle del proyecto (accion de detalle, no un inline: el
+  detalle solo edita el proyecto): agregar arriba y la lista de la mas reciente a la mas antigua,
+  con editar y borrar. Ver pide `view_observacionproyectosiifweb`; cada accion, su permiso.
+- **Distribuciones del CUIPO:** la ventana para elegir CPC, detalle sectorial, tercero, politica
+  publica o vigencia del gasto muestra de 50 en 50 con Anterior / Siguiente (antes las primeras
+  60 y "escriba para acotar").
+
+**Pruebas.** 595, todas pasan.
 

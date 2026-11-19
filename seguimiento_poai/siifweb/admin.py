@@ -36,8 +36,8 @@ from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MedidoATraves
                      UnidadMedida, VigenciaMeta, indicadores_fuera_del_programa)
 from .models import (MESES, Municipio, ObservacionProyecto, PeriodoReporte, ProgramacionMeta,
                      ProgramacionProyectos, SeguimientoMeta, TipoBanco, listado_vigencias_metas)
-from .models import (Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
-                     ProductoCatalogo, ProgramacionFinanciera)
+from .models import (TRAMITES, Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
+                     MedidaTiempo, ObservacionProyectoSiifweb, ProductoCatalogo, ProgramacionFinanciera)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import User, Group
@@ -606,7 +606,7 @@ class ProyectoAdmin(ModelAdmin):
     autocomplete_fields = ("dependencia_responsable",)
     list_filter_sheet = True
     filter_horizontal = ("clasificaciones",)
-    actions_detail = ("ficha_ejecucion", "programacion_financiera")
+    actions_detail = ("ficha_ejecucion", "programacion_financiera", "observaciones")
     list_filter_submit = True
     ordering = ("bpin",)
     readonly_fields = ("programado",)
@@ -614,19 +614,25 @@ class ProyectoAdmin(ModelAdmin):
         ("Proyecto", {"fields": ("bpin", "nombre")}),
         ("Responsables y clasificacion", {
             "fields": ("dependencia", "dependencia_responsable", "clasificaciones")}),
+        ("Radicación y ejecución", {
+            "fields": (("fecha_radicacion", "fecha_registro"), ("tiempo_ejecucion", "medida_tiempo"),
+                       "contratacion_directa")}),
+        # Cada paso con su fecha en la misma linea; la fecha solo aparece con la casilla marcada
+        ("Trámite", {"fields": TRAMITES}),
         ("Programación financiera", {"fields": ("programado",)}),
         ("Origen", {"fields": ("origen",)}),
     )
+    # Campos condicionales de unfold (expresiones de Alpine sobre los campos del formulario)
+    conditional_fields = {fecha: f"{casilla} == true" for casilla, fecha in TRAMITES}
 
     @display(description="Valor programado")
     def programado(self, obj):
         """La suma de la programacion financiera (todas las vigencias) y lo de cada vigencia."""
         if obj is None or not obj.pk:
             return "-"
-        formato = programacion_financiera.formato
         partes = (obj.programacion_financiera.values("vigencia").annotate(t=Sum("valor")).order_by("vigencia"))
-        detalle = " · ".join(f"{p['vigencia']}: $ {formato(p['t']) or '0'}" for p in partes)
-        return f"$ {formato(obj.valor_programado) or '0'}" + (f"  ({detalle})" if detalle else "")
+        detalle = " · ".join(f"{p['vigencia']}: {pesos(p['t'])}" for p in partes)
+        return pesos(obj.valor_programado) + (f"  ({detalle})" if detalle else "")
 
     AYUDA_BPIN = ("Si registras aqui un proyecto nuevo, la proxima carga buscara su BPIN y le "
                   "enganchara la ejecucion. Lo que escribas en nombre y responsable no se sobreescribe.")
@@ -1316,6 +1322,8 @@ class ProyectoAdmin(ModelAdmin):
             path("<path:object_id>/programacion-financiera/",
                  self.admin_site.admin_view(self.programacion_financiera),
                  name="siifweb_proyecto_programacion_financiera"),
+            path("<path:object_id>/observaciones/", self.admin_site.admin_view(self.observaciones),
+                 name="siifweb_proyecto_observaciones"),
         ]
         return propia + super().get_urls()
 
@@ -1323,6 +1331,52 @@ class ProyectoAdmin(ModelAdmin):
     # pero con un boton Guardar y con las vigencias como un listado mas (vigencias, fuentes y
     # metas). Logica en siifweb/programacion_financiera.py. Ver pide view_programacionfinanciera;
     # guardar, agregar, cambiar y borrar.
+
+    # -- Observaciones del proyecto: pantalla propia (no un inline: el detalle solo edita el
+    # proyecto). Ver pide view_observacionproyectosiifweb; agregar, editar y borrar, su permiso.
+
+    def has_ver_observaciones_permission(self, request, object_id=None):
+        return request.user.has_perm("siifweb.view_observacionproyectosiifweb")
+
+    @action(description="Observaciones", url_path="observaciones", icon="chat", permissions=["ver_observaciones"])
+    def observaciones(self, request, object_id):
+        """Las observaciones del proyecto, de la mas reciente a la mas antigua, para agregar,
+        editar y borrar."""
+        if not self.has_ver_observaciones_permission(request):
+            raise PermissionDenied
+        proyecto = self.get_object(request, str(object_id))
+        if proyecto is None:
+            raise Http404("No hay proyecto con ese id.")
+        puede = {p: request.user.has_perm(f"siifweb.{p}_observacionproyectosiifweb") for p in ("add", "change", "delete")}
+        if request.method == "POST":
+            accion = request.POST.get("accion", "")
+            permiso = {"agregar": "add", "editar": "change", "borrar": "delete"}.get(accion)
+            if permiso is None or not puede[permiso]:
+                raise PermissionDenied
+            texto = (request.POST.get("texto") or "").strip()
+            if accion == "agregar":
+                if texto:
+                    ObservacionProyectoSiifweb.objects.create(proyecto=proyecto, texto=texto)
+                    self.message_user(request, "Observación agregada.", messages.SUCCESS)
+                else:
+                    self.message_user(request, "Escriba la observación antes de agregarla.", messages.ERROR)
+            else:
+                observacion = proyecto.observaciones_siifweb.filter(pk=request.POST.get("id") or 0).first()
+                if observacion is None:
+                    raise Http404("Esa observación ya no existe.")
+                if accion == "borrar":
+                    observacion.delete()
+                    self.message_user(request, "Observación borrada.", messages.SUCCESS)
+                elif texto:
+                    observacion.texto = texto
+                    observacion.save()
+                    self.message_user(request, "Observación guardada.", messages.SUCCESS)
+                else:
+                    self.message_user(request, "La observación no puede quedar vacía.", messages.ERROR)
+            return HttpResponseRedirect(request.path)
+        contexto = {**self.admin_site.each_context(request), "title": f"Observaciones {proyecto.bpin or ''}",
+                    "proyecto": proyecto, "observaciones": list(proyecto.observaciones_siifweb.all()), "puede": puede}
+        return TemplateResponse(request, "siifweb/observaciones_proyecto.html", contexto)
 
     def has_ver_programacion_financiera_permission(self, request, object_id=None):
         return request.user.has_perm("siifweb.view_programacionfinanciera")
@@ -2673,6 +2727,35 @@ class PeriodoReporteAdmin(ModelAdmin):
         return obj.esta_abierto()
 
 
+@admin.register(MedidaTiempo)
+class MedidaTiempoAdmin(ModelAdmin):
+    """Dias, meses, anios: la medida del tiempo de ejecucion del proyecto."""
+    compressed_fields = True
+    list_display = ("nombre",)
+    search_fields = ("nombre",)
+
+
+@admin.register(ObservacionProyectoSiifweb)
+class ObservacionProyectoSiifwebAdmin(ModelAdmin):
+    """Todas las observaciones. Se escriben en la pantalla Observaciones de cada proyecto."""
+    compressed_fields = True
+    list_fullwidth = True
+    list_display = ("proyecto_bpin", "texto_corto", "fecha_creacion", "fecha_actualizacion")
+    search_fields = ("proyecto__bpin", "proyecto__nombre", "texto")
+    list_select_related = ("proyecto",)
+    autocomplete_fields = ("proyecto",)
+    fields = ("proyecto", "texto", "fecha_creacion", "fecha_actualizacion")
+    readonly_fields = ("fecha_creacion", "fecha_actualizacion")
+
+    @display(description="Proyecto", ordering="proyecto__bpin")
+    def proyecto_bpin(self, obj):
+        return corto(str(obj.proyecto), 70)
+
+    @display(description="Observación")
+    def texto_corto(self, obj):
+        return corto(obj.texto, 120)
+
+
 @admin.register(ProgramacionFinanciera)
 class ProgramacionFinancieraAdmin(ModelAdmin):
     """Todos los valores programados. Se diligencian en la pantalla de cada proyecto; aqui se
@@ -2693,7 +2776,7 @@ class ProgramacionFinancieraAdmin(ModelAdmin):
 
     @display(description="Valor", ordering="valor")
     def valor_texto(self, obj):
-        return f"$ {programacion_financiera.formato(obj.valor) or '0'}"
+        return pesos(obj.valor)
 
 
 @admin.register(SeguimientoMeta)

@@ -13,8 +13,19 @@
 {% empty %}
 <p class="nota">{% if texto %}Nada coincide con «{{ texto }}».{% else %}No hay opciones disponibles.{% endif %}</p>
 {% endfor %}
-{% if total > opciones|length %}
-<p class="nota">Se muestran {{ opciones|length }} de {{ total }}. Escriba para acotar.</p>
+{% if paginas > 1 %}
+{% url 'admin:cuipo_distribuir_elegir' dist.pk as u_elegir %}
+{% with base=u_elegir|add:"?campo="|add:campo|add:"&solo=resultados&codigo=" %}
+<div class="paginas">
+  <button type="button" class="boton gris"{% if pagina <= 1 %} disabled{% endif %}
+          hx-get="{{ base }}{{ texto|urlencode }}&pagina={{ pagina|add:-1 }}{% if linea %}&linea={{ linea.pk }}{% else %}&fila={{ fila.pk }}&producto={{ producto.pk }}{% endif %}"
+          hx-target="#elegir-resultados">Anterior</button>
+  <span class="nota">{{ desde }}–{{ hasta }} de {{ total }}</span>
+  <button type="button" class="boton gris"{% if pagina >= paginas %} disabled{% endif %}
+          hx-get="{{ base }}{{ texto|urlencode }}&pagina={{ pagina|add:1 }}{% if linea %}&linea={{ linea.pk }}{% else %}&fila={{ fila.pk }}&producto={{ producto.pk }}{% endif %}"
+          hx-target="#elegir-resultados">Siguiente</button>
+</div>
+{% endwith %}
 {% endif %}
 {% if actual and editable and campo != "vigencia_gasto" %}
 <button type="button" class="opcion" hx-post="{{ u_cual }}" hx-vals='{"linea": {{ linea.pk }}, "campo": "{{ campo }}", "codigo": ""}'
