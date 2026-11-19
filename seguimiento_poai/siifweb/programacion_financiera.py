@@ -1,22 +1,31 @@
-"""Programacion de un proyecto por vigencia: financiera (cuanto va de cada fuente a cada meta)
-y fisica (cuanto se programa avanzar en cada meta; como la financiera, pero sin fuente). Las
-dos son pestanas de la misma pantalla; la fisica esta al final de este modulo.
+"""Programacion de un proyecto por vigencia: financiera (cuanto va de cada fuente a cada meta) y
+fisica (cuanto se programa avanzar en cada meta; como la financiera, pero sin fuente). Las dos
+son pestanas de la misma pantalla (ProyectoAdmin.programacion_financiera, ?panel=fisica).
 
-La pantalla (ProyectoAdmin.programacion_financiera) tiene un bloque por vigencia. Cada bloque es
-independiente: sus propias fuentes (filas) y metas (columnas), con el valor en cada cruce y sus
-totales. Los montos los define el equipo; aqui no se contrastan con SIIFWEB.
+Cada pestana tiene un bloque por vigencia, independiente: en la financiera sus fuentes (filas) y
+metas (columnas), en la fisica sus metas (filas), con el valor en cada cruce. Los montos los
+define el equipo; aqui no se contrastan con SIIFWEB.
 
-- Al abrir: las vigencias con valores guardados, cada una con sus fuentes y metas. Sin nada
-  guardado, la vigencia del anio en curso, vacia. Las metas en que el proyecto esta programado
-  (Programacion de proyectos, por el BPIN) no se agregan solas: salen primero en el listado de
-  "+ Meta" de cada vigencia, marcadas como programadas.
-- La pantalla es un formulario. Digitar, agregar o quitar no toca la base: lo que se ve viaja en
-  la pagina (campos ocultos "vigencias", "fuentes-<vigencia>" y "metas-<vigencia>" y una casilla
-  por cruce, v-<vigencia>-<fuente>-<meta>). Quitar una fuente o una meta la quita solo de su
-  vigencia.
-- El boton Guardar deja la programacion del proyecto exactamente como se ve: crea o cambia los
-  valores y borra los vacios o en cero y los de vigencias, fuentes o metas quitadas. Si una
-  casilla tiene un error no se guarda nada.
+Las metas de las dos deben ser las mismas en cada vigencia (una meta con valor en una debe
+tenerlo en la otra). No es un constraint de la base (son dos tablas) ni bloquea al guardar,
+porque se puede diligenciar primero cualquiera de las dos. Se mantiene asi:
+- Espejo: al abrir una pestana, o al agregar una vigencia, cada bloque trae tambien las metas
+  que la otra pestana tiene guardadas en esa vigencia.
+- Aviso: cada bloque dice que metas tienen valor en una y no en la otra (`descuadres`), y al
+  guardar, si no coinciden, sale un mensaje de advertencia con cuales son.
+- Quitar una meta o una vigencia en una pestana nunca borra la otra (si alguien la quita por
+  error, el trabajo de la otra queda intacto); el mensaje avisa que ya no coinciden.
+
+Otros detalles:
+- Al abrir sin nada guardado en ninguna de las dos, la vigencia del anio en curso vacia. Las
+  metas en que el proyecto esta programado (Programacion de proyectos, por el BPIN) salen
+  primero en el listado de "+ Meta", marcadas como programadas; no se agregan solas.
+- La pantalla es un formulario. Digitar, agregar o quitar no toca la base: lo que se ve viaja
+  en la pagina (campos ocultos "vigencias", "fuentes-<vigencia>", "metas-<vigencia>" y una
+  casilla por cruce: v-<vigencia>-<fuente>-<meta> en la financiera, v-<vigencia>-<meta> en la
+  fisica).
+- Guardar deja la pestana exactamente como se ve: crea o cambia los valores y borra los vacios o
+  en cero y lo quitado. Si una casilla tiene un error no se guarda nada.
 - Los numeros se escriben como en las casillas del CUIPO: sin separador de miles y con punto
   decimal (1500000.50); se leen con siifweb.cargas.decimal. Los totales se muestran como en la
   pantalla del CUIPO (floatformat "2g").
@@ -98,16 +107,42 @@ def _ids(valores, validos=None):
     return vistos
 
 
-def estado_guardado(proyecto):
-    """Las vigencias con valores, cada una con sus fuentes y metas. Sin nada, el anio en curso vacio."""
+def _bloque_vacio():
+    return {"fuentes": [], "metas": []}
+
+
+def metas_guardadas(proyecto, fisica):
+    """{vigencia: {metas con valor}} de la programacion financiera o de la fisica."""
+    modelo = proyecto.programacion_fisica if fisica else proyecto.programacion_financiera
+    metas = {}
+    for v, m in modelo.values_list("vigencia", "meta_id").distinct():
+        metas.setdefault(v, set()).add(m)
+    return metas
+
+
+def espejo(proyecto, fisica, vigencia):
+    """Las metas que la otra pestana tiene guardadas en la vigencia."""
+    return sorted(metas_guardadas(proyecto, not fisica).get(vigencia, set()))
+
+
+def estado_guardado(proyecto, fisica=False):
+    """Lo que se ve al abrir: las vigencias y metas de lo guardado en la pestana y en la otra
+    (espejo); en la financiera, ademas, sus fuentes. Sin nada, el anio en curso vacio."""
     estado = {}
-    for v, f, m in proyecto.programacion_financiera.values_list("vigencia", "fuente_id", "meta_id"):
-        bloque = estado.setdefault(v, {"fuentes": [], "metas": []})
-        if f not in bloque["fuentes"]:
+    if fisica:
+        filas = ((v, None, m) for v, m in proyecto.programacion_fisica.values_list("vigencia", "meta_id"))
+    else:
+        filas = proyecto.programacion_financiera.values_list("vigencia", "fuente_id", "meta_id")
+    for v, f, m in filas:
+        bloque = estado.setdefault(v, _bloque_vacio())
+        if f is not None and f not in bloque["fuentes"]:
             bloque["fuentes"].append(f)
         if m not in bloque["metas"]:
             bloque["metas"].append(m)
-    return estado or {timezone.localdate().year: {"fuentes": [], "metas": []}}
+    for v, metas in metas_guardadas(proyecto, not fisica).items():
+        bloque = estado.setdefault(v, _bloque_vacio())
+        bloque["metas"] += [m for m in sorted(metas) if m not in bloque["metas"]]
+    return estado or {timezone.localdate().year: _bloque_vacio()}
 
 
 def estado_de(datos):
@@ -117,14 +152,15 @@ def estado_de(datos):
             for v in _ids(datos.getlist("vigencias"), validas)}
 
 
-def cambiar_estado(estado, datos):
-    """Aplica al estado lo que pide el boton: agregar o quitar una vigencia, o una fuente o una
-    meta en una vigencia (`en`)."""
-    agregar_vigencia = _ids([datos.get("agregar_vigencia")], set(vigencias_validas()))
-    for v in agregar_vigencia:
-        estado.setdefault(v, {"fuentes": [], "metas": []})
-    quitar_vigencia = _ids([datos.get("quitar_vigencia")])
-    for v in quitar_vigencia:
+def cambiar_estado(estado, datos, proyecto=None, fisica=False):
+    """Aplica lo que pide el boton: agregar o quitar una vigencia, o una fuente o una meta en una
+    vigencia (`en`). Al agregar una vigencia trae las metas que la otra pestana tiene en ella (si
+    se da el proyecto)."""
+    for v in _ids([datos.get("agregar_vigencia")], set(vigencias_validas())):
+        bloque = estado.setdefault(v, _bloque_vacio())
+        if proyecto is not None:
+            bloque["metas"] += [m for m in espejo(proyecto, fisica, v) if m not in bloque["metas"]]
+    for v in _ids([datos.get("quitar_vigencia")]):
         estado.pop(v, None)
     en = _ids([datos.get("en")])
     if en and en[0] in estado:
@@ -160,15 +196,60 @@ def metas_programadas(proyecto, vigencia):
 
 
 # ---------------------------------------------------------------------------
-# La pantalla
+# Coincidencia de metas entre las dos pestanas
+# ---------------------------------------------------------------------------
+
+def descuadres(proyecto):
+    """{vigencia: {"sin_fisica": [metas], "sin_financiera": [metas]}} de lo guardado: metas con
+    valor financiero y sin valor fisico, y al reves. Solo las vigencias que no coinciden."""
+    financieras, fisicas = metas_guardadas(proyecto, False), metas_guardadas(proyecto, True)
+    ids = {m for metas in (*financieras.values(), *fisicas.values()) for m in metas}
+    codigos = dict(MetaIndicador.objects.filter(pk__in=ids).values_list("pk", "codigo"))
+    resultado = {}
+    for v in sorted(set(financieras) | set(fisicas)):
+        fin, fis = financieras.get(v, set()), fisicas.get(v, set())
+        if fin != fis:
+            resultado[v] = {"sin_fisica": sorted(codigos[m] for m in fin - fis),
+                            "sin_financiera": sorted(codigos[m] for m in fis - fin)}
+    return resultado
+
+
+def mensaje_descuadre(proyecto):
+    """El mensaje de advertencia cuando las metas de las dos pestanas no coinciden, o vacio."""
+    partes = []
+    for v, d in descuadres(proyecto).items():
+        detalle = []
+        if d["sin_fisica"]:
+            detalle.append("sin valor físico " + ", ".join(d["sin_fisica"]))
+        if d["sin_financiera"]:
+            detalle.append("sin valor financiero " + ", ".join(d["sin_financiera"]))
+        partes.append(f"{v}: " + "; ".join(detalle))
+    if not partes:
+        return ""
+    return ("Las metas de la programación financiera y la física no coinciden. " + ". ".join(partes)
+            + ". Complete la otra pestaña o corrija esta.")
+
+
+def _comun(bloques, guardados, visibles, errores, proyecto):
+    """Lo que las dos pestanas devuelven igual: avisos de coincidencia y pendientes."""
+    por_borrar = [clave for clave in guardados if clave not in visibles]
+    desc = descuadres(proyecto)
+    for b in bloques:
+        b["descuadre"] = desc.get(b["vigencia"])
+    return {"bloques": bloques, "por_borrar": len(por_borrar), "errores": len(errores)}
+
+
+# ---------------------------------------------------------------------------
+# La pestana financiera
 # ---------------------------------------------------------------------------
 
 def matriz(proyecto, estado=None, digitados=None, errores=None):
     """Un bloque por vigencia con sus fuentes (filas), sus metas (columnas), los valores y totales.
 
-    Sin estado (al abrir) sale de lo guardado. Con estado (al agregar, quitar o guardar con
-    errores) se muestra exactamente ese, con lo digitado en `digitados`; una casilla cuyo texto
-    no coincide con lo guardado queda como cambio pendiente. Los totales suman lo que se ve.
+    Sin estado (al abrir) sale de lo guardado y del espejo de la fisica. Con estado (al agregar,
+    quitar o guardar con errores) se muestra exactamente ese, con lo digitado en `digitados`; una
+    casilla cuyo texto no coincide con lo guardado queda como cambio pendiente. Los totales suman
+    lo que se ve.
     """
     estado = estado_guardado(proyecto) if estado is None else estado
     guardados = {(r.vigencia, r.fuente_id, r.meta_id): r.valor for r in proyecto.programacion_financiera.all()}
@@ -201,26 +282,22 @@ def matriz(proyecto, estado=None, digitados=None, errores=None):
             "total": sum(por_meta.values(), CERO),
         })
 
-    por_borrar = [clave for clave in guardados if clave not in visibles]
-    pendiente = bool(por_borrar) or any(c["cambio"] for b in bloques for f in b["filas"] for c in f["celdas"])
+    comun = _comun(bloques, guardados, visibles, errores, proyecto)
     por_vigencia = list(proyecto.programacion_financiera.values("vigencia").annotate(t=Sum("valor")).order_by("vigencia"))
     return {
-        "bloques": bloques, "total": sum((b["total"] for b in bloques), CERO),
-        "pendiente": pendiente, "por_borrar": len(por_borrar), "errores": len(errores),
+        **comun, "total": sum((b["total"] for b in bloques), CERO),
+        "pendiente": bool(comun["por_borrar"])
+                     or any(c["cambio"] for b in bloques for f in b["filas"] for c in f["celdas"]),
         "por_vigencia": [(p["vigencia"], p["t"]) for p in por_vigencia],
         "total_proyecto": proyecto.valor_programado,
     }
 
 
-# ---------------------------------------------------------------------------
-# Guardar
-# ---------------------------------------------------------------------------
-
 def guardar(proyecto, estado, digitados):
-    """Deja la programacion del proyecto como se ve. Devuelve ({casilla: error}, mensaje).
+    """Deja la programacion financiera como se ve. Devuelve ({casilla: error}, mensaje).
 
-    Con algun error no cambia nada. Si no: crea o cambia los valores, y borra los vacios o en
-    cero y los de vigencias, fuentes o metas que ya no estan en la pantalla.
+    Con algun error no cambia nada. Si no: crea o cambia los valores y borra los vacios o en cero
+    y lo que ya no esta en la pantalla. La fisica no se toca.
     """
     fuentes_validas = set(Fuente.objects.filter(pk__in={x for b in estado.values() for x in b["fuentes"]})
                           .values_list("pk", flat=True))
@@ -238,23 +315,91 @@ def guardar(proyecto, estado, digitados):
     if errores:
         return errores, ""
 
-    creados = cambiados = borrados = 0
     with transaction.atomic():
-        for r in list(proyecto.programacion_financiera.all()):
-            nuevo = valores.pop((r.vigencia, r.fuente_id, r.meta_id), CERO)
-            if not nuevo:
-                r.delete()                  # uno por uno: la senal recalcula el total del proyecto
-                borrados += 1
-            elif nuevo != r.valor:
-                r.valor = nuevo
-                r.save(update_fields=["valor", "fecha_actualizacion"])
-                cambiados += 1
-        for (v, f, m), valor in valores.items():
-            if valor:
-                ProgramacionFinanciera.objects.create(proyecto=proyecto, vigencia=v, fuente_id=f, meta_id=m, valor=valor)
-                creados += 1
+        cuentas = _sincronizar(list(proyecto.programacion_financiera.all()), valores,
+                               lambda r: (r.vigencia, r.fuente_id, r.meta_id),
+                               lambda clave, valor: ProgramacionFinanciera.objects.create(
+                                   proyecto=proyecto, vigencia=clave[0], fuente_id=clave[1], meta_id=clave[2],
+                                   valor=valor))
+    return {}, _mensaje(*cuentas)
+
+
+# ---------------------------------------------------------------------------
+# La pestana fisica: un bloque por vigencia con sus metas y un valor por meta
+# ---------------------------------------------------------------------------
+
+def matriz_fisica(proyecto, estado=None, digitados=None, errores=None):
+    """Un bloque por vigencia con una fila por meta y su valor. Como `matriz`, sin fuentes; no
+    lleva totales: cada meta tiene su propia unidad de medida."""
+    estado = estado_guardado(proyecto, fisica=True) if estado is None else estado
+    guardados = {(r.vigencia, r.meta_id): r.valor for r in proyecto.programacion_fisica.all()}
+    todas = {m.pk: m for m in MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})
+             .select_related("indicador_mga__unidad_medida")}
+    digitados, errores = digitados or {}, errores or {}
+    bloques, visibles = [], set()
+    for v in sorted(estado):
+        programadas = metas_programadas(proyecto, v)
+        filas = []
+        for m in sorted((todas[x] for x in estado[v]["metas"] if x in todas), key=lambda m: m.codigo):
+            clave = (v, m.pk)
+            visibles.add(clave)
+            guardado = guardados.get(clave)
+            texto = digitados[clave] if clave in digitados else en_casilla(guardado)
+            leido = _leer_o_none(texto)
+            filas.append({"meta": m, "texto": texto, "nombre": f"v-{v}-{m.pk}", "con": bool(leido),
+                          "cambio": leido is None or leido != (guardado or CERO), "error": errores.get(clave, ""),
+                          "programada": m.pk in programadas})
+        bloques.append({"vigencia": v, "filas": filas, "metas": [f["meta"].pk for f in filas]})
+    comun = _comun(bloques, guardados, visibles, errores, proyecto)
+    return {**comun, "pendiente": bool(comun["por_borrar"])
+            or any(f["cambio"] for b in bloques for f in b["filas"])}
+
+
+def guardar_fisica(proyecto, estado, digitados):
+    """Deja la programacion fisica como se ve. Devuelve ({casilla: error}, mensaje). Con algun
+    error no cambia nada; vacio o cero borra. La financiera no se toca."""
+    validas = set(MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})
+                  .values_list("pk", flat=True))
+    valores, errores = {}, {}
+    for v, bloque in estado.items():
+        for m in bloque["metas"]:
+            if m in validas:
+                try:
+                    valores[(v, m)] = leer_valor(digitados.get((v, m), ""))
+                except ValueError as e:
+                    errores[(v, m)] = str(e)
+    if errores:
+        return errores, ""
+    with transaction.atomic():
+        cuentas = _sincronizar(list(proyecto.programacion_fisica.all()), valores, lambda r: (r.vigencia, r.meta_id),
+                               lambda clave, valor: ProgramacionFisica.objects.create(
+                                   proyecto=proyecto, vigencia=clave[0], meta_id=clave[1], valor=valor))
+    return {}, _mensaje(*cuentas)
+
+
+def _sincronizar(registros, valores, clave_de, crear):
+    """Deja los registros como dicen los valores. Devuelve (creados, cambiados, borrados)."""
+    valores = dict(valores)
+    creados = cambiados = borrados = 0
+    for r in registros:
+        nuevo = valores.pop(clave_de(r), CERO)
+        if not nuevo:
+            r.delete()                      # uno por uno: la senal recalcula el total del proyecto
+            borrados += 1
+        elif nuevo != r.valor:
+            r.valor = nuevo
+            r.save(update_fields=["valor", "fecha_actualizacion"])
+            cambiados += 1
+    for clave, valor in valores.items():
+        if valor:
+            crear(clave, valor)
+            creados += 1
+    return creados, cambiados, borrados
+
+
+def _mensaje(creados, cambiados, borrados):
     partes = [f"{n} {texto}" for n, texto in ((creados, "nuevos"), (cambiados, "cambiados"), (borrados, "borrados")) if n]
-    return {}, ("Guardado: " + ", ".join(partes) + ".") if partes else "Sin cambios."
+    return ("Guardado: " + ", ".join(partes) + ".") if partes else "Sin cambios."
 
 
 # ---------------------------------------------------------------------------
@@ -294,78 +439,3 @@ def opciones(tipo, texto="", excluir=(), pagina=1, programadas=()):
         lista = list(tramo)
     return {"lista": lista, "pagina": pagina, "paginas": paginas, "total": total,
             "desde": (pagina - 1) * POR_PAGINA + 1 if total else 0, "hasta": (pagina - 1) * POR_PAGINA + len(lista)}
-
-
-# ---------------------------------------------------------------------------
-# Programacion fisica: un bloque por vigencia con sus metas y un valor por meta
-# ---------------------------------------------------------------------------
-
-def estado_guardado_fisica(proyecto):
-    """Las vigencias con valores fisicos, cada una con sus metas. Sin nada, el anio en curso vacio."""
-    estado = {}
-    for v, m in proyecto.programacion_fisica.values_list("vigencia", "meta_id"):
-        metas = estado.setdefault(v, {"fuentes": [], "metas": []})["metas"]
-        if m not in metas:
-            metas.append(m)
-    return estado or {timezone.localdate().year: {"fuentes": [], "metas": []}}
-
-
-def matriz_fisica(proyecto, estado=None, digitados=None, errores=None):
-    """Un bloque por vigencia con una fila por meta y su valor. Como `matriz`, sin fuentes; no
-    lleva totales: cada meta tiene su propia unidad de medida."""
-    estado = estado_guardado_fisica(proyecto) if estado is None else estado
-    guardados = {(r.vigencia, r.meta_id): r.valor for r in proyecto.programacion_fisica.all()}
-    todas = {m.pk: m for m in MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})
-             .select_related("indicador_mga__unidad_medida")}
-    digitados, errores = digitados or {}, errores or {}
-    bloques, visibles = [], set()
-    for v in sorted(estado):
-        programadas = metas_programadas(proyecto, v)
-        filas = []
-        for m in sorted((todas[x] for x in estado[v]["metas"] if x in todas), key=lambda m: m.codigo):
-            clave = (v, m.pk)
-            visibles.add(clave)
-            guardado = guardados.get(clave)
-            texto = digitados[clave] if clave in digitados else en_casilla(guardado)
-            leido = _leer_o_none(texto)
-            filas.append({"meta": m, "texto": texto, "nombre": f"v-{v}-{m.pk}", "con": bool(leido),
-                          "cambio": leido is None or leido != (guardado or CERO), "error": errores.get(clave, ""),
-                          "programada": m.pk in programadas})
-        bloques.append({"vigencia": v, "filas": filas, "metas": [f["meta"].pk for f in filas]})
-    por_borrar = [clave for clave in guardados if clave not in visibles]
-    return {"bloques": bloques, "por_borrar": len(por_borrar), "errores": len(errores),
-            "pendiente": bool(por_borrar) or any(f["cambio"] for b in bloques for f in b["filas"])}
-
-
-def guardar_fisica(proyecto, estado, digitados):
-    """Deja la programacion fisica como se ve. Devuelve ({casilla: error}, mensaje). Con algun
-    error no cambia nada; vacio o cero borra."""
-    validas = set(MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})
-                  .values_list("pk", flat=True))
-    valores, errores = {}, {}
-    for v, bloque in estado.items():
-        for m in bloque["metas"]:
-            if m in validas:
-                try:
-                    valores[(v, m)] = leer_valor(digitados.get((v, m), ""))
-                except ValueError as e:
-                    errores[(v, m)] = str(e)
-    if errores:
-        return errores, ""
-    creados = cambiados = borrados = 0
-    with transaction.atomic():
-        for r in list(proyecto.programacion_fisica.all()):
-            nuevo = valores.pop((r.vigencia, r.meta_id), CERO)
-            if not nuevo:
-                r.delete()
-                borrados += 1
-            elif nuevo != r.valor:
-                r.valor = nuevo
-                r.save(update_fields=["valor", "fecha_actualizacion"])
-                cambiados += 1
-        for (v, m), valor in valores.items():
-            if valor:
-                ProgramacionFisica.objects.create(proyecto=proyecto, vigencia=v, meta_id=m, valor=valor)
-                creados += 1
-    partes = [f"{n} {texto}" for n, texto in ((creados, "nuevos"), (cambiados, "cambiados"), (borrados, "borrados")) if n]
-    return {}, ("Guardado: " + ", ".join(partes) + ".") if partes else "Sin cambios."

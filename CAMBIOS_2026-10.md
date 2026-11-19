@@ -732,9 +732,15 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   que sigue siendo solo el financiero. El boton del detalle pasa a llamarse "Programacion". Cada
   pestana se ve con el permiso de ver de su modelo y se edita con agregar, cambiar y borrar; la
   lista `/admin/siifweb/programacionfisica/` no esta en el menu.
+- **Mismas metas en la programacion financiera y la fisica** (por vigencia). No es un constraint
+  de la base (son dos tablas) ni bloquea al guardar, porque se puede llenar primero cualquiera:
+  cada pestana trae las metas que la otra tiene guardadas (al abrir y al agregar una vigencia),
+  cada vigencia avisa que metas no coinciden y, al guardar, si falta una o sobra una, sale un
+  mensaje de advertencia con cuales son. Quitar una meta o una vigencia en una pestana no borra
+  la otra: si se quito por error, el trabajo de la otra queda intacto.
 - **Distribuciones del CUIPO:** la ventana para elegir CPC, detalle sectorial, tercero, politica
   publica o vigencia del gasto muestra de 50 en 50 con Anterior / Siguiente (antes las primeras
   60 y "escriba para acotar").
 
-**Pruebas.** 606, todas pasan.
+**Pruebas.** 616, todas pasan.
 

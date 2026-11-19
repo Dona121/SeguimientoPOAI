@@ -313,6 +313,96 @@ class Fisica(Base):
         self.assertContains(respuesta, 'value="7"')
 
 
+class Coincidencia(Base):
+    """Las metas de la financiera y de la fisica deben ser las mismas en cada vigencia."""
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+        self.url = reverse("admin:siifweb_proyecto_programacion_financiera", args=(self.proy.pk,))
+        self.guardar_url = reverse("admin:siifweb_proyecto_pf_guardar", args=(self.proy.pk,))
+        self.matriz = reverse("admin:siifweb_proyecto_pf_matriz", args=(self.proy.pk,))
+
+    def fisica(self, valor, meta=None, vigencia=ANIO):
+        return ProgramacionFisica.objects.create(proyecto=self.proy, vigencia=vigencia, meta=meta or self.meta,
+                                                 valor=D(valor))
+
+    def test_la_fisica_trae_las_metas_de_la_financiera_y_avisa(self):
+        self.programar("1000")
+        respuesta = self.client.get(self.url, {"panel": "fisica"})
+        self.assertContains(respuesta, f'name="v-{ANIO}-{self.meta.pk}"')
+        self.assertContains(respuesta, "Las metas no coinciden con la programación financiera")
+        self.assertContains(respuesta, "sin valor físico MT001")
+
+    def test_la_financiera_trae_las_de_la_fisica_y_avisa(self):
+        self.fisica("5", meta=self.meta2)
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, "<b>MT002</b>")
+        self.assertContains(respuesta, "sin valor financiero MT002")
+
+    def test_cuando_coinciden_no_avisa(self):
+        self.programar("1000")
+        self.fisica("5")
+        for panel in ("financiera", "fisica"):
+            with self.subTest(panel=panel):
+                self.assertNotContains(self.client.get(self.url, {"panel": panel}), "no coinciden")
+
+    def test_quitar_en_una_no_borra_la_otra_y_al_guardar_avisa(self):
+        """Si alguien quita por error una meta en la fisica, la financiera queda intacta."""
+        self.programar("1000")
+        self.programar("2000", fuente=self.otra)
+        self.fisica("5")
+        respuesta = self.client.post(self.guardar_url, {"panel": "fisica", "vigencias": [ANIO]})
+        self.assertContains(respuesta, "Guardado: 1 borrados.")
+        self.assertContains(respuesta, "no coinciden")
+        self.assertContains(respuesta, f"{ANIO}: sin valor físico MT001")
+        self.assertFalse(ProgramacionFisica.objects.exists())
+        self.assertEqual(ProgramacionFinanciera.objects.count(), 2)
+        self.assertEqual(self.total(), D("3000"))
+
+    def test_quitar_una_vigencia_en_la_financiera_no_borra_la_fisica(self):
+        self.programar("1000")
+        self.fisica("5")
+        respuesta = self.client.post(self.guardar_url, {"panel": "financiera"})
+        self.assertFalse(ProgramacionFinanciera.objects.exists())
+        self.assertTrue(ProgramacionFisica.objects.exists())
+        self.assertContains(respuesta, "sin valor financiero MT001")
+
+    def test_guardar_sin_coincidir_guarda_y_avisa(self):
+        """Se puede llenar primero cualquiera: guarda, pero advierte."""
+        respuesta = self.client.post(self.guardar_url, {"panel": "fisica", "vigencias": [ANIO],
+                                                        f"metas-{ANIO}": [self.meta2.pk], f"v-{ANIO}-{self.meta2.pk}": "4"})
+        self.assertContains(respuesta, "Guardado: 1 nuevos.")
+        self.assertContains(respuesta, "sin valor financiero MT002")
+        self.assertTrue(ProgramacionFisica.objects.exists())
+
+    def test_guardar_coincidiendo_no_avisa(self):
+        self.programar("1000")
+        respuesta = self.client.post(self.guardar_url, {"panel": "fisica", "vigencias": [ANIO],
+                                                        f"metas-{ANIO}": [self.meta.pk], f"v-{ANIO}-{self.meta.pk}": "4"})
+        self.assertContains(respuesta, "Guardado: 1 nuevos.")
+        self.assertNotContains(respuesta, "no coinciden")
+
+    def test_lo_que_la_otra_guardo_mientras_tanto_no_se_borra(self):
+        """Guardar la fisica sin haber visto una meta de la financiera no la borra de alla."""
+        self.programar("1000")
+        self.client.post(self.guardar_url, {"panel": "fisica", "vigencias": [ANIO]})
+        self.assertTrue(ProgramacionFinanciera.objects.exists())
+
+    def test_agregar_una_vigencia_trae_las_metas_de_la_otra(self):
+        self.fisica("5", meta=self.meta2, vigencia=ANIO + 1)
+        respuesta = self.client.get(self.matriz, {"panel": "financiera", "vigencias": [ANIO], f"fuentes-{ANIO}": [],
+                                                  f"metas-{ANIO}": [], "agregar_vigencia": ANIO + 1})
+        self.assertContains(respuesta, f'name="metas-{ANIO + 1}" value="{self.meta2.pk}"')
+
+    def test_descuadres(self):
+        self.programar("1000")
+        self.fisica("5", meta=self.meta2)
+        self.assertEqual(pf.descuadres(self.proy), {ANIO: {"sin_fisica": ["MT001"], "sin_financiera": ["MT002"]}})
+        self.fisica("6")
+        self.programar("7", meta=self.meta2)
+        self.assertEqual(pf.descuadres(self.proy), {})
+
+
 class Permisos(Base):
     def usuario(self, *codigos):
         u = get_user_model().objects.create_user("u" + "".join(codigos)[:20], "u@b.co", "clave", is_staff=True)

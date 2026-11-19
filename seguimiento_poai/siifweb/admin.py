@@ -1413,10 +1413,10 @@ class ProyectoAdmin(ModelAdmin):
             raise Http404("No hay proyecto con ese id.")
         return proyecto
 
-    def _contexto_pf(self, request, proyecto, panel, mensaje="", parcial=False, **kwargs):
+    def _contexto_pf(self, request, proyecto, panel, mensaje="", parcial=False, advertencia="", **kwargs):
         matriz = programacion_financiera.matriz_fisica if panel == "fisica" else programacion_financiera.matriz
         return {"proyecto": proyecto, "panel": panel, "m": matriz(proyecto, **kwargs), "mensaje": mensaje,
-                "parcial": parcial, "editable": self._puede_programar(request, panel)}
+                "advertencia": advertencia, "parcial": parcial, "editable": self._puede_programar(request, panel)}
 
     def _matriz_pf(self, request, proyecto, panel, **kwargs):
         contexto = self._contexto_pf(request, proyecto, panel, parcial=True, **kwargs)
@@ -1440,8 +1440,10 @@ class ProyectoAdmin(ModelAdmin):
         meta agregada o quitada en una vigencia (en=<vigencia>), y con lo que ya se habia digitado."""
         proyecto = self._proyecto_programable(request, pk)
         datos = request.GET
-        estado = programacion_financiera.cambiar_estado(programacion_financiera.estado_de(datos), datos)
-        return self._matriz_pf(request, proyecto, self._panel_pf(request, datos), estado=estado,
+        panel = self._panel_pf(request, datos)
+        estado = programacion_financiera.cambiar_estado(programacion_financiera.estado_de(datos), datos,
+                                                        proyecto=proyecto, fisica=panel == "fisica")
+        return self._matriz_pf(request, proyecto, panel, estado=estado,
                                digitados=programacion_financiera.digitados_de(datos))
 
     def pf_guardar(self, request, pk):
@@ -1459,7 +1461,10 @@ class ProyectoAdmin(ModelAdmin):
         proyecto.refresh_from_db(fields=["valor_programado"])
         if errores:
             return self._matriz_pf(request, proyecto, panel, estado=estado, digitados=digitados, errores=errores)
-        return self._matriz_pf(request, proyecto, panel, mensaje=mensaje, estado=estado)
+        # Guarda aunque las metas no coincidan con la otra pestana (se puede llenar cualquiera
+        # primero), pero lo advierte
+        return self._matriz_pf(request, proyecto, panel, mensaje=mensaje, estado=estado,
+                               advertencia=programacion_financiera.mensaje_descuadre(proyecto))
 
     def pf_elegir(self, request, pk):
         """La ventana para agregar una vigencia, o una fuente o una meta a una vigencia (en=):
