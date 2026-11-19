@@ -1410,44 +1410,49 @@ class ProyectoAdmin(ModelAdmin):
         return TemplateResponse(request, "siifweb/programacion_financiera.html", contexto)
 
     def pf_matriz(self, request, pk):
-        """La matriz otra vez, sin guardar: con una vigencia, fuente o meta agregada o quitada y
-        con lo que ya se habia digitado."""
+        """La pantalla otra vez, sin guardar: con una vigencia agregada o quitada, o una fuente o
+        meta agregada o quitada en una vigencia (en=<vigencia>), y con lo que ya se habia digitado."""
         proyecto = self._proyecto_programable(request, pk)
         datos = request.GET
-        listados = {}
-        for nombre in ("vigencia", "fuente", "meta"):
-            quitar = datos.get(f"quitar_{nombre}", "")
-            listados[nombre + "s"] = [x for x in datos.getlist(nombre + "s") + [datos.get(f"agregar_{nombre}", "")]
-                                      if x != quitar]
-        return self._matriz_pf(request, proyecto, digitados=programacion_financiera.digitados_de(datos), **listados)
+        estado = programacion_financiera.cambiar_estado(programacion_financiera.estado_de(datos), datos)
+        return self._matriz_pf(request, proyecto, estado=estado, digitados=programacion_financiera.digitados_de(datos))
 
     def pf_guardar(self, request, pk):
-        """Deja la programacion como se ve en la matriz. Con un error en alguna casilla no guarda nada."""
+        """Deja la programacion como se ve. Con un error en alguna casilla no guarda nada."""
         proyecto = self._proyecto_programable(request, pk)
         if request.method != "POST":
             return HttpResponseBadRequest("Solo POST")
         if not self._puede_programar(request):
             raise PermissionDenied
-        datos = request.POST
-        listados = {n: datos.getlist(n) for n in ("vigencias", "fuentes", "metas")}
-        digitados = programacion_financiera.digitados_de(datos)
-        errores, mensaje = programacion_financiera.guardar(proyecto, digitados=digitados, **listados)
+        estado = programacion_financiera.estado_de(request.POST)
+        digitados = programacion_financiera.digitados_de(request.POST)
+        errores, mensaje = programacion_financiera.guardar(proyecto, estado, digitados)
         proyecto.refresh_from_db(fields=["valor_programado"])
         if errores:
-            return self._matriz_pf(request, proyecto, digitados=digitados, errores=errores, **listados)
-        return self._matriz_pf(request, proyecto, mensaje=mensaje, **listados)
+            return self._matriz_pf(request, proyecto, estado=estado, digitados=digitados, errores=errores)
+        return self._matriz_pf(request, proyecto, mensaje=mensaje, estado=estado)
 
     def pf_elegir(self, request, pk):
-        """La ventana para agregar una vigencia, una fuente o una meta: buscador y listado por
-        paginas. Con solo=resultados devuelve solo el listado (al buscar o cambiar de pagina)."""
+        """La ventana para agregar una vigencia, o una fuente o una meta a una vigencia (en=):
+        buscador y listado por paginas. Con solo=resultados devuelve solo el listado."""
         proyecto = self._proyecto_programable(request, pk)
-        tipo = request.GET.get("tipo")
+        datos = request.GET
+        tipo = datos.get("tipo")
         tipo = tipo if tipo in ("vigencia", "meta") else "fuente"
-        texto = request.GET.get("q", "")
-        opciones = programacion_financiera.opciones(tipo, texto, request.GET.getlist(tipo + "s"),
-                                                    request.GET.get("pagina", 1))
-        contexto = {"proyecto": proyecto, "tipo": tipo, "texto": texto, **opciones}
-        plantilla = "siifweb/_programacion_opciones.html" if request.GET.get("solo") == "resultados" \
+        estado = programacion_financiera.estado_de(datos)
+        en = datos.get("en", "")
+        en = int(en) if en.isdigit() and int(en) in estado else None
+        if tipo == "vigencia":
+            presentes, programadas = list(estado), set()
+        else:
+            if en is None:
+                return HttpResponseBadRequest("Falta la vigencia")
+            presentes = estado[en][tipo + "s"]
+            programadas = programacion_financiera.metas_programadas(proyecto, en) if tipo == "meta" else set()
+        texto = datos.get("q", "")
+        opciones = programacion_financiera.opciones(tipo, texto, presentes, datos.get("pagina", 1), programadas)
+        contexto = {"proyecto": proyecto, "tipo": tipo, "texto": texto, "en": en or "", **opciones}
+        plantilla = "siifweb/_programacion_opciones.html" if datos.get("solo") == "resultados" \
             else "siifweb/_programacion_elegir.html"
         return HttpResponse(render_to_string(plantilla, contexto, request=request))
 

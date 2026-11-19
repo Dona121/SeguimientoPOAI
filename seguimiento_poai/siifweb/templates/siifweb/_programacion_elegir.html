@@ -1,17 +1,18 @@
 {% comment %}
-La ventana para agregar una vigencia, una fuente o una meta a la matriz: buscador y listado
-por paginas. Clic en una opcion la agrega (sin guardar) y cierra; clic fuera, Cerrar o Esc cierra.
+La ventana para agregar una vigencia, o una fuente o una meta a una vigencia (en): buscador y
+listado por paginas. Clic en una opcion la agrega (sin guardar) y cierra; clic fuera, Cerrar o
+Esc cierra.
 {% endcomment %}
 {% url 'admin:siifweb_proyecto_pf_elegir' proyecto.pk as u_elegir %}
 <div class="fondo" onclick="if (event.target === this) { document.getElementById('pf-elegir').innerHTML = ''; }">
   <div class="ventana" role="dialog" aria-label="Agregar {{ tipo }}">
     <div class="cab">
-      <b>Agregar {% if tipo == "meta" %}una meta{% elif tipo == "vigencia" %}una vigencia{% else %}una fuente{% endif %}</b>
+      <b>{% if tipo == "meta" %}Agregar una meta a {{ en }}{% elif tipo == "vigencia" %}Agregar una vigencia{% else %}Agregar una fuente a {{ en }}{% endif %}</b>
       <button type="button" class="boton gris" onclick="document.getElementById('pf-elegir').innerHTML = ''">Cerrar</button>
     </div>
     <input class="entrada buscar" name="q" type="search" autocomplete="off" autofocus
            placeholder="{% if tipo == 'meta' %}Buscar por código de la meta, del indicador o por palabras{% elif tipo == 'vigencia' %}Buscar el año{% else %}Buscar por código o nombre de la fuente{% endif %}"
-           hx-get="{{ u_elegir }}?tipo={{ tipo }}&solo=resultados" hx-include="#pf-matriz"
+           hx-get="{{ u_elegir }}?tipo={{ tipo }}&en={{ en }}&solo=resultados" hx-include="#pf-matriz"
            hx-trigger="input changed delay:250ms" hx-target="#pf-resultados" hx-sync="this:replace">
     <div class="lista" id="pf-resultados">{% include "siifweb/_programacion_opciones.html" %}</div>
   </div>

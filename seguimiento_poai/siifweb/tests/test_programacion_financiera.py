@@ -105,10 +105,17 @@ class Pantalla(Base):
     def casilla(self, vigencia=ANIO, fuente=None, meta=None):
         return f"v-{vigencia}-{(fuente or self.fuente).pk}-{(meta or self.meta).pk}"
 
-    def guardar(self, valores, vigencias=(ANIO,), fuentes=None, metas=None):
-        datos = {"vigencias": list(vigencias), "fuentes": [f.pk for f in (fuentes or [self.fuente])],
-                 "metas": [m.pk for m in (metas or [self.meta])], **valores}
-        return self.client.post(self.guardar_url, datos)
+    def estado(self, bloques=None, **extra):
+        """Los campos ocultos de la pantalla: {vigencia: ([fuentes], [metas])}."""
+        bloques = {ANIO: ([self.fuente], [self.meta])} if bloques is None else bloques
+        datos = {"vigencias": list(bloques)}
+        for v, (fuentes, metas) in bloques.items():
+            datos[f"fuentes-{v}"] = [f.pk for f in fuentes]
+            datos[f"metas-{v}"] = [m.pk for m in metas]
+        return {**datos, **extra}
+
+    def guardar(self, valores, bloques=None):
+        return self.client.post(self.guardar_url, self.estado(bloques, **valores))
 
     def test_el_boton_esta_en_el_proyecto_y_el_detalle_muestra_el_total(self):
         self.programar("1500000")
@@ -117,45 +124,59 @@ class Pantalla(Base):
         self.assertContains(respuesta, "Valor programado")
         self.assertContains(respuesta, "$1,500,000")             # como las demas columnas del proyecto
 
-    def test_al_abrir_sin_nada_guardado(self):
+    def test_al_abrir_sin_nada_guardado_no_trae_metas_solas(self):
         respuesta = self.client.get(self.url)
         self.assertEqual(respuesta.status_code, 200)
         self.assertContains(respuesta, f"Vigencia {ANIO}")               # la del anio en curso
-        self.assertContains(respuesta, "MT001")                          # la meta programada
-        self.assertContains(respuesta, f"programada {ANIO}")
-        self.assertContains(respuesta, "Sin fuentes.")
-        self.assertNotContains(respuesta, 'name="v-')
+        self.assertContains(respuesta, "Sin fuentes ni metas.")
+        self.assertNotContains(respuesta, "MT001")                       # la programada no se agrega sola
 
-    def test_al_abrir_con_valores_salen_sus_vigencias_fuentes_y_metas(self):
+    def test_al_abrir_con_valores_cada_vigencia_trae_lo_suyo(self):
         self.programar("10", meta=self.meta2, vigencia=ANIO + 1)
+        self.programar("20", fuente=self.otra)
         respuesta = self.client.get(self.url)
-        self.assertContains(respuesta, f"Vigencia {ANIO + 1}")
         self.assertContains(respuesta, f'name="{self.casilla(ANIO + 1, meta=self.meta2)}"')
-        self.assertContains(respuesta, 'value="10"')
+        self.assertContains(respuesta, f'name="{self.casilla(ANIO, fuente=self.otra)}"')
         self.assertNotContains(respuesta, f'name="{self.casilla(ANIO, meta=self.meta2)}"')
+        self.assertNotContains(respuesta, f'name="{self.casilla(ANIO + 1)}"')
 
     def test_agregar_no_guarda_y_conserva_lo_digitado(self):
-        respuesta = self.client.get(self.matriz, {"vigencias": [ANIO], "metas": [self.meta.pk],
-                                                  "agregar_fuente": self.fuente.pk})
+        respuesta = self.client.get(self.matriz, self.estado({ANIO: ([], [self.meta])}, en=ANIO,
+                                                             agregar_fuente=self.fuente.pk))
         self.assertContains(respuesta, f'name="{self.casilla()}"')
-        respuesta = self.client.get(self.matriz, {"vigencias": [ANIO], "fuentes": [self.fuente.pk],
-                                                  "metas": [self.meta.pk], self.casilla(): "5",
-                                                  "agregar_vigencia": ANIO + 1})
+        respuesta = self.client.get(self.matriz, self.estado(None, **{self.casilla(): "5", "agregar_vigencia": ANIO + 1}))
         self.assertContains(respuesta, f"Vigencia {ANIO + 1}")
-        self.assertContains(respuesta, f'name="{self.casilla(ANIO + 1)}"')
         self.assertContains(respuesta, 'value="5"')
         self.assertContains(respuesta, " cambio")
         self.assertNotContains(respuesta, 'id="pf-pendiente" hidden')
         self.assertFalse(ProgramacionFinanciera.objects.exists())
 
+    def test_quitar_la_fuente_de_una_vigencia_no_toca_la_otra(self):
+        """La misma fuente en dos vigencias: quitarla de una deja la otra con lo digitado."""
+        bloques = {ANIO: ([self.fuente], [self.meta]), ANIO + 1: ([self.fuente], [self.meta])}
+        respuesta = self.client.get(self.matriz, self.estado(bloques, **{
+            self.casilla(): "1000", self.casilla(ANIO + 1): "2000", "quitar_fuente": self.fuente.pk, "en": ANIO + 1}))
+        self.assertContains(respuesta, f'name="{self.casilla()}"')
+        self.assertContains(respuesta, 'value="1000"')
+        self.assertNotContains(respuesta, f'name="{self.casilla(ANIO + 1)}"')
+        # Y al guardar queda la de la primera vigencia
+        self.guardar({self.casilla(): "1000"}, {ANIO: ([self.fuente], [self.meta]), ANIO + 1: ([], [self.meta])})
+        self.assertEqual(list(ProgramacionFinanciera.objects.values_list("vigencia", "valor")), [(ANIO, D("1000"))])
+
+    def test_quitar_una_meta_solo_en_su_vigencia(self):
+        bloques = {ANIO: ([self.fuente], [self.meta]), ANIO + 1: ([self.fuente], [self.meta])}
+        respuesta = self.client.get(self.matriz, self.estado(bloques, quitar_meta=self.meta.pk, en=ANIO))
+        self.assertNotContains(respuesta, f'name="{self.casilla()}"')
+        self.assertContains(respuesta, f'name="{self.casilla(ANIO + 1)}"')
+
     def test_guardar_crea_cambia_y_borra(self):
         respuesta = self.guardar({self.casilla(): "1500000.5", self.casilla(meta=self.meta2): ""},
-                                 metas=[self.meta, self.meta2])
+                                 {ANIO: ([self.fuente], [self.meta, self.meta2])})
         self.assertContains(respuesta, "Guardado: 1 nuevos.")
         self.assertContains(respuesta, 'hx-swap-oob="true"')            # el total del encabezado
-        self.assertEqual(self.total(), D("1500000.5"))
         self.assertContains(respuesta, 'value="1500000.5"')
         self.assertContains(respuesta, "1.500.000,50")                  # el total, como en el CUIPO
+        self.assertEqual(self.total(), D("1500000.5"))
         self.assertContains(self.guardar({self.casilla(): "2000000"}), "Guardado: 1 cambiados.")
         self.assertEqual(ProgramacionFinanciera.objects.get().valor, D("2000000"))
         self.assertContains(self.guardar({self.casilla(): "2000000"}), "Sin cambios.")
@@ -164,7 +185,7 @@ class Pantalla(Base):
 
     def test_con_un_error_no_se_guarda_nada(self):
         respuesta = self.guardar({self.casilla(): "100", self.casilla(fuente=self.otra): "-3"},
-                                 fuentes=[self.fuente, self.otra])
+                                 {ANIO: ([self.fuente, self.otra], [self.meta])})
         self.assertContains(respuesta, "1 casilla con error")
         self.assertContains(respuesta, 'aria-invalid="true"')
         self.assertContains(respuesta, 'value="-3"')                     # lo digitado no se pierde
@@ -174,8 +195,8 @@ class Pantalla(Base):
     def test_quitar_avisa_y_al_guardar_borra(self):
         self.programar("1")
         self.programar("2", fuente=self.otra)
-        respuesta = self.client.get(self.matriz, {"vigencias": [ANIO], "fuentes": [self.fuente.pk, self.otra.pk],
-                                                  "metas": [self.meta.pk], "quitar_fuente": self.otra.pk})
+        respuesta = self.client.get(self.matriz, self.estado({ANIO: ([self.fuente, self.otra], [self.meta])},
+                                                             quitar_fuente=self.otra.pk, en=ANIO))
         self.assertNotContains(respuesta, f'name="{self.casilla(fuente=self.otra)}"')
         self.assertContains(respuesta, "se borran 1 valor de lo que se quitó")
         self.assertEqual(ProgramacionFinanciera.objects.count(), 2)      # quitar no borra
@@ -183,27 +204,42 @@ class Pantalla(Base):
         self.assertEqual(list(ProgramacionFinanciera.objects.values_list("fuente", flat=True)), [self.fuente.pk])
         self.assertEqual(self.total(), D("1"))
 
-    def test_quitar_una_vigencia(self):
+    def test_quitar_todo_y_volver_a_abrir_no_trae_nada(self):
         self.programar("1")
-        self.programar("3", vigencia=ANIO + 1)
-        self.guardar({self.casilla(ANIO + 1): "3"}, vigencias=(ANIO + 1,))
-        self.assertEqual(list(ProgramacionFinanciera.objects.values_list("vigencia", flat=True)), [ANIO + 1])
+        self.guardar({}, {ANIO: ([], [])})
+        self.assertFalse(ProgramacionFinanciera.objects.exists())
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, "Sin fuentes ni metas.")
+        self.assertNotContains(respuesta, "MT001")
 
     def test_el_listado_busca_excluye_y_pasa_de_pagina(self):
-        respuesta = self.client.get(self.elegir, {"tipo": "fuente", "q": "Participaciones"})
-        self.assertContains(respuesta, "Agregar una fuente")
+        respuesta = self.client.get(self.elegir, self.estado(tipo="fuente", en=ANIO, q="Participaciones"))
+        self.assertContains(respuesta, f"Agregar una fuente a {ANIO}")
         self.assertContains(respuesta, "Sistema General de Participaciones")
-        resultados = self.client.get(self.elegir, {"tipo": "fuente", "q": "Participaciones", "solo": "resultados",
-                                                   "fuentes": [self.otra.pk]})
+        resultados = self.client.get(self.elegir, self.estado({ANIO: ([self.otra], [])}, tipo="fuente", en=ANIO,
+                                                              q="Participaciones", solo="resultados"))
         self.assertNotContains(resultados, "Sistema General de Participaciones")
-        metas = self.client.get(self.elegir, {"tipo": "meta", "solo": "resultados"})
+        metas = self.client.get(self.elegir, self.estado({ANIO: ([], [])}, tipo="meta", en=ANIO, solo="resultados"))
         self.assertContains(metas, "1–50 de")
         self.assertContains(metas, "Siguiente")
-        self.assertContains(self.client.get(self.elegir, {"tipo": "meta", "solo": "resultados", "pagina": 2}),
-                            "51–100 de")
-        vigencias = self.client.get(self.elegir, {"tipo": "vigencia", "solo": "resultados", "vigencias": [ANIO]})
+        html = metas.content.decode()
+        self.assertLess(html.index("<b>MT001</b>"), html.index("<b>MT002</b>"))
+        self.assertIn("programada", html[html.index("<b>MT001</b>"):html.index("<b>MT002</b>")])
+        segunda = self.client.get(self.elegir, self.estado({ANIO: ([], [])}, tipo="meta", en=ANIO, solo="resultados",
+                                                           pagina=2))
+        self.assertContains(segunda, "51–100 de")
+        vigencias = self.client.get(self.elegir, self.estado(tipo="vigencia", solo="resultados"))
         self.assertContains(vigencias, f"<b>{ANIO + 1}</b>")
         self.assertNotContains(vigencias, f"<b>{ANIO}</b>")
+
+    def test_las_programadas_van_primero_en_el_listado_de_metas(self):
+        meta_tardia = MetaIndicador.objects.order_by("-codigo").first()
+        programado = ProgramacionProyectos.objects.get(bpin=self.proy.bpin)
+        ProgramacionMeta.objects.create(proyecto=programado, meta=meta_tardia, vigencia=ANIO, meta_vigencia=D("1"))
+        html = self.client.get(self.elegir, self.estado({ANIO: ([], [])}, tipo="meta", en=ANIO,
+                                                        solo="resultados")).content.decode()
+        primeras = html[:html.index("<b>MT002</b>")]
+        self.assertIn(f"<b>{meta_tardia.codigo}</b>", primeras)
 
 
 class Permisos(Base):
@@ -229,7 +265,7 @@ class Permisos(Base):
         self.assertNotContains(respuesta, ">Guardar<")
         guardar = reverse("admin:siifweb_proyecto_pf_guardar", args=(self.proy.pk,))
         casilla = f"v-{ANIO}-{self.fuente.pk}-{self.meta.pk}"
-        respuesta = self.client.post(guardar, {"vigencias": [ANIO], "fuentes": [self.fuente.pk],
-                                               "metas": [self.meta.pk], casilla: "5"})
+        respuesta = self.client.post(guardar, {"vigencias": [ANIO], f"fuentes-{ANIO}": [self.fuente.pk],
+                                               f"metas-{ANIO}": [self.meta.pk], casilla: "5"})
         self.assertEqual(respuesta.status_code, 403)
         self.assertEqual(ProgramacionFinanciera.objects.get().valor, D("10"))

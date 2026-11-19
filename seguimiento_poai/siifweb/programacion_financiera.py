@@ -1,16 +1,17 @@
 """Programacion financiera de un proyecto: cuanto va de cada fuente a cada meta, por vigencia.
 
-La pantalla (ProyectoAdmin.programacion_financiera) es una matriz con tres listados que el
-equipo arma: vigencias, fuentes y metas. Cada vigencia es un bloque de filas (una por fuente),
-las metas son las columnas y en cada cruce va el valor. Los montos los define el equipo; aqui
-no se contrastan con SIIFWEB.
+La pantalla (ProyectoAdmin.programacion_financiera) tiene un bloque por vigencia. Cada bloque es
+independiente: sus propias fuentes (filas) y metas (columnas), con el valor en cada cruce y sus
+totales. Los montos los define el equipo; aqui no se contrastan con SIIFWEB.
 
-- Al abrir: las vigencias, fuentes y metas que ya tienen valores, mas las metas en que el
-  proyecto esta programado para esas vigencias (Programacion de proyectos, por el BPIN). Sin
-  nada guardado, la vigencia del anio en curso.
-- La matriz es un formulario. Digitar, agregar o quitar una vigencia, una fuente o una meta no
-  toca la base: lo que se ve viaja en la pagina (campos ocultos "vigencias", "fuentes" y
-  "metas" y una casilla por cruce, v-<vigencia>-<fuente>-<meta>).
+- Al abrir: las vigencias con valores guardados, cada una con sus fuentes y metas. Sin nada
+  guardado, la vigencia del anio en curso, vacia. Las metas en que el proyecto esta programado
+  (Programacion de proyectos, por el BPIN) no se agregan solas: salen primero en el listado de
+  "+ Meta" de cada vigencia, marcadas como programadas.
+- La pantalla es un formulario. Digitar, agregar o quitar no toca la base: lo que se ve viaja en
+  la pagina (campos ocultos "vigencias", "fuentes-<vigencia>" y "metas-<vigencia>" y una casilla
+  por cruce, v-<vigencia>-<fuente>-<meta>). Quitar una fuente o una meta la quita solo de su
+  vigencia.
 - El boton Guardar deja la programacion del proyecto exactamente como se ve: crea o cambia los
   valores y borra los vacios o en cero y los de vigencias, fuentes o metas quitadas. Si una
   casilla tiene un error no se guarda nada.
@@ -19,10 +20,10 @@ no se contrastan con SIIFWEB.
   pantalla del CUIPO (floatformat "2g").
 """
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Case, IntegerField, Q, Sum, Value, When
 from django.utils import timezone
 
 from .models import Fuente, MetaIndicador, ProgramacionFinanciera, ProgramacionMeta, listado_vigencias_metas
@@ -78,7 +79,7 @@ def en_casilla(valor):
 
 
 # ---------------------------------------------------------------------------
-# Listados y casillas
+# Lo que se ve: {vigencia: {"fuentes": [ids], "metas": [ids]}}
 # ---------------------------------------------------------------------------
 
 def vigencias_validas():
@@ -94,6 +95,48 @@ def _ids(valores, validos=None):
     return vistos
 
 
+def estado_guardado(proyecto):
+    """Las vigencias con valores, cada una con sus fuentes y metas. Sin nada, el anio en curso vacio."""
+    estado = {}
+    for v, f, m in proyecto.programacion_financiera.values_list("vigencia", "fuente_id", "meta_id"):
+        bloque = estado.setdefault(v, {"fuentes": [], "metas": []})
+        if f not in bloque["fuentes"]:
+            bloque["fuentes"].append(f)
+        if m not in bloque["metas"]:
+            bloque["metas"].append(m)
+    return estado or {timezone.localdate().year: {"fuentes": [], "metas": []}}
+
+
+def estado_de(datos):
+    """Lo que se ve, leido del formulario (campos ocultos)."""
+    validas = set(vigencias_validas())
+    return {v: {"fuentes": _ids(datos.getlist(f"fuentes-{v}")), "metas": _ids(datos.getlist(f"metas-{v}"))}
+            for v in _ids(datos.getlist("vigencias"), validas)}
+
+
+def cambiar_estado(estado, datos):
+    """Aplica al estado lo que pide el boton: agregar o quitar una vigencia, o una fuente o una
+    meta en una vigencia (`en`)."""
+    agregar_vigencia = _ids([datos.get("agregar_vigencia")], set(vigencias_validas()))
+    for v in agregar_vigencia:
+        estado.setdefault(v, {"fuentes": [], "metas": []})
+    quitar_vigencia = _ids([datos.get("quitar_vigencia")])
+    for v in quitar_vigencia:
+        estado.pop(v, None)
+    en = _ids([datos.get("en")])
+    if en and en[0] in estado:
+        bloque = estado[en[0]]
+        for tipo in ("fuente", "meta"):
+            lista = bloque[tipo + "s"]
+            for x in _ids([datos.get(f"agregar_{tipo}")]):
+                if x not in lista:
+                    lista.append(x)
+            for x in _ids([datos.get(f"quitar_{tipo}")]):
+                if x in lista:
+                    lista.remove(x)
+    return estado
+
+
 def digitados_de(datos):
     """{(vigencia, fuente, meta): texto} de las casillas del formulario (v-<vig>-<fuente>-<meta>)."""
     digitados = {}
@@ -104,73 +147,61 @@ def digitados_de(datos):
     return digitados
 
 
-def metas_programadas(proyecto, vigencias):
-    """{meta: [vigencias]} en que el proyecto (por su BPIN) esta programado (Programacion de proyectos)."""
-    programadas = {}
-    if proyecto.bpin and vigencias:
-        for meta_id, vigencia in (ProgramacionMeta.objects.filter(proyecto__bpin=proyecto.bpin, vigencia__in=vigencias)
-                                  .values_list("meta_id", "vigencia").distinct()):
-            programadas.setdefault(meta_id, set()).add(vigencia)
-    return {m: sorted(v) for m, v in programadas.items()}
+def metas_programadas(proyecto, vigencia):
+    """Ids de las metas en que el proyecto (por su BPIN) esta programado para la vigencia."""
+    if not proyecto.bpin:
+        return set()
+    return set(ProgramacionMeta.objects.filter(proyecto__bpin=proyecto.bpin, vigencia=vigencia)
+               .values_list("meta_id", flat=True))
 
 
 # ---------------------------------------------------------------------------
-# La matriz
+# La pantalla
 # ---------------------------------------------------------------------------
 
-def matriz(proyecto, vigencias=None, fuentes=None, metas=None, digitados=None, errores=None):
-    """Bloques por vigencia con una fila por fuente y una columna por meta, y sus totales.
+def matriz(proyecto, estado=None, digitados=None, errores=None):
+    """Un bloque por vigencia con sus fuentes (filas), sus metas (columnas), los valores y totales.
 
-    Sin listados (al abrir) salen de lo guardado y de las metas programadas. Con ellos (al
-    agregar, quitar o guardar con errores) se muestran exactamente esos, con lo digitado en
-    `digitados`; una casilla cuyo texto no coincide con lo guardado queda como cambio
-    pendiente. Los totales de la tabla suman lo que se ve.
+    Sin estado (al abrir) sale de lo guardado. Con estado (al agregar, quitar o guardar con
+    errores) se muestra exactamente ese, con lo digitado en `digitados`; una casilla cuyo texto
+    no coincide con lo guardado queda como cambio pendiente. Los totales suman lo que se ve.
     """
-    registros = list(proyecto.programacion_financiera.all())
-    guardados = {(r.vigencia, r.fuente_id, r.meta_id): r.valor for r in registros}
-    if vigencias is None:
-        ids_vigencias = sorted({r.vigencia for r in registros}) or [timezone.localdate().year]
-    else:
-        ids_vigencias = sorted(_ids(vigencias, set(vigencias_validas())))
-    programadas = metas_programadas(proyecto, ids_vigencias)
-    ids_fuentes = sorted({r.fuente_id for r in registros}) if fuentes is None else _ids(fuentes)
-    ids_metas = sorted({r.meta_id for r in registros} | set(programadas)) if metas is None else _ids(metas)
-    lista_fuentes = list(Fuente.objects.filter(pk__in=ids_fuentes).order_by("codigo"))
-    lista_metas = list(MetaIndicador.objects.filter(pk__in=ids_metas).order_by("codigo"))
+    estado = estado_guardado(proyecto) if estado is None else estado
+    guardados = {(r.vigencia, r.fuente_id, r.meta_id): r.valor for r in proyecto.programacion_financiera.all()}
+    todas_fuentes = {f.pk: f for f in Fuente.objects.filter(pk__in={x for b in estado.values() for x in b["fuentes"]})}
+    todas_metas = {m.pk: m for m in MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})}
     digitados, errores = digitados or {}, errores or {}
 
-    bloques, por_meta = [], {m.pk: CERO for m in lista_metas}
-    for v in ids_vigencias:
-        filas, subtotales = [], {m.pk: CERO for m in lista_metas}
-        for f in lista_fuentes:
+    bloques, visibles = [], set()
+    for v in sorted(estado):
+        fuentes = sorted((todas_fuentes[x] for x in estado[v]["fuentes"] if x in todas_fuentes), key=lambda f: f.codigo)
+        metas = sorted((todas_metas[x] for x in estado[v]["metas"] if x in todas_metas), key=lambda m: m.codigo)
+        programadas = metas_programadas(proyecto, v)
+        filas, por_meta = [], {m.pk: CERO for m in metas}
+        for f in fuentes:
             celdas, total_fila = [], CERO
-            for m in lista_metas:
+            for m in metas:
                 clave = (v, f.pk, m.pk)
+                visibles.add(clave)
                 guardado = guardados.get(clave)
                 texto = digitados[clave] if clave in digitados else en_casilla(guardado)
                 leido = _leer_o_none(texto)
                 celdas.append({"meta": m, "texto": texto, "nombre": f"v-{v}-{f.pk}-{m.pk}", "con": bool(leido),
                                "cambio": leido is None or leido != (guardado or CERO), "error": errores.get(clave, "")})
-                subtotales[m.pk] += leido or CERO
+                por_meta[m.pk] += leido or CERO
                 total_fila += leido or CERO
             filas.append({"fuente": f, "celdas": celdas, "total": total_fila})
-        for m_id, valor in subtotales.items():
-            por_meta[m_id] += valor
-        bloques.append({"vigencia": v, "filas": filas, "total": sum(subtotales.values(), CERO),
-                        "subtotales": [subtotales[m.pk] for m in lista_metas],
-                        "guardada": any(vi == v for vi, _, _ in guardados)})
+        bloques.append({
+            "vigencia": v, "filas": filas, "fuentes": [f.pk for f in fuentes], "metas": [m.pk for m in metas],
+            "columnas": [{"meta": m, "total": por_meta[m.pk], "programada": m.pk in programadas} for m in metas],
+            "total": sum(por_meta.values(), CERO),
+        })
 
-    columnas = [{"meta": m, "total": por_meta[m.pk], "programada": programadas.get(m.pk, []),
-                 "guardada": any(me == m.pk for _, _, me in guardados)} for m in lista_metas]
-    visibles = {(v, f.pk, m.pk) for v in ids_vigencias for f in lista_fuentes for m in lista_metas}
     por_borrar = [clave for clave in guardados if clave not in visibles]
     pendiente = bool(por_borrar) or any(c["cambio"] for b in bloques for f in b["filas"] for c in f["celdas"])
     por_vigencia = list(proyecto.programacion_financiera.values("vigencia").annotate(t=Sum("valor")).order_by("vigencia"))
     return {
-        "bloques": bloques, "columnas": columnas, "total": sum(por_meta.values(), CERO),
-        "fuentes_guardadas": {fu for _, fu, _ in guardados},
-        "vigencias": ids_vigencias, "fuentes": [f.pk for f in lista_fuentes], "metas": [m.pk for m in lista_metas],
-        "sin_fuentes": not lista_fuentes, "sin_metas": not lista_metas,
+        "bloques": bloques, "total": sum((b["total"] for b in bloques), CERO),
         "pendiente": pendiente, "por_borrar": len(por_borrar), "errores": len(errores),
         "por_vigencia": [(p["vigencia"], p["t"]) for p in por_vigencia],
         "total_proyecto": proyecto.valor_programado,
@@ -181,23 +212,25 @@ def matriz(proyecto, vigencias=None, fuentes=None, metas=None, digitados=None, e
 # Guardar
 # ---------------------------------------------------------------------------
 
-def guardar(proyecto, vigencias, fuentes, metas, digitados):
-    """Deja la programacion del proyecto como se ve en la matriz. Devuelve ({casilla: error}, mensaje).
+def guardar(proyecto, estado, digitados):
+    """Deja la programacion del proyecto como se ve. Devuelve ({casilla: error}, mensaje).
 
     Con algun error no cambia nada. Si no: crea o cambia los valores, y borra los vacios o en
-    cero y los de vigencias, fuentes o metas que ya no estan en la matriz.
+    cero y los de vigencias, fuentes o metas que ya no estan en la pantalla.
     """
-    ids_vigencias = _ids(vigencias, set(vigencias_validas()))
-    ids_fuentes = set(Fuente.objects.filter(pk__in=_ids(fuentes)).values_list("pk", flat=True))
-    ids_metas = set(MetaIndicador.objects.filter(pk__in=_ids(metas)).values_list("pk", flat=True))
+    fuentes_validas = set(Fuente.objects.filter(pk__in={x for b in estado.values() for x in b["fuentes"]})
+                          .values_list("pk", flat=True))
+    metas_validas = set(MetaIndicador.objects.filter(pk__in={x for b in estado.values() for x in b["metas"]})
+                        .values_list("pk", flat=True))
     valores, errores = {}, {}
-    for v in ids_vigencias:
-        for f in ids_fuentes:
-            for m in ids_metas:
-                try:
-                    valores[(v, f, m)] = leer_valor(digitados.get((v, f, m), ""))
-                except ValueError as e:
-                    errores[(v, f, m)] = str(e)
+    for v, bloque in estado.items():
+        for f in bloque["fuentes"]:
+            for m in bloque["metas"]:
+                if f in fuentes_validas and m in metas_validas:
+                    try:
+                        valores[(v, f, m)] = leer_valor(digitados.get((v, f, m), ""))
+                    except ValueError as e:
+                        errores[(v, f, m)] = str(e)
     if errores:
         return errores, ""
 
@@ -224,32 +257,35 @@ def guardar(proyecto, vigencias, fuentes, metas, digitados):
 # El listado de la ventana para agregar
 # ---------------------------------------------------------------------------
 
-def opciones(tipo, texto="", excluir=(), pagina=1):
+def opciones(tipo, texto="", excluir=(), pagina=1, programadas=()):
     """Una pagina del listado de vigencias, fuentes o metas que coinciden con el texto, sin las
-    que ya estan en la matriz. Devuelve {"lista": [(id, codigo, nombre)], "pagina", "paginas", "total"}."""
+    que ya estan. En metas, las `programadas` van primero y marcadas.
+    Devuelve {"lista": [(id, codigo, nombre, programada)], "pagina", "paginas", "total", "desde", "hasta"}."""
     texto = (texto or "").strip()
     presentes = _ids(excluir)
+    programadas = set(programadas)
     if tipo == "vigencia":
-        todas = [(v, str(v), "") for v in reversed(vigencias_validas()) if v not in presentes and texto in str(v)]
+        todas = [(v, str(v), "", False) for v in reversed(vigencias_validas()) if v not in presentes and texto in str(v)]
     elif tipo == "fuente":
         consulta = Fuente.objects.exclude(pk__in=presentes).order_by("codigo")
         if texto:
             consulta = consulta.filter(Q(codigo__icontains=texto) | Q(nombre__icontains=texto))
         todas = consulta
     else:
-        consulta = MetaIndicador.objects.filter(estado=True).exclude(pk__in=presentes).order_by("codigo")
+        consulta = MetaIndicador.objects.filter(estado=True).exclude(pk__in=presentes)
         if texto:
             consulta = consulta.filter(Q(codigo__icontains=texto) | Q(descripcion__icontains=texto)
                                        | Q(indicador_mga__codigo__icontains=texto))
-        todas = consulta
+        todas = consulta.annotate(orden=Case(When(pk__in=programadas, then=Value(0)), default=Value(1),
+                                             output_field=IntegerField())).order_by("orden", "codigo")
     total = len(todas) if isinstance(todas, list) else todas.count()
     paginas = max(1, -(-total // POR_PAGINA))
     pagina = min(max(int(pagina) if str(pagina).isdigit() else 1, 1), paginas)
     tramo = todas[(pagina - 1) * POR_PAGINA:pagina * POR_PAGINA]
     if tipo == "fuente":
-        lista = [(f.pk, f.codigo, f.nombre) for f in tramo]
+        lista = [(f.pk, f.codigo, f.nombre, False) for f in tramo]
     elif tipo == "meta":
-        lista = [(m.pk, m.codigo, m.descripcion) for m in tramo]
+        lista = [(m.pk, m.codigo, m.descripcion, m.pk in programadas) for m in tramo]
     else:
         lista = list(tramo)
     return {"lista": lista, "pagina": pagina, "paginas": paginas, "total": total,

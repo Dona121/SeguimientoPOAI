@@ -712,6 +712,11 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   fechas). Boton "Observaciones" en el detalle del proyecto (accion de detalle, no un inline: el
   detalle solo edita el proyecto): agregar arriba y la lista de la mas reciente a la mas antigua,
   con editar y borrar. Ver pide `view_observacionproyectosiifweb`; cada accion, su permiso.
+- **Programacion financiera por vigencia:** cada vigencia es un bloque independiente, con sus
+  propias fuentes y metas y sus botones "+ Fuente" y "+ Meta"; quitar una fuente o una meta la
+  quita solo de esa vigencia (antes eran comunes y quitar la fuente en 2027 la quitaba de 2026
+  con lo digitado). Las metas programadas del proyecto ya no se agregan solas al abrir: salen
+  primero en el listado de "+ Meta", marcadas como programadas.
 - **Distribuciones del CUIPO:** la ventana para elegir CPC, detalle sectorial, tercero, politica
   publica o vigencia del gasto muestra de 50 en 50 con Anterior / Siguiente (antes las primeras
   60 y "escriba para acotar").
