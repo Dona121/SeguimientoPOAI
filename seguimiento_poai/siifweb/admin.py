@@ -25,6 +25,7 @@ from unfold.contrib.filters.admin import (ChoicesDropdownFilter, RangeDateFilter
                                           RelatedDropdownFilter,TextFilter,FieldTextFilter,AutocompleteSelectMultipleFilter)
 from unfold.decorators import action, display
 from unfold.sections import TableSection
+from unfold.widgets import UnfoldAdminFileFieldWidget
 
 from . import cargas, programacion_financiera, tablero
 from .models import (BpinProceso, CargaReporte, Cdp, CdpImputacion, CentroCosto, Clasificacion,
@@ -592,6 +593,17 @@ class ClasificacionPorDefectoFilter(admin.SimpleListFilter):
             }
 
 
+class SoporteSinLimpiar(UnfoldAdminFileFieldWidget):
+    """El campo de soporte de un paso del proyecto sin la casilla "Limpiar": el soporte se
+    reemplaza cargando otro archivo, no se quita. Tambien ignora la orden de limpiar si llegara
+    en el formulario."""
+    template_name = "siifweb/widgets/soporte_sin_limpiar.html"
+
+    def value_from_datadict(self, data, files, name):
+        # Sin la casilla de limpiar: solo cuenta el archivo nuevo (None deja el que habia)
+        return files.get(name)
+
+
 @admin.register(Proyecto)
 class ProyectoAdmin(ModelAdmin):
     compressed_fields = False
@@ -638,6 +650,12 @@ class ProyectoAdmin(ModelAdmin):
 
     AYUDA_BPIN = ("Si registras aqui un proyecto nuevo, la proxima carga buscara su BPIN y le "
                   "enganchara la ejecucion. Lo que escribas en nombre y responsable no se sobreescribe.")
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        # Los soportes de los pasos no se limpian: se reemplazan
+        if db_field.name.startswith("soporte_"):
+            kwargs["widget"] = SoporteSinLimpiar
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
 
     def get_form(self, request, obj=None, **kwargs):
         """El BPIN lleva su ayuda en un globo al lado de la etiqueta."""

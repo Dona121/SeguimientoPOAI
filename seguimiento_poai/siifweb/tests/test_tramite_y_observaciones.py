@@ -99,6 +99,22 @@ class Tramite(Base):
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn("tiempo_ejecucion", respuesta.context["adminform"].form.errors)
 
+    def test_los_soportes_no_tienen_limpiar(self):
+        self.proy.estudios_previos, self.proy.fecha_estudios_previos = True, date(2026, 3, 1)
+        self.proy.soporte_estudios_previos = self.soporte("estudios.pdf")
+        self.proy.save()
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, 'id="id_soporte_estudios_previos"')
+        self.assertNotContains(respuesta, 'name="soporte_estudios_previos-clear"')
+        # Aunque llegue la orden de limpiar, el soporte se queda
+        self.client.post(self.url, self.formulario(estudios_previos="on", fecha_estudios_previos="01/03/2026",
+                                                   **{"soporte_estudios_previos-clear": "on"}))
+        self.assertTrue(Proyecto.objects.get(pk=self.proy.pk).soporte_estudios_previos)
+        # Se reemplaza cargando otro
+        self.client.post(self.url, self.formulario(estudios_previos="on", fecha_estudios_previos="01/03/2026",
+                                                   soporte_estudios_previos=self.soporte("nuevo.pdf")))
+        self.assertIn("nuevo", Proyecto.objects.get(pk=self.proy.pk).soporte_estudios_previos.name)
+
     def test_desmarcar_conserva_la_fecha_y_el_soporte(self):
         """Una casilla desmarcada por error no hace perder la fecha ni el soporte."""
         self.proy.estudios_previos, self.proy.fecha_estudios_previos = True, date(2026, 3, 1)

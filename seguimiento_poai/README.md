@@ -307,7 +307,8 @@ completo y agregado. Secciones:
   linea. Fecha y soporte solo aparecen con la casilla marcada (`conditional_fields` de unfold),
   entonces son obligatorios (`Proyecto.clean`). Desmarcar no los borra: se ocultan y
   reaparecen al volver a marcar (una casilla se puede desmarcar por error). Los
-  soportes van a `proyectos/<bpin>/soportes/` del bucket. La lista esta en `PASOS`
+  soportes van a `proyectos/<bpin>/soportes/` del bucket y no tienen la casilla "Limpiar" de
+  unfold (`SoporteSinLimpiar` en admin.py): se descargan o se reemplazan, no se quitan. La lista esta en `PASOS`
   (`RADICACION` + `TRAMITES`, models.py). Desde el servidor local los archivos subirian al
   bucket de produccion: los soportes se cargan en produccion.
 - **Programacion financiera**: el valor programado (solo lectura), con lo de cada vigencia.

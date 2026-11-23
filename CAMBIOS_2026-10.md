@@ -752,5 +752,9 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   al volver a marcarla reaparecen. La lista de pasos es `PASOS` = `RADICACION` + `TRAMITES` en
   models.py.
 
-**Pruebas.** 618, todas pasan.
+- Los soportes no tienen la casilla "Limpiar" de unfold (`SoporteSinLimpiar` en admin.py): se
+  descargan o se reemplazan cargando otro archivo, no se quitan; el servidor ignora la orden de
+  limpiar si llegara.
+
+**Pruebas.** 619, todas pasan.
 
