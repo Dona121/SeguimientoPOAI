@@ -47,11 +47,12 @@ después. La versión normalizada:
 | nombre | CharField | de historial e IndicadoresProyectos |
 | dependencia | CharField, null | |
 | valor_programado | Decimal(20,5), no editable | suma de su `ProgramacionFinanciera` (todas las vigencias); la recalculan las señales del modelo (sección 11) |
-| fecha_radicacion, fecha_registro | DateField, null | |
+| radicado + fecha_radicacion + soporte_radicacion | Boolean + DateField, null + FileField | como un paso del trámite (`RADICACION` en models.py) |
+| registrado + fecha_registro + soporte_registro | Boolean + DateField, null + FileField | ídem |
 | tiempo_ejecucion | Decimal(5,2), null | 3 enteros y 2 decimales, en la `medida_tiempo` |
 | medida_tiempo | FK → MedidaTiempo, null, PROTECT | Días, Meses, Años |
 | contratacion_directa | Boolean | |
-| 10 pasos del trámite | Boolean + DateField, null | `TRAMITES` en models.py: decreto de liquidación inicial, gestión de recursos en PIIP, asignación ajuste a decreto ET, solicitud y concepto de traslado, decreto de traslado, asignación ajuste con trámite presupuestal, cargado en SIIFWEB, estudios previos, radicado en contratación, terminado. Sin la casilla, la fecha se borra al guardar |
+| 10 pasos del trámite | Boolean + DateField, null + FileField (`soporte_*`) | `TRAMITES` en models.py: decreto de liquidación inicial, gestión de recursos en PIIP, asignación ajuste a decreto ET, solicitud y concepto de traslado, decreto de traslado, asignación ajuste con trámite presupuestal, cargado en SIIFWEB, estudios previos, radicado en contratación, terminado. Con la casilla marcada, fecha y soporte obligatorios (`Proyecto.clean`); sin ella, se borran al guardar. Los soportes van a `proyectos/<bpin>/soportes/` |
 
 ### Tercero
 | campo | tipo | nota |

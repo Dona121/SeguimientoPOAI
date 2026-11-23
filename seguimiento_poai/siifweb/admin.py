@@ -36,7 +36,7 @@ from .models import (IndicadorMGA, IndicadorPDD, LineaEstrategica, MedidoATraves
                      UnidadMedida, VigenciaMeta, indicadores_fuera_del_programa)
 from .models import (MESES, Municipio, ObservacionProyecto, PeriodoReporte, ProgramacionMeta,
                      ProgramacionProyectos, SeguimientoMeta, TipoBanco, listado_vigencias_metas)
-from .models import (TRAMITES, Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
+from .models import (PASOS, RADICACION, TRAMITES, Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
                      MedidaTiempo, ObservacionProyectoSiifweb, ProductoCatalogo, ProgramacionFinanciera,
                      ProgramacionFisica)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
@@ -615,16 +615,17 @@ class ProyectoAdmin(ModelAdmin):
         ("Proyecto", {"fields": ("bpin", "nombre")}),
         ("Responsables y clasificacion", {
             "fields": ("dependencia", "dependencia_responsable", "clasificaciones")}),
+        # Cada paso con su fecha y su soporte en la misma linea; los dos solo aparecen (y son
+        # obligatorios) con la casilla marcada
         ("Radicación y ejecución", {
-            "fields": (("fecha_radicacion", "fecha_registro"), ("tiempo_ejecucion", "medida_tiempo"),
-                       "contratacion_directa")}),
-        # Cada paso con su fecha en la misma linea; la fecha solo aparece con la casilla marcada
+            "fields": (*RADICACION, ("tiempo_ejecucion", "medida_tiempo"), "contratacion_directa")}),
         ("Trámite", {"fields": TRAMITES}),
         ("Programación financiera", {"fields": ("programado",)}),
         ("Origen", {"fields": ("origen",)}),
     )
     # Campos condicionales de unfold (expresiones de Alpine sobre los campos del formulario)
-    conditional_fields = {fecha: f"{casilla} == true" for casilla, fecha in TRAMITES}
+    conditional_fields = {campo: f"{casilla} == true" for casilla, fecha, soporte in PASOS
+                          for campo in (fecha, soporte)}
 
     @display(description="Valor programado")
     def programado(self, obj):

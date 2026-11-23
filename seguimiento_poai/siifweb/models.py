@@ -157,20 +157,38 @@ class MedidaTiempo(Fechas):
         return self.nombre
 
 
-# Los pasos del tramite del proyecto: (casilla, fecha). La fecha solo se pide con la casilla
-# marcada (conditional_fields del admin) y se borra si la casilla se desmarca (Proyecto.save).
-TRAMITES = (
-    ("decreto_liquidacion_inicial", "fecha_decreto_liquidacion_inicial"),
-    ("gestion_recursos_piip", "fecha_gestion_recursos_piip"),
-    ("asignacion_ajuste_decreto_et", "fecha_asignacion_ajuste_decreto_et"),
-    ("solicitud_concepto_traslado", "fecha_solicitud_concepto_traslado"),
-    ("decreto_traslado", "fecha_decreto_traslado"),
-    ("asignacion_ajuste_tramite_presupuestal", "fecha_asignacion_ajuste_tramite_presupuestal"),
-    ("cargado_siifweb", "fecha_cargue_siifweb"),
-    ("estudios_previos", "fecha_estudios_previos"),
-    ("radicado_contratacion", "fecha_radicado_contratacion"),
-    ("terminado", "fecha_terminacion"),
+# Los pasos del proyecto: (casilla, fecha, soporte). Con la casilla marcada, la fecha y el
+# soporte son obligatorios (Proyecto.clean) y se muestran (conditional_fields del admin); sin
+# marcar, se borran al guardar (Proyecto.save). RADICACION va en la seccion "Radicacion y
+# ejecucion" del detalle y TRAMITES en "Tramite".
+RADICACION = (
+    ("radicado", "fecha_radicacion", "soporte_radicacion"),
+    ("registrado", "fecha_registro", "soporte_registro"),
 )
+TRAMITES = (
+    ("decreto_liquidacion_inicial", "fecha_decreto_liquidacion_inicial", "soporte_decreto_liquidacion_inicial"),
+    ("gestion_recursos_piip", "fecha_gestion_recursos_piip", "soporte_gestion_recursos_piip"),
+    ("asignacion_ajuste_decreto_et", "fecha_asignacion_ajuste_decreto_et", "soporte_asignacion_ajuste_decreto_et"),
+    ("solicitud_concepto_traslado", "fecha_solicitud_concepto_traslado", "soporte_solicitud_concepto_traslado"),
+    ("decreto_traslado", "fecha_decreto_traslado", "soporte_decreto_traslado"),
+    ("asignacion_ajuste_tramite_presupuestal", "fecha_asignacion_ajuste_tramite_presupuestal",
+     "soporte_asignacion_ajuste_tramite_presupuestal"),
+    ("cargado_siifweb", "fecha_cargue_siifweb", "soporte_cargue_siifweb"),
+    ("estudios_previos", "fecha_estudios_previos", "soporte_estudios_previos"),
+    ("radicado_contratacion", "fecha_radicado_contratacion", "soporte_radicado_contratacion"),
+    ("terminado", "fecha_terminacion", "soporte_terminacion"),
+)
+PASOS = RADICACION + TRAMITES
+
+
+def ruta_soporte(instancia, nombre):
+    """proyectos/<bpin>/soportes/<archivo>: los soportes de cada proyecto juntos en el bucket.
+    El almacenamiento limpia el nombre (sin tildes ni enes)."""
+    return f"proyectos/{instancia.bpin or 'sin_bpin'}/soportes/{nombre}"
+
+
+def _soporte(etiqueta):
+    return models.FileField(upload_to=ruta_soporte, max_length=255, blank=True, verbose_name=etiqueta)
 
 
 class Proyecto(Fechas):
@@ -198,9 +216,13 @@ class Proyecto(Fechas):
     valor_programado = models.DecimalField(max_digits=20, decimal_places=5, default=0, editable=False,
                                            verbose_name="Valor programado")
 
-    # Radicacion y ejecucion
+    # Radicacion y ejecucion (ver RADICACION)
+    radicado = models.BooleanField(default=False, verbose_name="Radicado")
     fecha_radicacion = models.DateField(null=True, blank=True, verbose_name="Fecha de radicación")
+    soporte_radicacion = _soporte("Soporte de radicación")
+    registrado = models.BooleanField(default=False, verbose_name="Registrado")
     fecha_registro = models.DateField(null=True, blank=True, verbose_name="Fecha de registro")
+    soporte_registro = _soporte("Soporte de registro")
     # 3 enteros y 2 decimales (por ejemplo 12,5), en la medida de tiempo de al lado
     tiempo_ejecucion = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
                                            verbose_name="Tiempo de ejecución")
@@ -208,35 +230,46 @@ class Proyecto(Fechas):
                                       related_name="proyectos", verbose_name="Medida de tiempo")
     contratacion_directa = models.BooleanField(default=False, verbose_name="Contratación directa")
 
-    # Tramite: cada paso con su fecha (ver TRAMITES)
+    # Tramite: cada paso con su fecha y su soporte (ver TRAMITES)
     decreto_liquidacion_inicial = models.BooleanField(default=False, verbose_name="En decreto de liquidación inicial")
     fecha_decreto_liquidacion_inicial = models.DateField(null=True, blank=True,
                                                          verbose_name="Fecha del decreto de liquidación inicial")
+    soporte_decreto_liquidacion_inicial = _soporte("Soporte decreto de liquidación inicial")
     gestion_recursos_piip = models.BooleanField(default=False, verbose_name="Gestión de recursos en PIIP")
     fecha_gestion_recursos_piip = models.DateField(null=True, blank=True,
                                                    verbose_name="Fecha de gestión de recursos en PIIP")
+    soporte_gestion_recursos_piip = _soporte("Soporte gestión de recursos en PIIP")
     asignacion_ajuste_decreto_et = models.BooleanField(default=False,
                                                        verbose_name="Asignación de recursos ajuste a decreto ET")
     fecha_asignacion_ajuste_decreto_et = models.DateField(
         null=True, blank=True, verbose_name="Fecha de asignación de recursos ajuste a decreto ET")
+    soporte_asignacion_ajuste_decreto_et = _soporte("Soporte asignación de recursos ajuste a decreto ET")
     solicitud_concepto_traslado = models.BooleanField(default=False, verbose_name="Solicitud y concepto de traslado")
     fecha_solicitud_concepto_traslado = models.DateField(null=True, blank=True,
                                                          verbose_name="Fecha de solicitud y concepto de traslado")
+    soporte_solicitud_concepto_traslado = _soporte("Soporte solicitud y concepto de traslado")
     decreto_traslado = models.BooleanField(default=False, verbose_name="Decreto de traslado")
     fecha_decreto_traslado = models.DateField(null=True, blank=True, verbose_name="Fecha del decreto de traslado")
+    soporte_decreto_traslado = _soporte("Soporte decreto de traslado")
     asignacion_ajuste_tramite_presupuestal = models.BooleanField(
         default=False, verbose_name="Asignación de recursos ajuste con trámite presupuestal")
     fecha_asignacion_ajuste_tramite_presupuestal = models.DateField(
         null=True, blank=True, verbose_name="Fecha de asignación de recursos ajuste con trámite presupuestal")
+    soporte_asignacion_ajuste_tramite_presupuestal = _soporte(
+        "Soporte asignación de recursos ajuste con trámite presupuestal")
     cargado_siifweb = models.BooleanField(default=False, verbose_name="Cargado en SIIFWEB")
     fecha_cargue_siifweb = models.DateField(null=True, blank=True, verbose_name="Fecha de cargue en SIIFWEB")
+    soporte_cargue_siifweb = _soporte("Soporte cargue en SIIFWEB")
     estudios_previos = models.BooleanField(default=False, verbose_name="Estudios previos")
     fecha_estudios_previos = models.DateField(null=True, blank=True, verbose_name="Fecha de estudios previos")
+    soporte_estudios_previos = _soporte("Soporte estudios previos")
     radicado_contratacion = models.BooleanField(default=False, verbose_name="Radicado en contratación")
     fecha_radicado_contratacion = models.DateField(null=True, blank=True,
                                                    verbose_name="Fecha de radicado en contratación")
+    soporte_radicado_contratacion = _soporte("Soporte radicado en contratación")
     terminado = models.BooleanField(default=False, verbose_name="Terminado")
     fecha_terminacion = models.DateField(null=True, blank=True, verbose_name="Fecha de terminación")
+    soporte_terminacion = _soporte("Soporte terminación")
 
     class Meta:
         verbose_name = "Proyecto"
@@ -250,15 +283,28 @@ class Proyecto(Fechas):
         self.valor_programado = total
         return total
 
+    def clean(self):
+        """Con la casilla de un paso marcada, la fecha y el soporte son obligatorios."""
+        errores = {}
+        for casilla, fecha, soporte in PASOS:
+            if getattr(self, casilla):
+                if not getattr(self, fecha):
+                    errores[fecha] = "Indique la fecha: la casilla está marcada."
+                if not getattr(self, soporte):
+                    errores[soporte] = "Cargue el soporte: la casilla está marcada."
+        if errores:
+            raise ValidationError(errores)
+
     def save(self, *args, **kwargs):
         # El BPIN es la llave con la que las cargas enganchan la ejecucion.
         # Si el equipo lo teclea con espacios o Excel le deja un ".0", no cruzaria.
         if self.bpin:
             self.bpin = str(self.bpin).strip().removesuffix(".0")
-        # Un paso del tramite sin marcar no lleva fecha
-        for casilla, fecha in TRAMITES:
+        # Un paso sin marcar no lleva fecha ni soporte (el archivo queda en el bucket, sin enlace)
+        for casilla, fecha, soporte in PASOS:
             if not getattr(self, casilla):
                 setattr(self, fecha, None)
+                setattr(self, soporte, "")
         super().save(*args, **kwargs)
         # La formulacion del PIIP que llego antes que el proyecto a SIIFWEB queda enlazada
         if self.bpin:

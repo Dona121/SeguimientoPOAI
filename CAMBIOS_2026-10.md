@@ -742,5 +742,15 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   publica o vigencia del gasto muestra de 50 en 50 con Anterior / Siguiente (antes las primeras
   60 y "escriba para acotar").
 
-**Pruebas.** 616, todas pasan.
+- **Radicado, registrado y soportes del tramite** (migracion `siifweb.0027`). Las fechas de
+  radicacion y de registro llevan su casilla ("Radicado" y "Registrado"), como los pasos del
+  tramite, y cada uno de los doce pasos tiene un campo de archivo con su documento soporte (por
+  ejemplo "Soporte gestion de recursos en PIIP"), guardado en `proyectos/<bpin>/soportes/` del
+  bucket. Con la casilla marcada, la fecha y el soporte son obligatorios (`Proyecto.clean`) y
+  aparecen en la misma linea; sin marcar, se ocultan y al guardar se borran la fecha y el enlace
+  al soporte (el archivo queda en el bucket). La lista de pasos es `PASOS` = `RADICACION` +
+  `TRAMITES` en models.py. La migracion marca "Radicado" y "Registrado" en los proyectos que ya
+  tenian esas fechas, para que no se borren al guardar.
+
+**Pruebas.** 618, todas pasan.
 

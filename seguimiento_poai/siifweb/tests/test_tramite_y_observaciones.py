@@ -8,7 +8,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from siifweb.models import TRAMITES, MedidaTiempo, ObservacionProyectoSiifweb, Proyecto
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+from siifweb.models import PASOS, RADICACION, TRAMITES, MedidaTiempo, ObservacionProyectoSiifweb, Proyecto
 
 from .fabricas import proyecto
 
@@ -39,40 +41,74 @@ class Tramite(Base):
     def test_medidas_de_tiempo_iniciales(self):
         self.assertEqual(set(MedidaTiempo.objects.values_list("nombre", flat=True)), {"Días", "Meses", "Años"})
 
-    def test_cada_fecha_depende_de_su_casilla(self):
+    def soporte(self, nombre="soporte.pdf"):
+        return SimpleUploadedFile(nombre, b"%PDF-1.4 soporte", content_type="application/pdf")
+
+    def test_doce_pasos_con_casilla_fecha_y_soporte(self):
+        self.assertEqual([c for c, _, _ in RADICACION], ["radicado", "registrado"])
+        self.assertEqual(len(TRAMITES), 10)
+        etiquetas = {f.name: f.verbose_name for f in Proyecto._meta.fields}
+        self.assertEqual(etiquetas["radicado"], "Radicado")
+        self.assertEqual(etiquetas["registrado"], "Registrado")
+        self.assertEqual(etiquetas["soporte_gestion_recursos_piip"], "Soporte gestión de recursos en PIIP")
+
+    def test_fecha_y_soporte_dependen_de_su_casilla(self):
         respuesta = self.client.get(self.url)
         self.assertContains(respuesta, "x-data=")
-        for casilla, fecha in TRAMITES:
+        self.assertContains(respuesta, 'enctype="multipart/form-data"')
+        for casilla, fecha, soporte in PASOS:
             with self.subTest(casilla=casilla):
-                self.assertContains(respuesta, f'x-show="{casilla} == true"')
+                self.assertContains(respuesta, f'x-show="{casilla} == true"', count=2)
                 self.assertContains(respuesta, f'id="id_{fecha}"')
+                self.assertContains(respuesta, f'id="id_{soporte}"')
 
     def test_guardar_desde_el_detalle(self):
         meses = MedidaTiempo.objects.get(nombre="Meses")
         respuesta = self.client.post(self.url, self.formulario(
-            fecha_radicacion="15/01/2026", fecha_registro="20/01/2026", tiempo_ejecucion="12.5",
-            medida_tiempo=meses.pk, contratacion_directa="on", terminado="on", fecha_terminacion="30/06/2026",
+            radicado="on", fecha_radicacion="15/01/2026", soporte_radicacion=self.soporte("Radicación.pdf"),
+            registrado="on", fecha_registro="20/01/2026", soporte_registro=self.soporte("registro.pdf"),
+            tiempo_ejecucion="12.5", medida_tiempo=meses.pk, contratacion_directa="on",
+            terminado="on", fecha_terminacion="30/06/2026", soporte_terminacion=self.soporte("acta.pdf"),
             fecha_decreto_traslado="01/02/2026"))                  # sin su casilla: no se guarda
         if respuesta.status_code != 302:
             self.fail(respuesta.context["adminform"].form.errors)
         p = Proyecto.objects.get(pk=self.proy.pk)
-        self.assertEqual((p.fecha_radicacion, p.fecha_registro, p.tiempo_ejecucion, p.medida_tiempo),
-                         (date(2026, 1, 15), date(2026, 1, 20), Decimal("12.5"), meses))
+        self.assertEqual((p.radicado, p.fecha_radicacion, p.registrado, p.fecha_registro),
+                         (True, date(2026, 1, 15), True, date(2026, 1, 20)))
+        self.assertEqual((p.tiempo_ejecucion, p.medida_tiempo), (Decimal("12.5"), meses))
         self.assertTrue(p.contratacion_directa)
         self.assertEqual((p.terminado, p.fecha_terminacion), (True, date(2026, 6, 30)))
         self.assertEqual((p.decreto_traslado, p.fecha_decreto_traslado), (False, None))
+        self.assertEqual(p.soporte_radicacion.name, f"proyectos/{p.bpin}/soportes/Radicacion.pdf")
+        self.assertTrue(p.soporte_terminacion.name.startswith(f"proyectos/{p.bpin}/soportes/acta"))
+
+    def test_con_la_casilla_marcada_fecha_y_soporte_son_obligatorios(self):
+        respuesta = self.client.post(self.url, self.formulario(gestion_recursos_piip="on", radicado="on",
+                                                               fecha_radicacion="15/01/2026"))
+        self.assertEqual(respuesta.status_code, 200)
+        errores = respuesta.context["adminform"].form.errors
+        self.assertIn("fecha_gestion_recursos_piip", errores)
+        self.assertIn("soporte_gestion_recursos_piip", errores)
+        self.assertIn("soporte_radicacion", errores)
+        self.assertNotIn("fecha_radicacion", errores)
+        self.assertContains(respuesta, "Cargue el soporte: la casilla está marcada.")
+        self.assertFalse(Proyecto.objects.get(pk=self.proy.pk).gestion_recursos_piip)
 
     def test_tiempo_de_ejecucion_tres_enteros_y_dos_decimales(self):
         respuesta = self.client.post(self.url, self.formulario(tiempo_ejecucion="1000"))
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn("tiempo_ejecucion", respuesta.context["adminform"].form.errors)
 
-    def test_desmarcar_borra_la_fecha(self):
+    def test_desmarcar_borra_la_fecha_y_el_soporte(self):
         self.proy.estudios_previos, self.proy.fecha_estudios_previos = True, date(2026, 3, 1)
+        self.proy.soporte_estudios_previos = self.soporte("estudios.pdf")
         self.proy.save()
+        self.assertTrue(Proyecto.objects.get(pk=self.proy.pk).soporte_estudios_previos)
         self.proy.estudios_previos = False
         self.proy.save()
-        self.assertIsNone(Proyecto.objects.get(pk=self.proy.pk).fecha_estudios_previos)
+        p = Proyecto.objects.get(pk=self.proy.pk)
+        self.assertIsNone(p.fecha_estudios_previos)
+        self.assertFalse(p.soporte_estudios_previos)
 
 
 class Observaciones(Base):
