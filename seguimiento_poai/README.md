@@ -305,7 +305,8 @@ completo y agregado. Secciones:
   su medida de tiempo (Dias, Meses, Anios; se agregan mas con el "+") y contratacion directa.
 - **Tramite**: diez pasos, cada uno con su casilla, su fecha y su documento soporte en la misma
   linea. Fecha y soporte solo aparecen con la casilla marcada (`conditional_fields` de unfold),
-  entonces son obligatorios (`Proyecto.clean`), y se borran si la casilla se desmarca. Los
+  entonces son obligatorios (`Proyecto.clean`). Desmarcar no los borra: se ocultan y
+  reaparecen al volver a marcar (una casilla se puede desmarcar por error). Los
   soportes van a `proyectos/<bpin>/soportes/` del bucket. La lista esta en `PASOS`
   (`RADICACION` + `TRAMITES`, models.py). Desde el servidor local los archivos subirian al
   bucket de produccion: los soportes se cargan en produccion.

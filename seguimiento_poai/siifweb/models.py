@@ -158,9 +158,10 @@ class MedidaTiempo(Fechas):
 
 
 # Los pasos del proyecto: (casilla, fecha, soporte). Con la casilla marcada, la fecha y el
-# soporte son obligatorios (Proyecto.clean) y se muestran (conditional_fields del admin); sin
-# marcar, se borran al guardar (Proyecto.save). RADICACION va en la seccion "Radicacion y
-# ejecucion" del detalle y TRAMITES en "Tramite".
+# soporte son obligatorios (Proyecto.clean) y se muestran (conditional_fields del admin). Sin
+# marcar solo se ocultan: no se borran, porque una casilla se puede desmarcar por error y al
+# volver a marcarla reaparecen. RADICACION va en la seccion "Radicacion y ejecucion" del
+# detalle y TRAMITES en "Tramite".
 RADICACION = (
     ("radicado", "fecha_radicacion", "soporte_radicacion"),
     ("registrado", "fecha_registro", "soporte_registro"),
@@ -300,11 +301,6 @@ class Proyecto(Fechas):
         # Si el equipo lo teclea con espacios o Excel le deja un ".0", no cruzaria.
         if self.bpin:
             self.bpin = str(self.bpin).strip().removesuffix(".0")
-        # Un paso sin marcar no lleva fecha ni soporte (el archivo queda en el bucket, sin enlace)
-        for casilla, fecha, soporte in PASOS:
-            if not getattr(self, casilla):
-                setattr(self, fecha, None)
-                setattr(self, soporte, "")
         super().save(*args, **kwargs)
         # La formulacion del PIIP que llego antes que el proyecto a SIIFWEB queda enlazada
         if self.bpin:

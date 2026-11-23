@@ -4,14 +4,6 @@ import siifweb.models
 from django.db import migrations, models
 
 
-def marcar_con_fecha(apps, schema_editor):
-    """Los proyectos que ya tienen fecha de radicacion o de registro quedan marcados: sin la
-    casilla, Proyecto.save borraria la fecha la proxima vez que se guarden."""
-    Proyecto = apps.get_model("siifweb", "Proyecto")
-    Proyecto.objects.filter(fecha_radicacion__isnull=False).update(radicado=True)
-    Proyecto.objects.filter(fecha_registro__isnull=False).update(registrado=True)
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -89,5 +81,4 @@ class Migration(migrations.Migration):
             name='soporte_terminacion',
             field=models.FileField(blank=True, max_length=255, upload_to=siifweb.models.ruta_soporte, verbose_name='Soporte terminación'),
         ),
-        migrations.RunPython(marcar_con_fecha, migrations.RunPython.noop),
     ]

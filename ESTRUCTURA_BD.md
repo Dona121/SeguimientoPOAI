@@ -52,7 +52,7 @@ después. La versión normalizada:
 | tiempo_ejecucion | Decimal(5,2), null | 3 enteros y 2 decimales, en la `medida_tiempo` |
 | medida_tiempo | FK → MedidaTiempo, null, PROTECT | Días, Meses, Años |
 | contratacion_directa | Boolean | |
-| 10 pasos del trámite | Boolean + DateField, null + FileField (`soporte_*`) | `TRAMITES` en models.py: decreto de liquidación inicial, gestión de recursos en PIIP, asignación ajuste a decreto ET, solicitud y concepto de traslado, decreto de traslado, asignación ajuste con trámite presupuestal, cargado en SIIFWEB, estudios previos, radicado en contratación, terminado. Con la casilla marcada, fecha y soporte obligatorios (`Proyecto.clean`); sin ella, se borran al guardar. Los soportes van a `proyectos/<bpin>/soportes/` |
+| 10 pasos del trámite | Boolean + DateField, null + FileField (`soporte_*`) | `TRAMITES` en models.py: decreto de liquidación inicial, gestión de recursos en PIIP, asignación ajuste a decreto ET, solicitud y concepto de traslado, decreto de traslado, asignación ajuste con trámite presupuestal, cargado en SIIFWEB, estudios previos, radicado en contratación, terminado. Con la casilla marcada, fecha y soporte obligatorios (`Proyecto.clean`); sin ella solo se ocultan (no se borran). Los soportes van a `proyectos/<bpin>/soportes/` |
 
 ### Tercero
 | campo | tipo | nota |

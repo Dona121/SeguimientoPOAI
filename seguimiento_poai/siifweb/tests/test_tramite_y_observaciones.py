@@ -69,7 +69,7 @@ class Tramite(Base):
             registrado="on", fecha_registro="20/01/2026", soporte_registro=self.soporte("registro.pdf"),
             tiempo_ejecucion="12.5", medida_tiempo=meses.pk, contratacion_directa="on",
             terminado="on", fecha_terminacion="30/06/2026", soporte_terminacion=self.soporte("acta.pdf"),
-            fecha_decreto_traslado="01/02/2026"))                  # sin su casilla: no se guarda
+            fecha_decreto_traslado="01/02/2026"))                  # sin su casilla: se guarda, oculta
         if respuesta.status_code != 302:
             self.fail(respuesta.context["adminform"].form.errors)
         p = Proyecto.objects.get(pk=self.proy.pk)
@@ -78,7 +78,7 @@ class Tramite(Base):
         self.assertEqual((p.tiempo_ejecucion, p.medida_tiempo), (Decimal("12.5"), meses))
         self.assertTrue(p.contratacion_directa)
         self.assertEqual((p.terminado, p.fecha_terminacion), (True, date(2026, 6, 30)))
-        self.assertEqual((p.decreto_traslado, p.fecha_decreto_traslado), (False, None))
+        self.assertEqual((p.decreto_traslado, p.fecha_decreto_traslado), (False, date(2026, 2, 1)))
         self.assertEqual(p.soporte_radicacion.name, f"proyectos/{p.bpin}/soportes/Radicacion.pdf")
         self.assertTrue(p.soporte_terminacion.name.startswith(f"proyectos/{p.bpin}/soportes/acta"))
 
@@ -99,7 +99,8 @@ class Tramite(Base):
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn("tiempo_ejecucion", respuesta.context["adminform"].form.errors)
 
-    def test_desmarcar_borra_la_fecha_y_el_soporte(self):
+    def test_desmarcar_conserva_la_fecha_y_el_soporte(self):
+        """Una casilla desmarcada por error no hace perder la fecha ni el soporte."""
         self.proy.estudios_previos, self.proy.fecha_estudios_previos = True, date(2026, 3, 1)
         self.proy.soporte_estudios_previos = self.soporte("estudios.pdf")
         self.proy.save()
@@ -107,8 +108,14 @@ class Tramite(Base):
         self.proy.estudios_previos = False
         self.proy.save()
         p = Proyecto.objects.get(pk=self.proy.pk)
-        self.assertIsNone(p.fecha_estudios_previos)
-        self.assertFalse(p.soporte_estudios_previos)
+        self.assertEqual(p.fecha_estudios_previos, date(2026, 3, 1))
+        self.assertTrue(p.soporte_estudios_previos.name.endswith("estudios.pdf"))
+        # Y desde el detalle: la casilla desmarcada oculta la fecha, pero el navegador la sigue
+        # enviando con su valor, y la casilla de archivo vacia deja el soporte que habia
+        respuesta = self.client.post(self.url, self.formulario(fecha_estudios_previos="01/03/2026"))
+        self.assertEqual(respuesta.status_code, 302)
+        self.assertTrue(Proyecto.objects.get(pk=self.proy.pk).soporte_estudios_previos)
+        self.assertEqual(Proyecto.objects.get(pk=self.proy.pk).fecha_estudios_previos, date(2026, 3, 1))
 
 
 class Observaciones(Base):
