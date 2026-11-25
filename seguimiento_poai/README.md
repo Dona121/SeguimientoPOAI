@@ -788,6 +788,26 @@ desde el admin, que ademas no tiene borrado masivo). Ver pide
 
 Programacion y Observaciones llevan el boton "Volver al detalle", como la ficha de ejecucion.
 
+## Reporte de Excel por ODBC (carpeta `sql/`)
+
+El equipo arma un reporte en Excel conectado por ODBC a la base de Supabase. Para que se
+actualice rapido (en Power Query, unir las tablas tomaba unos 10 minutos), la consulta vive en
+la base como una vista, `reportes.seguimiento_proyectos`: una fila por proyecto con su
+dependencia, programacion, ficha PIIP, valores de la cadena (total y vigencia actual), pasos del
+tramite (soporte si/no), contratos de SIIFWEB, SECOP II y observaciones. Corre en segundos.
+
+- `sql/vista_seguimiento_proyectos.sql`: la consulta de la vista y, en su encabezado, como
+  crearla y el usuario de solo lectura para Excel. La vista no la crea el aplicativo: se crea a
+  mano en el SQL editor de Supabase.
+- `sql/auditoria_consulta_original.sql`: la consulta original del equipo con correcciones
+  menores, para auditoria.
+- `siifweb/tests/test_sql_reportes.py` revisa que los dos scripts nombren tablas y columnas que
+  existen: si un cambio de modelos los deja desactualizados, falla.
+
+**Ojo:** si una migracion cambia o borra una columna que usa la vista, el `migrate` de Railway
+falla. Antes de subirla: borrar la vista en Supabase, subir y volver a crearla con el script
+actualizado.
+
 ## Roles y permisos
 
 Dos grupos que crea la migracion `0009`, para no repartir permisos a mano:

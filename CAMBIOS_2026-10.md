@@ -756,5 +756,14 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
   descargan o se reemplazan cargando otro archivo, no se quitan; el servidor ignora la orden de
   limpiar si llegara.
 
-**Pruebas.** 619, todas pasan.
+- **Reporte de Excel por ODBC** (carpeta `sql/`): la vista `reportes.seguimiento_proyectos` (una fila
+  por proyecto, columnas con los nombres del reporte, valores total y de la vigencia actual,
+  soportes si/no y un aviso cuando un texto pasa de los 32.767 caracteres de una celda de Excel)
+  y la consulta original del equipo con correcciones menores, para auditoria. La vista se crea a
+  mano en Supabase; `test_sql_reportes.py` avisa si los scripts quedan desactualizados frente a
+  los modelos. Ver el README.
+- `CONCEPTOS_PRESUPUESTALES.md`: linea de apropiacion, partida, documento, imputacion y cadena de
+  gasto, con ejemplos.
+
+**Pruebas.** 622, todas pasan.
 
