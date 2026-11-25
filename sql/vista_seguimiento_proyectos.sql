@@ -38,6 +38,10 @@
 -- - META VIGENCIA PROGRAMADA: la programacion fisica, una linea por vigencia y meta del PDD.
 -- - SOPORTE ...: Si / No (el archivo esta en el almacenamiento privado, no se abre desde Excel).
 -- - Los procesos y contratos de SECOP II cancelados se incluyen: el estado va en el texto.
+-- - En CONTRATOS SIIFWEB, PROCESOS CONTRACTUALES SECOP II y CONTRATOS SECOP II cada elemento
+--   va separado por una linea en blanco, para que no se vea apilado en Excel.
+-- - Un cambio que solo altera el contenido de las columnas (no su nombre, orden ni tipo) se
+--   aplica con CREATE OR REPLACE VIEW, sin borrar la vista ni repetir el grant.
 -- - AVISO LIMITE DE CARACTERES DE EXCEL: dice que columnas de texto pasan de 32.767 caracteres
 --   (el maximo de una celda de Excel): en ese proyecto Excel no las muestra completas.
 -- - Dos nombres de columna se acortaron (sin el "DE" despues de ASIGNACION) porque Postgres
@@ -119,7 +123,7 @@ contratos_siifweb as (
                            ', Nit: ', coalesce(c.nit, 'Sin nit'),
                            ', Contratista: ', coalesce(c.contratista, 'Sin nombre'),
                            ', Centro costo/dependencia en siifweb: ', coalesce(c.dependencia, 'Sin centro de costo')),
-                    E'\n' order by c.fecha_firma nulls last, c.nro_contrato) as texto
+                    E'\n\n' order by c.fecha_firma nulls last, c.nro_contrato) as texto
   from (
     select distinct sci.proyecto_id, sc.id, sc.tipo_contrato, sc.valor_contrato, sc.nro_contrato, sc.fecha_firma,
            st.codigo as nit, st.nombre as contratista, scc.nombre as dependencia
@@ -132,7 +136,7 @@ contratos_siifweb as (
   group by c.proyecto_id
 ),
 procesos_secop as (
-  select x.bpin, string_agg(x.texto, E'\n' order by x.texto) as texto
+  select x.bpin, string_agg(x.texto, E'\n\n' order by x.texto) as texto
   from (
     select distinct sbp.bpin,
            concat('Id proceso: ', sps.id_proceso,
@@ -151,7 +155,7 @@ procesos_secop as (
   group by x.bpin
 ),
 contratos_secop as (
-  select x.bpin, string_agg(x.texto, E'\n' order by x.texto) as texto
+  select x.bpin, string_agg(x.texto, E'\n\n' order by x.texto) as texto
   from (
     select distinct sbp.bpin,
            concat('Id contrato: ', scs.id_contrato,
