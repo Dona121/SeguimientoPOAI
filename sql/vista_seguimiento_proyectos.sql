@@ -32,8 +32,9 @@
 --   vacio). Cada bloque se suma antes de unirlo: no se multiplican filas.
 -- - VALOR CDP / RP / OBLIGACION / PAGADO: total de todas las vigencias, y al lado el de la
 --   vigencia actual (el anio en curso en Colombia), por la vigencia del documento.
--- - PROGRAMACION FINANCIERA: el total programado por vigencia, una linea por vigencia.
---   VALOR PROGRAMADO: el total de todas las vigencias (Proyecto.valor_programado).
+-- - PROGRAMACION FINANCIERA: una linea por vigencia, fuente, meta del PDD y valor (como
+--   fuentes_programadas_por_proyecto de la consulta original). VALOR PROGRAMADO: el total de
+--   todas las vigencias (Proyecto.valor_programado).
 -- - META VIGENCIA PROGRAMADA: la programacion fisica, una linea por vigencia y meta del PDD.
 -- - SOPORTE ...: Si / No (el archivo esta en el almacenamiento privado, no se abre desde Excel).
 -- - Los procesos y contratos de SECOP II cancelados se incluyen: el estado va en el texto.
@@ -46,15 +47,14 @@ with
 vigencia_actual as (
   select extract(year from (now() at time zone 'America/Bogota'))::int as anio
 ),
-programacion_financiera as (                 -- total por vigencia, una linea por vigencia
-  select t.proyecto_id,
-         string_agg(concat(t.vigencia, ' - ', round(t.total, 2)), E'\n' order by t.vigencia) as texto
-  from (
-    select proyecto_id, vigencia, sum(valor) as total
-    from siifweb_programacionfinanciera
-    group by proyecto_id, vigencia
-  ) t
-  group by t.proyecto_id
+programacion_financiera as (                 -- vigencia - fuente - meta PDD - valor
+  select spf.proyecto_id,
+         string_agg(concat(spf.vigencia, ' - ', sf.nombre, ' - ', smi.codigo, ' - ', round(spf.valor, 2)), E'\n'
+                    order by spf.vigencia, sf.nombre, smi.codigo) as texto
+  from siifweb_programacionfinanciera spf
+  join siifweb_fuente sf on sf.id = spf.fuente_id
+  join siifweb_metaindicador smi on smi.id = spf.meta_id
+  group by spf.proyecto_id
 ),
 programacion_fisica as (                     -- vigencia - meta PDD - meta fisica
   select spf.proyecto_id,
@@ -248,6 +248,7 @@ select
   nullif(concat_ws(', ',
     case when length(pfs.texto) > 32767 then 'Meta vigencia programada' end,
     case when length(mp.texto) > 32767 then 'Meta vigencia ficha PIIP' end,
+    case when length(pfn.texto) > 32767 then 'Programación financiera' end,
     case when length(cs.texto) > 32767 then 'Contratos SIIFWEB' end,
     case when length(ps.texto) > 32767 then 'Procesos contractuales SECOP II' end,
     case when length(cse.texto) > 32767 then 'Contratos SECOP II' end,
