@@ -803,6 +803,8 @@ tramite (soporte si/no), contratos de SIIFWEB, SECOP II y observaciones. Corre e
   menores, para auditoria.
 - `siifweb/tests/test_sql_reportes.py` revisa que los dos scripts nombren tablas y columnas que
   existen: si un cambio de modelos los deja desactualizados, falla.
+- `sql/README.md`: el contexto completo (que trae la vista, crearla y actualizarla en Supabase,
+  el usuario de solo lectura, la conexion de Excel y el cuidado con las migraciones).
 
 **Ojo:** si una migracion cambia o borra una columna que usa la vista, el `migrate` de Railway
 falla. Antes de subirla: borrar la vista en Supabase, subir y volver a crearla con el script
