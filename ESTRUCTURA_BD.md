@@ -351,7 +351,6 @@ CargaReporte ← (referido opcionalmente por toda fila de datos)
 5. `Reserva` y `CuentaPorPagar` — el salto de vigencia como FK.
 6. `Contrato` + actas + imputaciones — el módulo contractual (histórico).
 7. Bitácora, ingresos, planeación, carga — cuando los necesites.
-```
 
 ---
 
