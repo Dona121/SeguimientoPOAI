@@ -671,7 +671,7 @@ pagina cae con `Missing staticfiles manifest entry`.
 ## Catalogo PIIP y Ficha PIIP
 
 El detalle completo (modelos, relaciones, que hace la carga, que se valida y que no, que se
-edita, que pasa solo) esta en `../CATALOGO_PIIP.md`. En resumen:
+edita, que pasa solo) esta en `../docs/CATALOGO_PIIP.md`. En resumen:
 
 - El catalogo del plan de desarrollo no admite productos nuevos (pasa por la Asamblea), asi
   que los productos e indicadores con que se formulan los proyectos van aparte, en el

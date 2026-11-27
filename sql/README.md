@@ -53,7 +53,7 @@ Detalles que conviene saber:
 
 - **Los valores totales mezclan vigencias** (2022 en adelante); por eso cada uno tiene al lado
   el de la vigencia actual. Lo que se le atribuye al proyecto sale de las imputaciones, no del
-  valor de los documentos (ver `CONCEPTOS_PRESUPUESTALES.md`).
+  valor de los documentos (ver `docs/CONCEPTOS_PRESUPUESTALES.md`).
 - **Los soportes salen como Sí / No.** El archivo está en el almacenamiento privado del
   aplicativo y no se abre desde Excel.
 - **Límite de Excel:** una celda admite máximo 32.767 caracteres. En los proyectos con muchos
