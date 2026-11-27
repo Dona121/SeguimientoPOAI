@@ -1376,7 +1376,7 @@ class ProyectoAdmin(ModelAdmin):
             texto = (request.POST.get("texto") or "").strip()
             if accion == "agregar":
                 if texto:
-                    ObservacionProyectoSiifweb.objects.create(proyecto=proyecto, texto=texto)
+                    ObservacionProyectoSiifweb.objects.create(proyecto=proyecto, texto=texto, usuario=request.user)
                     self.message_user(request, "Observación agregada.", messages.SUCCESS)
                 else:
                     self.message_user(request, "Escriba la observación antes de agregarla.", messages.ERROR)
@@ -1387,6 +1387,9 @@ class ProyectoAdmin(ModelAdmin):
                 if not observacion.editable:
                     self.message_user(request, f"Pasados {observacion.DIAS_EDITABLE} días una observación ya no "
                                                f"se puede modificar ni borrar.", messages.ERROR)
+                elif not observacion.es_de(request.user):
+                    self.message_user(request, "Solo quien escribió la observación la puede modificar o borrar.",
+                                      messages.ERROR)
                 elif accion == "borrar":
                     observacion.delete()
                     self.message_user(request, "Observación borrada.", messages.SUCCESS)
@@ -1397,8 +1400,11 @@ class ProyectoAdmin(ModelAdmin):
                 else:
                     self.message_user(request, "La observación no puede quedar vacía.", messages.ERROR)
             return HttpResponseRedirect(request.path)
+        observaciones = list(proyecto.observaciones_siifweb.select_related("usuario"))
+        for o in observaciones:
+            o.mia = o.es_de(request.user)   # solo quien la escribio ve editar y borrar
         contexto = {**self.admin_site.each_context(request), "title": f"Observaciones {proyecto.bpin or ''}",
-                    "proyecto": proyecto, "observaciones": list(proyecto.observaciones_siifweb.all()), "puede": puede}
+                    "proyecto": proyecto, "observaciones": observaciones, "puede": puede}
         return TemplateResponse(request, "siifweb/observaciones_proyecto.html", contexto)
 
     # Las pestanas de la pantalla de programacion: (clave, titulo, modelo de sus permisos)
@@ -2799,19 +2805,26 @@ class ObservacionProyectoSiifwebAdmin(ModelAdmin):
     """Todas las observaciones. Se escriben en la pantalla Observaciones de cada proyecto."""
     compressed_fields = True
     list_fullwidth = True
-    list_display = ("proyecto_bpin", "texto_corto", "fecha_creacion", "fecha_actualizacion")
+    list_display = ("proyecto_bpin", "texto_corto", "usuario", "fecha_creacion", "fecha_actualizacion")
     search_fields = ("proyecto__bpin", "proyecto__nombre", "texto")
-    list_select_related = ("proyecto",)
+    list_select_related = ("proyecto", "usuario")
     autocomplete_fields = ("proyecto",)
-    fields = ("proyecto", "texto", "fecha_creacion", "fecha_actualizacion")
-    readonly_fields = ("fecha_creacion", "fecha_actualizacion")
+    fields = ("proyecto", "texto", "usuario", "fecha_creacion", "fecha_actualizacion")
+    readonly_fields = ("usuario", "fecha_creacion", "fecha_actualizacion")
 
-    # Pasados 3 dias no se modifica ni se borra (ObservacionProyectoSiifweb.editable)
+    def save_model(self, request, obj, form, change):
+        # El usuario es quien la agrega; editarla no lo cambia
+        if not change:
+            obj.usuario = request.user
+        super().save_model(request, obj, form, change)
+
+    # Pasados 5 dias no se modifica ni se borra (ObservacionProyectoSiifweb.editable), y solo quien
+    # la escribio la modifica o la borra (a los demas se les abre de solo lectura)
     def has_change_permission(self, request, obj=None):
-        return super().has_change_permission(request, obj) and (obj is None or obj.editable)
+        return super().has_change_permission(request, obj) and (obj is None or (obj.editable and obj.es_de(request.user)))
 
     def has_delete_permission(self, request, obj=None):
-        return super().has_delete_permission(request, obj) and (obj is None or obj.editable)
+        return super().has_delete_permission(request, obj) and (obj is None or (obj.editable and obj.es_de(request.user)))
 
     def get_actions(self, request):
         # El borrado masivo no revisa cada observacion: se quita

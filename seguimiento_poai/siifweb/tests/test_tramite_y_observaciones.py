@@ -143,24 +143,40 @@ class Observaciones(Base):
         respuesta = self.client.post(self.url, {"accion": "agregar", "texto": "  Se radicó en planeación  "}, follow=True)
         self.assertContains(respuesta, "Observación agregada.")
         o = ObservacionProyectoSiifweb.objects.get()
-        self.assertEqual((o.proyecto, o.texto), (self.proy, "Se radicó en planeación"))
+        self.assertEqual((o.proyecto, o.texto, o.usuario), (self.proy, "Se radicó en planeación", self.admin))
         self.assertContains(respuesta, "Se radicó en planeación")
+        self.assertContains(respuesta, '<b class="autor">admin</b>')
+        # Otro usuario, aunque tenga los permisos de cambiar y borrar, no ve editar ni borrar,
+        # y no la modifica ni la borra
+        self.usuario("view_proyecto", "view_observacionproyectosiifweb", "change_observacionproyectosiifweb",
+                     "delete_observacionproyectosiifweb")
+        html = self.client.get(self.url).content.decode()
+        self.assertNotIn('value="editar"', html)
+        self.assertNotIn('value="borrar"', html)
+        self.assertNotIn("se puede modificar hasta el", html)
+        for accion in ("editar", "borrar"):
+            respuesta = self.client.post(self.url, {"accion": accion, "id": o.pk, "texto": "Cambiada por otro"}, follow=True)
+            self.assertContains(respuesta, "Solo quien escribió la observación la puede modificar o borrar.")
+        o.refresh_from_db()
+        self.assertEqual(o.texto, "Se radicó en planeación")
+        # Quien la escribio si, y sigue siendo su usuario
+        self.client.force_login(self.admin)
         self.client.post(self.url, {"accion": "editar", "id": o.pk, "texto": "Se radicó el 15 de enero"})
         o.refresh_from_db()
-        self.assertEqual(o.texto, "Se radicó el 15 de enero")
+        self.assertEqual((o.texto, o.usuario), ("Se radicó el 15 de enero", self.admin))
         self.client.post(self.url, {"accion": "borrar", "id": o.pk})
         self.assertFalse(ObservacionProyectoSiifweb.objects.exists())
 
-    def vieja(self, texto="Nota vieja", dias=4):
-        o = ObservacionProyectoSiifweb.objects.create(proyecto=self.proy, texto=texto)
+    def vieja(self, texto="Nota vieja", dias=6):
+        o = ObservacionProyectoSiifweb.objects.create(proyecto=self.proy, texto=texto, usuario=self.admin)
         ObservacionProyectoSiifweb.objects.filter(pk=o.pk).update(fecha_creacion=timezone.now() - timedelta(days=dias))
         return ObservacionProyectoSiifweb.objects.get(pk=o.pk)
 
-    def test_pasados_tres_dias_no_se_modifica_ni_se_borra(self):
+    def test_pasados_cinco_dias_no_se_modifica_ni_se_borra(self):
         self.client.force_login(self.admin)
         o = self.vieja()
         self.assertFalse(o.editable)
-        self.assertTrue(self.vieja("Reciente", dias=2).editable)
+        self.assertTrue(self.vieja("Reciente", dias=4).editable)
         respuesta = self.client.post(self.url, {"accion": "editar", "id": o.pk, "texto": "Cambiada"}, follow=True)
         self.assertContains(respuesta, "ya no se puede modificar ni borrar")
         self.client.post(self.url, {"accion": "borrar", "id": o.pk})
@@ -183,6 +199,44 @@ class Observaciones(Base):
                                           {"post": "yes"}).status_code, 403)
         lista = self.client.get(reverse("admin:siifweb_observacionproyectosiifweb_changelist"))
         self.assertNotIn("delete_selected", lista.context["cl"].model_admin.get_actions(lista.wsgi_request))
+
+    def test_en_el_admin_guarda_quien_la_agrega(self):
+        u = self.usuario("view_observacionproyectosiifweb", "add_observacionproyectosiifweb",
+                         "change_observacionproyectosiifweb", "delete_observacionproyectosiifweb")
+        u.first_name, u.last_name = "Ana", "Pérez"
+        u.save()
+        agregar = reverse("admin:siifweb_observacionproyectosiifweb_add")
+        self.assertEqual(self.client.post(agregar, {"proyecto": self.proy.pk, "texto": "Desde el admin"}).status_code, 302)
+        o = ObservacionProyectoSiifweb.objects.get()
+        self.assertEqual(o.usuario, u)
+        # Otro, aunque sea superusuario, no la modifica ni la borra en el admin: se le abre de
+        # solo lectura
+        self.client.force_login(self.admin)
+        cambio = reverse("admin:siifweb_observacionproyectosiifweb_change", args=(o.pk,))
+        borrar = reverse("admin:siifweb_observacionproyectosiifweb_delete", args=(o.pk,))
+        self.client.post(cambio, {"proyecto": self.proy.pk, "texto": "Cambiada por otro"})
+        o.refresh_from_db()
+        self.assertEqual(o.texto, "Desde el admin")
+        self.assertEqual(self.client.get(cambio).status_code, 200)
+        self.assertEqual(self.client.post(borrar, {"post": "yes"}).status_code, 403)
+        self.assertContains(self.client.get(self.url), '<b class="autor">Ana Pérez</b>')
+        # Quien la escribio si, y sigue siendo su usuario
+        self.client.force_login(u)
+        self.client.post(cambio, {"proyecto": self.proy.pk, "texto": "Cambiada"})
+        o.refresh_from_db()
+        self.assertEqual((o.texto, o.usuario), ("Cambiada", u))
+        self.assertEqual(self.client.post(borrar, {"post": "yes"}).status_code, 302)
+        self.assertFalse(ObservacionProyectoSiifweb.objects.exists())
+
+    def test_las_viejas_sin_usuario_se_muestran(self):
+        self.client.force_login(self.admin)
+        ObservacionProyectoSiifweb.objects.create(proyecto=self.proy, texto="Sin autor")
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, "Sin autor")
+        self.assertNotContains(respuesta, 'class="autor"')
+        # Sin autor, nadie la modifica ni la borra
+        self.assertNotContains(respuesta, 'value="editar"')
+        self.assertNotContains(respuesta, 'value="borrar"')
 
     def test_vacia_no_se_agrega(self):
         self.client.force_login(self.admin)

@@ -71,16 +71,16 @@ ProyectoAdmin.observaciones.
   {% for o in observaciones %}
   <article class="caja">
     <div class="cabeza">
-      <span class="dato">{{ o.fecha_creacion|date:"d/m/Y H:i" }}{% if o.fecha_actualizacion|date:"YmdHi" != o.fecha_creacion|date:"YmdHi" %} · editada el {{ o.fecha_actualizacion|date:"d/m/Y H:i" }}{% endif %}
-        {% if o.editable %}{% if puede.change or puede.delete %} · se puede modificar hasta el {{ o.editable_hasta|date:"d/m/Y H:i" }}{% endif %}{% endif %}</span>
-      {% if puede.delete and o.editable %}
+      <span class="dato">{% if o.usuario %}<b class="autor">{{ o.usuario.get_full_name|default:o.usuario.get_username }}</b> · {% endif %}{{ o.fecha_creacion|date:"d/m/Y H:i" }}{% if o.fecha_actualizacion|date:"YmdHi" != o.fecha_creacion|date:"YmdHi" %} · editada el {{ o.fecha_actualizacion|date:"d/m/Y H:i" }}{% endif %}
+        {% if o.editable and o.mia %}{% if puede.change or puede.delete %} · se puede modificar hasta el {{ o.editable_hasta|date:"d/m/Y H:i" }}{% endif %}{% endif %}</span>
+      {% if puede.delete and o.editable and o.mia %}
       <form method="post" onsubmit="return confirm('¿Borrar esta observación?');">{% csrf_token %}
         <input type="hidden" name="accion" value="borrar"><input type="hidden" name="id" value="{{ o.pk }}">
         <button class="boton rojo" type="submit">Borrar</button>
       </form>
       {% endif %}
     </div>
-    {% if puede.change and o.editable %}
+    {% if puede.change and o.editable and o.mia %}
     <details>
       <summary><p class="nota ver">{{ o.texto|linebreaksbr }}</p><span class="dato ver">Clic para editar</span></summary>
       <form method="post" style="margin-top:.4rem">{% csrf_token %}

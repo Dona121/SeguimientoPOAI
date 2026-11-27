@@ -441,7 +441,7 @@ App `siifweb`. Lo diligencia el equipo desde el detalle del proyecto; no viene d
 | `ProgramacionFinanciera` | (`proyecto`, `vigencia`, `fuente`, `meta`) | → `Proyecto` (CASCADE), → `Fuente` (PROTECT), → `MetaIndicador` (PROTECT); `valor` Decimal(20,5) (15 enteros, 5 decimales) |
 | `ProgramacionFisica` | (`proyecto`, `vigencia`, `meta`) | → `Proyecto` (CASCADE), → `MetaIndicador` (PROTECT); `valor` Decimal(20,5) |
 | `MedidaTiempo` | `nombre` | ← `Proyecto.medida_tiempo` |
-| `ObservacionProyectoSiifweb` | — | → `Proyecto` (CASCADE); `texto` y fechas. Pasados 3 días (`DIAS_EDITABLE`) ya no se modifica ni se borra |
+| `ObservacionProyectoSiifweb` | — | → `Proyecto` (CASCADE), → `usuario` (SET_NULL: quien la escribió); `texto` y fechas. Solo quien la escribió la modifica o la borra, y pasados 5 días (`DIAS_EDITABLE`) ya no se modifica ni se borra |
 
 - Las dos programaciones guardan solo valores distintos de cero: vacío o cero borra la fila.
 - `Proyecto.valor_programado` se recalcula con las señales `post_save` y `post_delete` de

@@ -782,9 +782,11 @@ misma URL (`?panel=financiera|fisica`), como la ficha de ejecucion. Logica en
 
 Boton **Observaciones** del detalle (`<id>/observaciones/`): una pantalla propia, no un
 inline. Agregar arriba y la lista de la mas reciente a la mas antigua, con editar y borrar.
-Pasados 3 dias desde que se escribio una observacion ya no se modifica ni se borra (tampoco
-desde el admin, que ademas no tiene borrado masivo). Ver pide
-`view_observacionproyectosiifweb`; cada accion, su permiso.
+Cada observacion guarda quien la escribio (`usuario`) y solo esa persona la modifica o la
+borra; las de antes de ese campo no tienen autor y quedan fijas. Pasados 5 dias desde que se
+escribio ya no se modifica ni se borra (tampoco desde el admin, donde a los demas se les abre
+de solo lectura y no hay borrado masivo). Ver pide `view_observacionproyectosiifweb`; cada
+accion, su permiso.
 
 Programacion y Observaciones llevan el boton "Volver al detalle", como la ficha de ejecucion.
 

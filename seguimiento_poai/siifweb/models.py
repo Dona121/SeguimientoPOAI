@@ -1627,12 +1627,16 @@ class ObservacionProyectoSiifweb(Fechas):
     de proyectos que vino de Access.)
 
     Pasados DIAS_EDITABLE dias desde que se escribio ya no se modifica ni se borra: queda como
-    registro. Lo revisan la pantalla y el admin con `editable`.
+    registro. Lo revisan la pantalla y el admin con `editable`. Solo quien la escribio (`usuario`)
+    la modifica o la borra (`es_de`).
     """
-    DIAS_EDITABLE = 3
+    DIAS_EDITABLE = 5
     proyecto = models.ForeignKey(Proyecto, on_delete=models.CASCADE, related_name="observaciones_siifweb",
                                  verbose_name="Proyecto")
     texto = models.TextField(verbose_name="Observación")
+    # Quien la agrego (no cambia al editarla). Las escritas antes de este campo quedan vacias
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                editable=False, related_name="observaciones_proyecto", verbose_name="Usuario")
 
     class Meta:
         verbose_name = "Observación del proyecto (SIIFWEB)"
@@ -1650,3 +1654,8 @@ class ObservacionProyectoSiifweb(Fechas):
     def editable(self):
         """Se puede modificar o borrar hasta DIAS_EDITABLE dias despues de escrita."""
         return self.editable_hasta is None or timezone.now() <= self.editable_hasta
+
+    def es_de(self, usuario):
+        """La escribio ese usuario. Solo quien la escribio la modifica o la borra; las de antes
+        del campo usuario no tienen autor y nadie las modifica ni las borra."""
+        return self.usuario_id is not None and self.usuario_id == getattr(usuario, "pk", None)
