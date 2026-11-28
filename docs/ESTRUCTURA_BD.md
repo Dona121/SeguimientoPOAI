@@ -437,7 +437,8 @@ App `siifweb`. Lo diligencia el equipo desde el detalle del proyecto; no viene d
 
 | modelo | llave natural | relaciones |
 |---|---|---|
-| `ProgramacionFinanciera` | (`proyecto`, `vigencia`, `fuente`, `meta`) | → `Proyecto` (CASCADE), → `Fuente` (PROTECT), → `MetaIndicador` (PROTECT); `valor` Decimal(20,5) (15 enteros, 5 decimales) |
+| `EntidadAportante` | `nombre` | `nit` (opcional). Quien pone los recursos de un proyecto; catálogo del equipo, que usa también `regalias` |
+| `ProgramacionFinanciera` | (`proyecto`, `vigencia`, `entidad_aportante`, `fuente`, `meta`) | → `Proyecto` (CASCADE), → `EntidadAportante`, → `Fuente` y → `MetaIndicador` (PROTECT); `valor` Decimal(20,5) (15 enteros, 5 decimales). `entidad_aportante` admite vacío solo para lo programado antes del campo (`null=True, blank=False`) |
 | `ProgramacionFisica` | (`proyecto`, `vigencia`, `meta`) | → `Proyecto` (CASCADE), → `MetaIndicador` (PROTECT); `valor` Decimal(20,5) |
 | `MedidaTiempo` | `nombre` | ← `Proyecto.medida_tiempo` |
 | `ObservacionProyectoSiifweb` | — | → `Proyecto` (CASCADE), → `usuario` (SET_NULL: quien la escribió); `texto` y fechas. Solo quien la escribió la modifica o la borra, y pasados 5 días (`DIAS_EDITABLE`) ya no se modifica ni se borra |
@@ -446,10 +447,14 @@ App `siifweb`. Lo diligencia el equipo desde el detalle del proyecto; no viene d
 - `Proyecto.valor_programado` se recalcula con las señales `post_save` y `post_delete` de
   `ProgramacionFinanciera` (también en un borrado masivo). La física no suma: cada meta tiene
   su propia unidad.
-- Las metas de la programación financiera y de la física deben ser las mismas en cada
-  vigencia. No es un constraint (son dos tablas, y se puede llenar primero cualquiera): lo
+- Las metas de la programación financiera y de la física deben ser las mismas en el
+  proyecto, no en cada vigencia: un proyecto puede tener las fuentes en 2025 y 2027 y la meta
+  física en 2026. No es un constraint (son dos tablas, y se puede llenar primero cualquiera): lo
   avisa la pantalla (`programacion_financiera.descuadres`) y nada se borra en cascada entre
   las dos.
+- **Entidad aportante** (migración `0029`, 27/11/2026). Lo programado antes no la tiene: en
+  la copia de Supabase de esa tarde eran 2 valores, de un proyecto, vigencia 2027. La pantalla
+  los muestra como "Sin entidad aportante" y no guarda la pestaña hasta que se les asigna.
 - `ObservacionProyectoSiifweb` es distinta de `ObservacionProyecto`, que cuelga de
   `ProgramacionProyectos` (lo que vino del Access).
 
@@ -472,6 +477,9 @@ seguimiento que arma el Streamlit de consolidación. Diseño completo en
 | `CargaRegalias` | `hash` por `tipo` | `tipo` (matriz, proyectos, contratos, cargue), archivo (vacío si se cargó con el comando), `usuario`, estado y mensaje |
 | `CambioProyectoRegalias` | — | → `ProyectoRegalias` (CASCADE), → `usuario` y → `CargaRegalias` (SET_NULL); `campo`, `valor_anterior`, `valor_nuevo`, `origen` |
 | `ComentarioProyectoRegalias` | — | → `ProyectoRegalias` (CASCADE), → `usuario` (SET_NULL). Solo su autor lo edita, durante 5 días |
+| `FuenteSGR` | `nombre` | `clasificacion` (sgr, nacion, otros, no_suifp). No son las fuentes de SIIFWEB |
+| `ProgramacionFinancieraRegalias` | (`proyecto`, `vigencia`, `entidad_aportante`, `fuente`, `producto`) | → `ProyectoRegalias` (CASCADE), → `siifweb.EntidadAportante`, → `FuenteSGR` y → `siifweb.ProductoCatalogo` (PROTECT); `entidad_aportante` con `null=True, blank=False`, como en SIIFWEB; `valor` Decimal(20,5) |
+| `ProgramacionFisicaRegalias` | (`proyecto`, `vigencia`, `indicador`) | → `ProyectoRegalias` (CASCADE), → `siifweb.IndicadorCatalogo` (PROTECT); `valor` Decimal(20,5) |
 
 - **`ProyectoRegalias` tiene tres grupos de campos:**
   - **Los que traen los reportes:** nombre, sector, estado y pagos (CG-proy); estado, tipo y
@@ -481,8 +489,13 @@ seguimiento que arma el Streamlit de consolidación. Diseño completo en
   - **Los calculados** (`editable=False`): días, desempeños, columnas de apoyo, brecha,
     calificación de ejecución y `ejecucion_revisar` (el "Revisar" de Excel). En el departamento
     también la calificación de información a tiempo. Los escribe `regalias/calculos.py` antes de
-    cada guardado. Las fuentes, los valores y el indicador MGA saldrán de la programación (fase
-    6, todavía sin modelos).
+    cada guardado.
+  - **Los de la programación** (`editable=False`):
+    - las fuentes, los valores por clasificación y el total salen de la programación financiera;
+    - el indicador MGA sale de la programación física.
+
+    Los escribe `servicios.valores_de_programacion` antes de cada guardado. Sin programación
+    financiera, los valores quedan vacíos.
 - **Decimales:**
   - avances, índice de eficiencia y calificaciones: `Decimal(6,3)`;
   - CPI y SPI: `Decimal(5,3)`;

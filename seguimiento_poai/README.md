@@ -757,9 +757,16 @@ Boton **Programacion** del detalle (`<id>/programacion-financiera/`). Dos pestan
 misma URL (`?panel=financiera|fisica`), como la ficha de ejecucion. Logica en
 `siifweb/programacion_financiera.py`.
 
-- **Financiera**: un bloque por vigencia, independiente, con sus fuentes en filas y sus metas
-  en columnas; el valor en cada cruce y totales por fuente, por meta y de la vigencia.
+- **Financiera**: un bloque por vigencia, independiente. En las filas van las entidades
+  aportantes y, debajo de cada una, sus fuentes; en las columnas, las metas. El valor va en cada
+  cruce, con totales por entidad, por fuente, por meta y de la vigencia.
   `Proyecto.valor_programado` suma todas las vigencias.
+  - La llave es proyecto, vigencia, entidad aportante, fuente y meta: un proyecto puede tener
+    recursos de varias entidades.
+  - Las entidades son un catalogo del equipo (Configuracion y parametrizacion -> Entidades
+    aportantes); la ventana de agregar trae el boton "Agregar entidad aportante".
+  - Lo programado antes de que existiera la entidad sale como "Sin entidad aportante", con el
+    boton "Asignar entidad". Mientras tenga valor, la pestana no se guarda.
 - **Fisica**: un bloque por vigencia con sus metas y un valor por meta, con la unidad de
   medida; sin totales (cada meta tiene su unidad).
 - Se agregan vigencias, fuentes y metas con una ventana de busqueda (50 por pagina, Anterior /
@@ -771,9 +778,11 @@ misma URL (`?panel=financiera|fisica`), como la ficha de ejecucion. Logica en
   aviso de cambios sin guardar y el navegador pide confirmar al salir con cambios.
 - Los valores se escriben como en las distribuciones del CUIPO: sin separador de miles y con
   punto decimal (`siifweb.cargas.decimal`); los totales se muestran como en el CUIPO.
-- **Mismas metas en las dos pestanas** por vigencia: cada pestana trae las metas que la otra
-  tiene guardadas, cada vigencia avisa las que no coinciden y al guardar sale una advertencia.
-  Quitar en una nunca borra la otra.
+- **Mismas metas en las dos pestanas**, en el proyecto y no por vigencia (un proyecto puede
+  tener las fuentes en 2025 y 2027 y la meta fisica en 2026). Cada pestana muestra solo sus
+  vigencias; una vigencia nueva trae las metas que la otra tiene guardadas; la pestana avisa
+  las metas que no tienen valor en la otra en ninguna vigencia, y al guardar sale una
+  advertencia. Quitar en una nunca borra la otra.
 - Permisos: cada pestana se ve con el permiso de ver de su modelo y se edita con agregar,
   cambiar y borrar. Las listas `/admin/siifweb/programacionfinanciera/` y
   `/admin/siifweb/programacionfisica/` no estan en el menu.
@@ -843,15 +852,32 @@ en `docs/PLAN_REGALIAS_CONSOLIDACION.md`. Desde el 27/11/2026 esta en la rama `r
     comando, no subiendo el archivo en el admin.
 - **Historial:** cada cambio de un proyecto (carga, importacion o edicion) queda en Historial de
   cambios con el valor anterior, el nuevo, el usuario y la carga.
+- **Programacion:** el boton "Programacion" del formulario del proyecto abre la pantalla de dos
+  pestanas, copiada y adaptada de la de SIIFWEB.
+  - Financiera: por entidad aportante (el catalogo de SIIFWEB), fuentes SGR por producto del
+    catalogo PIIP. Las vigencias no tienen que coincidir con las de la fisica.
+  - Fisica: valor por indicador del catalogo PIIP.
+  - Al guardar, el proyecto toma sus fuentes, los valores por clasificacion (SGR, Nacion,
+    otros, otras no SUIFP), el total y el indicador MGA. Lo registra en el historial.
+  - Las fuentes SGR las mantiene el equipo en Regalias -> Fuentes SGR.
 - **Comentarios:** el boton "Comentarios" del formulario del proyecto abre su pantalla. Tiene las
   mismas reglas que las observaciones de SIIFWEB: solo el autor modifica o borra, durante 5 dias.
   Los que dejo la importacion de la matriz no tienen autor.
+- **Listas:** al entrar no traen los proyectos CERRADO ni DESAPROBADO; se ven con el filtro de
+  estado en "Todos" o en su estado. Siguen existiendo y salen en la matriz.
 - **Edicion:** todo lo que no se calcula se edita en las tres clasificaciones.
 - **Calculados:** los dias y las formulas de la matriz son de solo lectura. Los pone al dia
   `regalias/calculos.py` cada vez que se guarda un proyecto: en el formulario, en las cargas y en
   las acciones Recalcular y Asignar fecha de corte de las listas.
   - Siguen las formulas de Excel del Streamlit, con cuatro correcciones acordadas (plan, §7.6).
   - Sin estado no se calcula nada.
+- **Descargar matriz:** boton arriba de las tres listas de proyectos (`regalias/excel.py`).
+  - Da el libro de 3 hojas con la estructura de la matriz de octubre: tablas de Excel, secciones,
+    colores, formatos y columnas de apoyo ocultas.
+  - Las columnas de formula van como formulas de Excel, con las cuatro correcciones, y el libro
+    recalcula al abrir.
+  - El departamento sale sin CERRADO ni DESAPROBADO; descentralizadas y municipios, todos.
+  - Es una salida: lo que se cambie en el archivo no vuelve al sistema.
 - **Sin cambios en las otras apps:** no modifica `siifweb` ni `cuipo`, solo usa sus catalogos
   (sector MGA, dependencia, municipio y los productos e indicadores del catalogo PIIP). Fuera de
   la app solo toca `config/settings.py` (`INSTALLED_APPS` y la seccion Regalias del menu).
@@ -897,14 +923,14 @@ Los modelos de noviembre (programacion financiera y fisica, observaciones del pr
 medidas de tiempo, recursos del CUIPO) no estan en los roles de la migracion `0009`: se
 asignan en Usuarios y roles a quien corresponda.
 
-El rol **Regalias** lo crean las migraciones `regalias/0003`, `0006` y `0009`.
+El rol **Regalias** lo crean las migraciones `regalias/0003`, `0006`, `0009` y `0011`.
 - **Lo que hace:** ve, agrega y edita los proyectos de las tres hojas, los contratos, las
   cargas, las entidades ejecutoras y los responsables del cargue.
 - **Lo que solo ve:** el historial, los estados y las clasificaciones.
 - **De SIIFWEB:** solo ve sector MGA, dependencia y municipio, y ve y agrega productos e
   indicadores del catalogo PIIP, porque los pide el formulario.
-- **No borra**, salvo sus propios comentarios durante 5 dias. En el menu solo ve la seccion
-  Regalias.
+- **No borra**, salvo sus propios comentarios durante 5 dias y los valores que vacia en la
+  programacion. En el menu solo ve la seccion Regalias.
 
 Se prueba en `regalias/tests/test_roles.py`.
 
@@ -934,6 +960,8 @@ Se prueba en `regalias/tests/test_roles.py`.
   - `lectura.py` (los reportes de GESPROY y la matriz);
   - `cargas.py` (importacion y cargas);
   - `calculos.py` (dias y formulas);
+  - `programacion.py` (la pantalla de programacion);
+  - `excel.py` (la descarga de la matriz);
   - `servicios.py` (guardar con historial);
   - el comando `cargar_regalias`;
   - `tests/`.
@@ -1010,7 +1038,7 @@ datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 Las cifras del archivo real (`data/secop/ReporteSIIFWEB_20260814.xlsx`) se comprueban solo
 si el archivo esta a mano; en otra maquina esas pruebas se saltan solas.
 
-Las de regalias corren con `manage.py test regalias`: 73 pruebas en cinco modulos.
+Las de regalias corren con `manage.py test regalias`: 96 pruebas en siete modulos.
 - `test_roles.py`: el rol y el menu.
 - `test_historial.py`: el formulario y el historial.
 - `test_cargas.py`: lectura de los reportes, importacion de la matriz, las tres cargas, el
@@ -1019,11 +1047,18 @@ Las de regalias corren con `manage.py test regalias`: 73 pruebas en cinco modulo
   y la paridad con los valores que Excel dejo en la matriz real de junio.
 - `test_comentarios.py`: autor, edicion y borrado de los propios, el limite de 5 dias y los
   importados.
+- `test_programacion.py`: las dos pestanas, guardar y borrar, errores, los valores del proyecto
+  con su historial, el espejo, los descuadres y la ventana para agregar.
+- `test_excel.py`: la descarga de la matriz: hojas, tablas, secciones, colores, columnas
+  ocultas, proyectos que salen, valores, formulas y sus correcciones, y la estructura contra la
+  matriz de octubre.
 
 Arman en memoria los libros con la forma de los reales, asi que no dependen de los archivos
-de GESPROY. La de paridad es la excepcion: lee la matriz de junio desde
-`Estudio/python/Consolidacion Regalias/Contexto/` (o `REGALIAS_MATRIZ_JUNIO`) y se salta si no
-esta. Con ellas, la suite completa (`manage.py test`) da 697 pruebas.
+de GESPROY. Las excepciones son la de paridad, que lee la matriz de junio desde
+`Estudio/python/Consolidacion Regalias/Contexto/` (o `REGALIAS_MATRIZ_JUNIO`), y la de estructura
+de la descarga, que lee la de octubre desde `Regalias octubre/` (o `REGALIAS_MATRIZ_OCTUBRE`). Las
+dos se saltan si el archivo no esta. Con ellas, la suite completa (`manage.py test`) da 720
+pruebas.
 
 Las pruebas se verificaron por mutacion: se rompio el codigo a proposito en veinte puntos
 (la subconsulta que evita multiplicar filas, la deduplicacion, la validacion de columnas,

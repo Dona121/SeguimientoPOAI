@@ -781,7 +781,7 @@ contraste de marzo a noviembre (secciones 14 y 15).
   `regalias` en `INSTALLED_APPS` y la seccion Regalias del menu. La seccion va antes de
   "Configuracion y parametrizacion", porque `test_plan_desarrollo` exige que "Plan de Desarrollo"
   siga a "Seguimiento".
-- **Modelos** (migraciones `regalias/0001` a `0008`):
+- **Modelos** (migraciones `regalias/0001` a `0011`):
   - `ProyectoRegalias`, una fila por BPIN, con proxies para Departamento, Descentralizadas y
     Municipios;
   - catalogos (clasificaciones, 8 estados de GESPROY, entidades ejecutoras, responsables del
@@ -819,7 +819,72 @@ contraste de marzo a noviembre (secciones 14 y 15).
     de la de observaciones de SIIFWEB: solo el autor modifica o borra, durante 5 dias;
   - el rol suma los permisos de comentarios (migracion 0009) y es lo unico que puede borrar;
   - la lista general de comentarios es de consulta y no borra.
-- **Falta:** fase 6 (programacion), 7 (descarga de la matriz con formulas) y 8 (produccion).
+- **Commit `0ca566b`** en `regalias-base`, solo local: fases 1 a 5.
+- **Fase 6, programacion** (migraciones 0010 y 0011, sin commit):
+  - modelos `FuenteSGR` (con su clasificacion: SGR, Nacion, Otros u Otras fuentes no SUIFP),
+    `ProgramacionFinancieraRegalias` (fuente por producto del catalogo PIIP) y
+    `ProgramacionFisicaRegalias` (valor por indicador PIIP);
+  - pantalla "Programacion" del proyecto, copia adaptada de la de SIIFWEB
+    (`regalias/programacion.py` y sus plantillas; `siifweb/programacion_financiera.py` no se toca);
+  - al guardar, el proyecto toma fuentes, valores por clasificacion, total e indicador MGA, y el
+    historial lo registra con el usuario;
+  - las listas de programacion del admin son de consulta;
+  - las fuentes SGR tienen entrada en el menu;
+  - las vigencias de la financiera y de la fisica no tienen que coincidir (caso real: fuentes en
+    2025 y 2027 y la meta fisica en 2026). Cada pestana muestra solo sus vigencias, y el aviso de
+    descuadre mira el producto en todo el proyecto;
+  - la financiera va por entidad aportante, el catalogo de SIIFWEB (seccion 29): migraciones
+    0012 (el campo) y 0013 (el rol ve y agrega entidades); el menu de Regalias trae Entidades
+    aportantes;
+  - en la pantalla, la clasificacion de la fuente (SGR, Nacion...) va en negrilla sin fondo, y
+    las casillas no se colorean por tener valor o por haber cambiado; solo la de error, en rojo.
+    El producto ya no lleva la etiqueta "en la fisica" ni el indicador la de "del producto"; en
+    las listas para agregar, los de la otra pestana siguen saliendo primero.
+- **Listas de proyectos:** al entrar no traen los CERRADO ni los DESAPROBADO. El filtro de estado
+  abre en "Sin cerrados ni desaprobados" y tiene "Todos"; los proyectos siguen existiendo, se
+  abren y salen en la matriz. Con los datos locales, Departamento abre con 58 de 106.
+- **Fase 7, descarga de la matriz** (`regalias/excel.py`, sin commit):
+  - boton "Descargar matriz" arriba de las tres listas de proyectos; da el mismo libro desde
+    cualquiera de ellas;
+  - misma estructura que la matriz de octubre: 3 hojas con su tabla de Excel, secciones en la
+    fila 1, colores, formatos y columnas de apoyo ocultas;
+  - las columnas de formula van como formulas de Excel, con las cuatro correcciones; el libro
+    recalcula al abrir;
+  - departamento sin CERRADO ni DESAPROBADO; descentralizadas y municipios, todos;
+  - evaluadas con pycel, las formulas del archivo dan lo mismo que el sistema.
+- **Falta:** fase 8 (produccion).
 
-**Pruebas.** 697 en total (73 de `regalias`), todas pasan.
+**Pruebas.** 737 en total (106 de `regalias`), todas pasan.
+
+## 29. Programacion financiera: vigencias independientes y entidad aportante (27 de noviembre)
+
+Pedidos del usuario mientras se hacia la programacion de regalias, en la misma rama
+`regalias-base` y sin commit. Cambian `siifweb`; `regalias` aplica las mismas reglas.
+
+- **Vigencias independientes.** Las metas de la financiera y la fisica coinciden en el proyecto,
+  no en cada vigencia: hay proyectos con fuentes en 2025 y 2027 y la meta fisica en 2026.
+  - Cada pestana muestra solo sus vigencias.
+  - Una vigencia nueva trae las metas que la otra pestana tiene guardadas, de cualquier vigencia.
+  - El aviso dice que metas tienen valor en una pestana y en la otra en ninguna vigencia.
+- **Entidad aportante** (migracion `0029`):
+  - catalogo `EntidadAportante` (nombre y NIT), en Configuracion y parametrizacion;
+  - la financiera es la combinacion proyecto, vigencia, entidad, fuente y meta;
+  - en la pantalla, las fuentes de cada vigencia van agrupadas por entidad, con su total, y se
+    agregan desde la entidad (+ Fuente);
+  - la ventana para agregar entidades trae el enlace "Agregar entidad aportante" (en negrilla y
+    subrayado), que abre el catalogo.
+- **Lo programado antes de la entidad.** La copia de Supabase de la tarde del 27/11 tenia 2
+  valores, de un proyecto (pk 815), vigencia 2027. El campo va con `null=True, blank=False`:
+  - esos valores salen como "Sin entidad aportante", con el boton "Asignar entidad";
+  - asignarla pasa lo digitado a la entidad sin guardar;
+  - mientras tengan valor, la pestana no se guarda y sale un aviso.
+  - El catalogo empieza vacio en produccion: el equipo tiene que crear las entidades antes de
+    asignarlas.
+- **Encabezados:** el BPIN y el nombre del proyecto se separan con un guion, no con un punto
+  intermedio (programacion y observaciones de SIIFWEB, y las pantallas de regalias).
+- **Casillas:** como en regalias, ya no se colorean por tener valor (verde) ni por haber cambiado
+  (ambar); solo la de error, en rojo. El aviso "Hay cambios sin guardar" sigue.
+
+**Pruebas.** `siifweb/tests/test_programacion_financiera.py` suma las de vigencias
+independientes y la clase `PorEntidadAportante`. Suite completa: 734, todas pasan.
 

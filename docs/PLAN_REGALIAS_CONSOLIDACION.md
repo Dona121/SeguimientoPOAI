@@ -13,12 +13,30 @@ repositorio, proyecto Django `seguimiento_poai`, app nueva `regalias`.
 Excel global de la otra app de Streamlit ("Seguimiento Regalias") quedan para después y se
 construirán sobre la tabla de proyectos de este plan.
 
-### Estado al 27 de noviembre de 2026 y cómo retomar
+### Estado al 27 de noviembre de 2026 (noche) y cómo retomar
 
-- **Código:** app `regalias` en la rama `regalias-base`, **sin commit**. Están sin seguimiento
-  de git `seguimiento_poai/regalias/` y este documento; además hay cambios en
-  `config/settings.py`, `seguimiento_poai/README.md`, `docs/ESTRUCTURA_BD.md` y
-  `docs/CAMBIOS_2026-10.md` (sección 28). Migraciones `regalias/0001` a `0008`.
+El trabajo se hizo desde una sesión abierta en el repo del Streamlit
+(`Estudio/python/Consolidacion Regalias`). Se sigue desde una sesión en este repo:
+
+1. Leer este bloque y `docs/CAMBIOS_2026-10.md` §28 (regalías) y §29 (lo que cambió en `siifweb`).
+2. Leer `respaldo_claude/memory/modulo-regalias.md` y `git status` en la rama `regalias-base`.
+3. El servidor local está apagado: se levanta con el último comando de abajo.
+
+- **Rama y commits:** todo está en `regalias-base`.
+  - **Con commit:** `0ca566b`, con las fases 1 a 5.
+  - **Sin commit:**
+    - las fases 6 y 7;
+    - los cambios de `siifweb` (§29 de CAMBIOS);
+    - esta documentación: el plan, CAMBIOS §28 y §29, ESTRUCTURA_BD §12 y el README.
+  - **No van en el commit:** `data/comprobante_pagos/` y `obsidian/`, que aparecen sin
+    seguimiento pero no son de este trabajo.
+- **Migraciones sin commit:** `regalias/0010` a `0013` y `siifweb/0029`. `regalias/0012`
+  depende de `siifweb/0029`. Solo están aplicadas en la sqlite local.
+- **Cambios en `siifweb`**, pedidos por el usuario el 27/11 (§29 de CAMBIOS):
+  - las vigencias de la programación financiera y la física ya no tienen que coincidir;
+  - la financiera va por entidad aportante: catálogo `EntidadAportante` y migración `0029`;
+  - los encabezados separan el BPIN del nombre con un guion;
+  - las casillas ya no se colorean por tener valor ni por haber cambiado, solo por error.
 - **Fases:**
 
   | Fase | Estado |
@@ -28,16 +46,24 @@ construirán sobre la tabla de proyectos de este plan.
   | 3. Comentarios | Hecha |
   | 4. Importación de la matriz | Hecha |
   | 5. Cargas de GESPROY | Hecha |
-  | 6. Programación, 7. Descarga de la matriz y 8. Producción | Pendientes |
+  | 6. Programación | Hecha, sin commit (con la entidad aportante, migraciones 0012 y 0013) |
+  | 7. Descarga de la matriz | Hecha, sin commit |
+  | 8. Producción | Pendiente |
 
-- **Pruebas:** `manage.py test regalias` da 73; la suite completa, 697. Todas pasan.
+- **Ajustes del 27/11 en la noche**, además de las fases:
+  - las listas de proyectos abren sin CERRADO ni DESAPROBADO (§8);
+  - la pantalla de programación no lleva las etiquetas "en la física" ni "del producto";
+  - la clasificación de la fuente va en negrilla, sin fondo.
+- **Pruebas:** `manage.py test regalias` da 106; la suite completa, 737. Todas pasan.
 - **Datos en la sqlite local:**
-  - reportes de marzo a noviembre de 2026, más la matriz de junio y la de octubre (§15): 226
-    proyectos, 289 contratos y el historial desde marzo;
-  - los archivos de muestra están en `Estudio/python/Consolidacion Regalias/Regalias octubre/`
-    y `Contexto/`;
-  - hay un usuario de prueba con el rol Regalías, `prueba_regalias`, que solo existe en la
-    sqlite local.
+  - **Reportes y matrices:** los reportes de marzo a noviembre de 2026, más la matriz de junio
+    y la de octubre (§15). Quedan 226 proyectos, 289 contratos y el historial desde marzo.
+  - **Archivos de muestra:** en `Estudio/python/Consolidacion Regalias/Regalias octubre/` y
+    `Contexto/`.
+  - **Usuario de prueba:** `prueba_regalias`, con el rol Regalías. Solo existe en la sqlite
+    local.
+  - **Programación de prueba:** la que dejó el usuario en las dos apps. La de SIIFWEB quedó sin
+    entidad aportante después de la migración `0029`, como quedarán los 2 valores de producción.
 - **Comandos** (desde `seguimiento_poai`, siempre con `DATABASE_URL` apuntando a la sqlite
   local; ver `respaldo_claude/memory/pruebas-en-sqlite-local.md`):
 
@@ -48,11 +74,28 @@ construirán sobre la tabla de proyectos de este plan.
   DEBUG=True ../.venv/Scripts/python.exe manage.py runserver   # para revisar el admin
   ```
 
-- **Preguntas abiertas que siguen** (§12): municipios de fuera de Sucre (8), EN PROCESO DE
-  CONTRATACIÓN en los cálculos (9), y cómo se hará en producción la importación única de la
-  matriz (§6).
-- **Siguiente paso sugerido:** commit de lo hecho en `regalias-base`, y después la fase 6
-  (programación), que es la que llena fuentes, valores e indicador MGA.
+- **Decisiones pendientes del usuario:**
+  1. **Dónde hacer el commit.**
+     - Una opción es hacerlo todo en `regalias-base`.
+     - La otra es pasar los cambios de `siifweb` (§29) a una rama aparte desde `main`, para
+       desplegarlos antes que regalías. En ese caso, la rama de `siifweb` lleva la migración
+       `0029`, y `regalias-base` se actualiza después con `main`.
+  2. **Antes de desplegar la entidad aportante:**
+     - El catálogo empieza vacío en producción, y el equipo tiene que crear las entidades.
+     - Los 2 valores que hay hoy sin entidad (proyecto pk 815, vigencia 2027) se asignan en la
+       pantalla.
+     - Como en cada despliegue con migraciones, antes va la copia de Supabase.
+  3. **La búsqueda en las listas de proyectos.** Hoy respeta el filtro de estado: un BPIN
+     cerrado solo se encuentra con "Todos". El usuario no ha dicho si la búsqueda debe
+     encontrarlos siempre.
+  4. **Preguntas abiertas de §12:**
+     - (8) municipios de fuera de Sucre;
+     - (9) EN PROCESO DE CONTRATACIÓN en los cálculos;
+     - (10) cómo se hace en producción la importación única de la matriz (§6).
+  5. **Corregir o no en el Streamlit** el error del contrato principal (§14), mientras corran
+     en paralelo.
+- **Siguiente paso sugerido:** resolver la 1, hacer el commit y empezar la fase 8 por la
+  pregunta 10.
 
 ---
 
@@ -263,10 +306,19 @@ Los avances se guardan en porcentaje (0–100).
 ### 3.3 Programación
 
 **`ProgramacionFinancieraRegalias`:**
-- Campos: `proyecto` (FK, CASCADE), `vigencia` (choices `listado_vigencias_metas`), `fuente`
-  (FK `FuenteSGR`, PROTECT), `producto` (FK `ProductoCatalogo`, PROTECT) y `valor`
-  (Decimal(20,5), no negativo).
-- No se repite la combinación proyecto + vigencia + fuente + producto.
+- Campos: `proyecto` (FK, CASCADE), `vigencia` (choices `listado_vigencias_metas`),
+  `entidad_aportante` (FK `siifweb.EntidadAportante`, PROTECT), `fuente` (FK `FuenteSGR`,
+  PROTECT), `producto` (FK `ProductoCatalogo`, PROTECT) y `valor` (Decimal(20,5), no negativo).
+- No se repite la combinación proyecto + vigencia + entidad aportante + fuente + producto.
+- **Entidad aportante** (decisión del 27/11): un proyecto puede tener recursos de varias
+  entidades.
+  - Es el catálogo de SIIFWEB, que lleva la misma regla en su programación financiera. El rol
+    Regalías lo ve y le agrega entidades (migración 0013).
+  - Va con `null=True, blank=False`, como en SIIFWEB: la sqlite local tenía programación de
+    prueba. En producción no hay programación de regalías.
+  - La pantalla agrupa las fuentes de cada vigencia por entidad. Lo que no tiene entidad sale
+    como "Sin entidad aportante", con el botón "Asignar entidad", y mientras tenga valor la
+    pestaña no se guarda.
 
 **`ProgramacionFisicaRegalias`:**
 - Campos: `proyecto`, `vigencia`, `indicador` (FK `IndicadorCatalogo`, PROTECT) y `valor`
@@ -276,11 +328,20 @@ Los avances se guardan en porcentaje (0–100).
 Se diligencian en una pantalla "Programación" del proyecto, con la estructura de
 `siifweb/programacion_financiera.py`:
 - **Pestañas:** financiera y física, con un bloque por vigencia.
-- **Financiera:** fuentes en las filas y productos en las columnas.
+- **Financiera:** entidades aportantes y, debajo de cada una, sus fuentes en las filas;
+  productos en las columnas.
 - **Física:** indicadores en las filas.
+- **Vigencias:** las de las dos pestañas no tienen que coincidir. Un proyecto puede tener
+  fuentes en 2025 y 2027 y la meta física en 2026 (caso real, decisión del 27/11). Cada
+  pestaña muestra solo sus vigencias, y la relación entre las dos es por producto en todo el
+  proyecto.
+- **Espejo:** una vigencia nueva de la financiera empieza con los productos de los indicadores
+  de la física, de cualquier vigencia, y se pueden quitar. Al agregar un producto o un
+  indicador salen primero los que tiene la otra pestaña.
 - **Aviso de descuadre:** en lugar de "metas distintas entre pestañas", avisa cuando un
-  indicador de la física no tiene programación financiera de su producto en esa vigencia, o al
-  revés. Avisa pero no bloquea, como en SIIFWEB.
+  producto con valor financiero no tiene ningún indicador con valor físico, o un indicador con
+  valor físico no tiene valor financiero de su producto, en ninguna vigencia. Avisa pero no
+  bloquea, como en SIIFWEB.
 - **Código:** se copia y adapta en `regalias`. `siifweb/programacion_financiera.py` no se
   modifica.
 
@@ -646,7 +707,10 @@ en SIIFWEB, y quedan en el historial con origen "programación".
   - Crear desde una de ellas fija la clasificación.
   - **Columnas de la lista:** BPIN, nombre, dependencia o entidad, estado, avances, fecha de corte
     y calificación de ejecución.
-  - **Filtros:** estado (con la opción "Sin estado"), sector, dependencia o entidad, fecha de
+  - **Al entrar** la lista no trae los CERRADO ni los DESAPROBADO (decisión del 27/11): el filtro
+    de estado abre en "Sin cerrados ni desaprobados" y tiene "Todos". Siguen existiendo: se
+    abren, se editan y salen en la matriz.
+  - **Filtros:** estado (con las opciones "Todos" y "Sin estado"), sector, dependencia o entidad, fecha de
     corte y "Revisar".
   - **Búsqueda:** BPIN y nombre.
 - **Formulario del proyecto:** grupos Identificación, Estado y contrato, Valores (solo lectura,
@@ -662,9 +726,27 @@ en SIIFWEB, y quedan en el historial con origen "programación".
 - **Acciones de la lista:**
   - **Asignar fecha de corte** a los seleccionados (y recalcular).
   - **Recalcular**.
-  - **Descargar matriz**: el Excel de 3 hojas con los filtros aplicados. Usa el orden de columnas,
-    las secciones y los colores de hoy (`consolidacion/columnas.py` y `diseno.py` del origen),
-    sin FECHA DE SUSPENSIÓN DEL CONTRATO.
+  - **Descargar matriz** (`regalias/excel.py`): botón arriba de la lista, en las tres
+    clasificaciones, sin seleccionar filas. Da el mismo Excel desde cualquiera de ellas.
+    - **Estructura:** la de la matriz de octubre (`MatrizSeguimientoEvaluacion_corte_oct2026.xlsx`).
+      - Las 3 hojas, con una tabla de Excel del mismo nombre desde la fila 2.
+      - Las secciones combinadas en la fila 1.
+      - El orden de columnas, los colores, los anchos, las alturas y los formatos de hoy
+        (`consolidacion/columnas.py`, `diseno.py` y `escritura.py` del origen).
+      - Las columnas de apoyo, ocultas.
+      - Sin FECHA DE SUSPENSIÓN DEL CONTRATO.
+    - **Proyectos:** los mismos que tiene la matriz de hoy.
+      - Departamento: sin CERRADO ni DESAPROBADO, porque la consolidación los saca de CG-proy.
+      - Descentralizadas y municipios: todos.
+      - No usa los filtros de la lista.
+    - **Columnas que salen del sistema:**
+      - Comentarios: el último comentario del proyecto, sin contar la nota "Datos de la matriz
+        anterior" de la importación.
+      - Responsables, uno por línea.
+      - Municipios, separados por coma.
+      - Fuentes e indicador: los de la programación.
+    - No copia los encabezados amarillos de la hoja de municipios de octubre (FUENTE y los tres
+      valores): son marcas hechas a mano en ese archivo.
     - **Fórmulas:** las 7 columnas de fórmula del departamento y las 6 de descentralizadas van
       como fórmulas de Excel, igual que hoy (`consolidacion/formulas.py`), con las correcciones
       de §7.6. Municipios no tiene fórmulas.
@@ -722,8 +804,8 @@ Cada fase en una rama desde `main`, con sus pruebas, y revisada antes de fusiona
 | 3. Comentarios | `ComentarioProyectoRegalias` y su pantalla, siguiendo la de observaciones de SIIFWEB (ya con usuario en `main`) | Editable 5 días y solo por quien lo escribió. **Hecha el 27/11**: botón "Comentarios" en el formulario de cada proyecto (copia adaptada de la pantalla de observaciones de SIIFWEB) y permisos del rol (migración 0009). Los importados de la matriz salen como "Importado de la matriz" y nadie los modifica. La lista general de comentarios es de consulta y no borra |
 | 4. Importación inicial | `CargaRegalias` tipo `matriz`, equivalencias y comentario con los datos anteriores | **Hecha el 27/11** (§14): con la matriz de octubre, 58 + 16 + 104 proyectos |
 | 5. Cargas de GESPROY | Tipos `proyectos`, `contratos`, `cargue`; regla general; contrato principal; mensaje; Volver a procesar | **Hecha el 27/11** (§14), con el comando `cargar_regalias` para cargar archivos locales. El principal difiere del de la consolidación en 23 BPIN por un error del Streamlit |
-| 6. Programación | `FuenteSGR`, programación financiera y física, pantalla, valores calculados | Sumas por clasificación, concatenaciones y avisos de descuadre |
-| 7. Descarga de la matriz | Acción Descargar matriz, con fórmulas | Mismas hojas, columnas y formato que el Excel de hoy. Al abrirlo en Excel, las fórmulas dan los mismos valores que el sistema |
+| 6. Programación | `FuenteSGR`, programación financiera y física, pantalla, valores calculados | Sumas por clasificación, concatenaciones y avisos de descuadre. **Hecha el 27/11** (migraciones 0010 y 0011, `regalias/programacion.py`, `regalias/tests/test_programacion.py`). Los valores del proyecto se recalculan al guardar la pantalla, en el mismo `servicios.guardar_proyecto`, y no con señales: así el historial queda con el usuario y no con un registro por casilla. Las listas de programación del admin son de consulta |
+| 7. Descarga de la matriz | Acción Descargar matriz, con fórmulas | Mismas hojas, columnas y formato que el Excel de hoy. Al abrirlo en Excel, las fórmulas dan los mismos valores que el sistema. **Hecha el 27/11** (`regalias/excel.py`, `regalias/tests/test_excel.py`). Hojas, tablas, encabezados, secciones, colores, columnas ocultas y columnas de fórmula iguales a la matriz de octubre. Las fórmulas del archivo se evaluaron con pycel y dan lo mismo que el sistema: 502 con los datos locales y 564 con casos de las cuatro correcciones, sin diferencias. pycel no corre en Python 3.14 y por eso esa evaluación no está en la suite. La prueba de estructura contra la matriz de octubre se salta si el archivo no está (`REGALIAS_MATRIZ_OCTUBRE`) |
 | 8. Producción | Migraciones por Railway; importación única de la matriz con el comando (§6, por definir cómo); después, los reportes más recientes desde el admin; un ciclo de reportes en paralelo con el Streamlit | Las dos matrices coinciden proyecto por proyecto, salvo las diferencias de §7.6. Después se apaga el Streamlit y se quita el enlace del menú |
 
 ---
