@@ -33,6 +33,11 @@ Ver programacion_fisica en siifweb/programacion_financiera.py.
       Hay cambios sin guardar{% if m.por_borrar %}: al guardar se borran {{ m.por_borrar }} valor{{ m.por_borrar|pluralize:"es" }} de lo que se quitó{% endif %}.
     </p>
     {% endif %}
+    {% if m.descuadre and not advertencia %}
+    <p class="aviso pendiente">Las metas no coinciden con la programación financiera en ninguna vigencia:
+      {% if m.descuadre.sin_fisica %}sin valor físico {{ m.descuadre.sin_fisica|join:", " }}{% endif %}{% if m.descuadre.sin_fisica and m.descuadre.sin_financiera %}; {% endif %}
+      {% if m.descuadre.sin_financiera %}sin valor financiero {{ m.descuadre.sin_financiera|join:", " }}{% endif %}.</p>
+    {% endif %}
     {% if not m.bloques %}<p class="vacio">Sin vigencias.{% if editable %} Agregue una con el botón de arriba.{% endif %}</p>{% endif %}
   </section>
 
@@ -52,11 +57,6 @@ Ver programacion_fisica en siifweb/programacion_financiera.py.
       {% endif %}
     </div>
 
-    {% if b.descuadre %}
-    <p class="aviso pendiente">Las metas no coinciden con la programación financiera de {{ b.vigencia }}:
-      {% if b.descuadre.sin_fisica %}sin valor físico {{ b.descuadre.sin_fisica|join:", " }}{% endif %}{% if b.descuadre.sin_fisica and b.descuadre.sin_financiera %}; {% endif %}
-      {% if b.descuadre.sin_financiera %}sin valor financiero {{ b.descuadre.sin_financiera|join:", " }}{% endif %}.</p>
-    {% endif %}
     {% if b.filas %}
     <div class="tabla">
       <table>

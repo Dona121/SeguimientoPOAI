@@ -53,7 +53,7 @@ ProyectoAdmin.observaciones.
 <div class="ob">
   <section class="caja">
     <div style="display:flex;flex-wrap:wrap;gap:.6rem 2rem;align-items:baseline">
-      <h2>{{ proyecto.bpin|default:"Sin BPIN" }} · {{ proyecto.nombre|default:"(sin nombre)" }}</h2>
+      <h2>{{ proyecto.bpin|default:"Sin BPIN" }} - {{ proyecto.nombre|default:"(sin nombre)" }}</h2>
       <span class="dato">{{ observaciones|length }} observaci{{ observaciones|length|pluralize:"ón,ones" }}</span>
       <a href="{% url 'admin:siifweb_proyecto_change' proyecto.pk %}" class="border font-medium px-3 py-2 rounded-default text-sm
          text-base-700 dark:text-base-300 dark:border-base-700" style="margin-left:auto">Volver al detalle</a>

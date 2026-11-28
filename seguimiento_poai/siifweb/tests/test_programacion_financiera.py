@@ -1,4 +1,5 @@
-"""Programacion financiera: los recursos de cada proyecto por vigencia, fuente y meta del plan.
+"""Programacion financiera: los recursos de cada proyecto por vigencia, entidad aportante, fuente y
+meta del plan.
 
 El modelo, el valor programado del proyecto (que se recalcula solo) y la pantalla del proyecto:
 una matriz con vigencias, fuentes y metas que se guarda con un boton.
@@ -12,8 +13,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from siifweb import programacion_financiera as pf
-from siifweb.models import (Fuente, MetaIndicador, ProgramacionFinanciera, ProgramacionFisica, ProgramacionMeta,
-                            ProgramacionProyectos, Proyecto)
+from siifweb.models import (EntidadAportante, Fuente, MetaIndicador, ProgramacionFinanciera, ProgramacionFisica,
+                            ProgramacionMeta, ProgramacionProyectos, Proyecto)
 
 from .fabricas import catalogos, proyecto
 
@@ -59,10 +60,14 @@ class Base(TestCase):
         programado = ProgramacionProyectos.objects.create(bpin=cls.proy.bpin, nombre="Proyecto de prueba")
         ProgramacionMeta.objects.create(proyecto=programado, meta=cls.meta, vigencia=ANIO, meta_vigencia=D("10"))
         cls.admin = get_user_model().objects.create_superuser("admin", "a@b.co", "clave")
+        cls.entidad = EntidadAportante.objects.create(nombre="Departamento de Sucre", nit="892280021")
+        cls.nacion = EntidadAportante.objects.create(nombre="Ministerio de Transporte")
 
-    def programar(self, valor, fuente=None, meta=None, vigencia=ANIO):
-        return ProgramacionFinanciera.objects.create(proyecto=self.proy, vigencia=vigencia, fuente=fuente or self.fuente,
-                                                     meta=meta or self.meta, valor=D(valor))
+    def programar(self, valor, fuente=None, meta=None, vigencia=ANIO, entidad=False):
+        """entidad=None: como lo programado antes de que existiera el campo."""
+        return ProgramacionFinanciera.objects.create(
+            proyecto=self.proy, vigencia=vigencia, entidad_aportante=self.entidad if entidad is False else entidad,
+            fuente=fuente or self.fuente, meta=meta or self.meta, valor=D(valor))
 
     def total(self):
         return Proyecto.objects.get(pk=self.proy.pk).valor_programado
@@ -94,7 +99,9 @@ class ValorProgramado(Base):
         self.assertFalse(ProgramacionFinanciera.objects.exists())
 
 
-class Pantalla(Base):
+class ConPantalla(Base):
+    """Las direcciones y los campos de la pantalla, para las pruebas que la usan."""
+
     def setUp(self):
         self.client.force_login(self.admin)
         self.url = reverse("admin:siifweb_proyecto_programacion_financiera", args=(self.proy.pk,))
@@ -102,21 +109,29 @@ class Pantalla(Base):
         self.matriz = reverse("admin:siifweb_proyecto_pf_matriz", args=(self.proy.pk,))
         self.elegir = reverse("admin:siifweb_proyecto_pf_elegir", args=(self.proy.pk,))
 
-    def casilla(self, vigencia=ANIO, fuente=None, meta=None):
-        return f"v-{vigencia}-{(fuente or self.fuente).pk}-{(meta or self.meta).pk}"
+    def casilla(self, vigencia=ANIO, fuente=None, meta=None, entidad=None):
+        """entidad=0: lo que no tiene entidad aportante."""
+        e = self.entidad.pk if entidad is None else (entidad.pk if entidad else pf.SIN_ENTIDAD)
+        return f"v-{vigencia}-{e}-{(fuente or self.fuente).pk}-{(meta or self.meta).pk}"
 
     def estado(self, bloques=None, **extra):
-        """Los campos ocultos de la pantalla: {vigencia: ([fuentes], [metas])}."""
+        """Los campos ocultos de la pantalla: {vigencia: ([fuentes], [metas])}, con las fuentes de
+        la entidad de la prueba; o {vigencia: ({entidad: [fuentes]}, [metas])} (entidad 0: sin entidad)."""
         bloques = {ANIO: ([self.fuente], [self.meta])} if bloques is None else bloques
         datos = {"vigencias": list(bloques)}
         for v, (fuentes, metas) in bloques.items():
-            datos[f"fuentes-{v}"] = [f.pk for f in fuentes]
+            por_entidad = fuentes if isinstance(fuentes, dict) else {self.entidad.pk: fuentes}
+            datos[f"entidades-{v}"] = list(por_entidad)
+            for e, de_la_entidad in por_entidad.items():
+                datos[f"fuentes-{v}-{e}"] = [f.pk for f in de_la_entidad]
             datos[f"metas-{v}"] = [m.pk for m in metas]
         return {**datos, **extra}
 
     def guardar(self, valores, bloques=None):
         return self.client.post(self.guardar_url, self.estado(bloques, **valores))
 
+
+class Pantalla(ConPantalla):
     def test_el_boton_esta_en_el_proyecto_y_el_detalle_muestra_el_total(self):
         self.programar("1500000")
         respuesta = self.client.get(reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,)))
@@ -128,7 +143,7 @@ class Pantalla(Base):
         respuesta = self.client.get(self.url)
         self.assertEqual(respuesta.status_code, 200)
         self.assertContains(respuesta, f"Vigencia {ANIO}")               # la del anio en curso
-        self.assertContains(respuesta, "Sin fuentes ni metas.")
+        self.assertContains(respuesta, "Sin entidades aportantes ni metas.")
         self.assertNotContains(respuesta, "MT001")                       # la programada no se agrega sola
         self.assertContains(respuesta, "Volver al detalle")
         self.assertContains(respuesta, reverse("admin:siifweb_proyecto_change", args=(self.proy.pk,)))
@@ -145,7 +160,7 @@ class Pantalla(Base):
 
     def test_agregar_no_guarda_y_conserva_lo_digitado(self):
         respuesta = self.client.get(self.matriz, self.estado({ANIO: ([], [self.meta])}, en=ANIO,
-                                                             agregar_fuente=self.fuente.pk))
+                                                             entidad=self.entidad.pk, agregar_fuente=self.fuente.pk))
         self.assertContains(respuesta, f'name="{self.casilla()}"')
         respuesta = self.client.get(self.matriz, self.estado(None, **{self.casilla(): "5", "agregar_vigencia": ANIO + 1}))
         self.assertContains(respuesta, f"Vigencia {ANIO + 1}")
@@ -158,7 +173,8 @@ class Pantalla(Base):
         """La misma fuente en dos vigencias: quitarla de una deja la otra con lo digitado."""
         bloques = {ANIO: ([self.fuente], [self.meta]), ANIO + 1: ([self.fuente], [self.meta])}
         respuesta = self.client.get(self.matriz, self.estado(bloques, **{
-            self.casilla(): "1000", self.casilla(ANIO + 1): "2000", "quitar_fuente": self.fuente.pk, "en": ANIO + 1}))
+            self.casilla(): "1000", self.casilla(ANIO + 1): "2000", "quitar_fuente": self.fuente.pk, "en": ANIO + 1,
+            "entidad": self.entidad.pk}))
         self.assertContains(respuesta, f'name="{self.casilla()}"')
         self.assertContains(respuesta, 'value="1000"')
         self.assertNotContains(respuesta, f'name="{self.casilla(ANIO + 1)}"')
@@ -199,7 +215,8 @@ class Pantalla(Base):
         self.programar("1")
         self.programar("2", fuente=self.otra)
         respuesta = self.client.get(self.matriz, self.estado({ANIO: ([self.fuente, self.otra], [self.meta])},
-                                                             quitar_fuente=self.otra.pk, en=ANIO))
+                                                             quitar_fuente=self.otra.pk, en=ANIO,
+                                                             entidad=self.entidad.pk))
         self.assertNotContains(respuesta, f'name="{self.casilla(fuente=self.otra)}"')
         self.assertContains(respuesta, "se borran 1 valor de lo que se quitó")
         self.assertEqual(ProgramacionFinanciera.objects.count(), 2)      # quitar no borra
@@ -212,15 +229,17 @@ class Pantalla(Base):
         self.guardar({}, {ANIO: ([], [])})
         self.assertFalse(ProgramacionFinanciera.objects.exists())
         respuesta = self.client.get(self.url)
-        self.assertContains(respuesta, "Sin fuentes ni metas.")
+        self.assertContains(respuesta, "Sin entidades aportantes ni metas.")
         self.assertNotContains(respuesta, "MT001")
 
     def test_el_listado_busca_excluye_y_pasa_de_pagina(self):
-        respuesta = self.client.get(self.elegir, self.estado(tipo="fuente", en=ANIO, q="Participaciones"))
-        self.assertContains(respuesta, f"Agregar una fuente a {ANIO}")
+        respuesta = self.client.get(self.elegir, self.estado(tipo="fuente", en=ANIO, entidad=self.entidad.pk,
+                                                             q="Participaciones"))
+        self.assertContains(respuesta, f"Agregar una fuente de Departamento de Sucre a {ANIO}")
         self.assertContains(respuesta, "Sistema General de Participaciones")
         resultados = self.client.get(self.elegir, self.estado({ANIO: ([self.otra], [])}, tipo="fuente", en=ANIO,
-                                                              q="Participaciones", solo="resultados"))
+                                                              entidad=self.entidad.pk, q="Participaciones",
+                                                              solo="resultados"))
         self.assertNotContains(resultados, "Sistema General de Participaciones")
         metas = self.client.get(self.elegir, self.estado({ANIO: ([], [])}, tipo="meta", en=ANIO, solo="resultados"))
         self.assertContains(metas, "1–50 de")
@@ -243,6 +262,81 @@ class Pantalla(Base):
                                                         solo="resultados")).content.decode()
         primeras = html[:html.index("<b>MT002</b>")]
         self.assertIn(f"<b>{meta_tardia.codigo}</b>", primeras)
+
+
+class PorEntidadAportante(ConPantalla):
+    """La financiera es la combinacion proyecto, vigencia, entidad aportante, fuente y meta."""
+
+    def test_dos_entidades_ponen_recursos_a_la_misma_fuente_y_meta(self):
+        bloques = {ANIO: ({self.entidad.pk: [self.fuente], self.nacion.pk: [self.fuente]}, [self.meta])}
+        respuesta = self.guardar({self.casilla(): "1000", self.casilla(entidad=self.nacion): "500"}, bloques)
+        self.assertContains(respuesta, "Guardado: 2 nuevos.")
+        self.assertEqual(sorted(ProgramacionFinanciera.objects.values_list("entidad_aportante__nombre", "valor")),
+                         [("Departamento de Sucre", D("1000")), ("Ministerio de Transporte", D("500"))])
+        self.assertEqual(self.total(), D("1500"))
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, "<b>Departamento de Sucre</b>")
+        self.assertContains(respuesta, "<b>Ministerio de Transporte</b>")
+
+    def test_agregar_una_entidad_y_despues_su_fuente(self):
+        respuesta = self.client.get(self.matriz, self.estado(None, en=ANIO, agregar_entidad=self.nacion.pk))
+        self.assertContains(respuesta, f'name="entidades-{ANIO}" value="{self.nacion.pk}"')
+        self.assertContains(respuesta, "Sin fuentes.")
+        bloques = {ANIO: ({self.entidad.pk: [self.fuente], self.nacion.pk: []}, [self.meta])}
+        respuesta = self.client.get(self.matriz, self.estado(bloques, en=ANIO, entidad=self.nacion.pk,
+                                                             agregar_fuente=self.otra.pk))
+        self.assertContains(respuesta, f'name="{self.casilla(fuente=self.otra, entidad=self.nacion)}"')
+        self.assertNotContains(respuesta, f'name="{self.casilla(fuente=self.otra)}"')    # no en la otra entidad
+        self.assertFalse(ProgramacionFinanciera.objects.exists())
+
+    def test_lo_programado_sin_entidad_hay_que_asignarselo(self):
+        """Lo programado antes del campo: sale sin entidad y la pestana no se guarda hasta asignarla."""
+        self.programar("1000", entidad=None)
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, "Sin entidad aportante")
+        self.assertContains(respuesta, "Asignar entidad")
+        self.assertContains(respuesta, f"Hay valores sin entidad aportante en {ANIO}")
+        sin_entidad = self.casilla(entidad=0)
+        self.assertContains(respuesta, f'name="{sin_entidad}"')
+        bloques = {ANIO: ({pf.SIN_ENTIDAD: [self.fuente]}, [self.meta])}
+        respuesta = self.guardar({sin_entidad: "1000"}, bloques)
+        self.assertContains(respuesta, "1 casilla con error")
+        self.assertContains(respuesta, "Asigne la entidad aportante antes de guardar.")
+        self.assertIsNone(ProgramacionFinanciera.objects.get().entidad_aportante)
+        # Asignarla no guarda; lo digitado pasa a la entidad y no cuenta como algo que se borra
+        respuesta = self.client.get(self.matriz, self.estado(bloques, **{sin_entidad: "1000", "en": ANIO,
+                                                                        "asignar_entidad": self.entidad.pk}))
+        self.assertContains(respuesta, f'name="{self.casilla()}" id="pf-{self.casilla()}" value="1000"')
+        self.assertNotContains(respuesta, "Sin entidad aportante")
+        self.assertNotContains(respuesta, "se borran")
+        self.assertIsNone(ProgramacionFinanciera.objects.get().entidad_aportante)
+        respuesta = self.guardar({self.casilla(): "1000"})
+        self.assertContains(respuesta, "Guardado: 1 nuevos, 1 borrados.")
+        self.assertEqual(ProgramacionFinanciera.objects.get().entidad_aportante, self.entidad)
+        self.assertEqual(self.total(), D("1000"))
+
+    def test_vaciar_lo_que_no_tiene_entidad_lo_borra(self):
+        self.programar("1000", entidad=None)
+        respuesta = self.guardar({self.casilla(entidad=0): ""}, {ANIO: ({pf.SIN_ENTIDAD: [self.fuente]}, [self.meta])})
+        self.assertContains(respuesta, "Guardado: 1 borrados.")
+        self.assertFalse(ProgramacionFinanciera.objects.exists())
+
+    def test_la_ventana_de_entidades_agrega_o_asigna(self):
+        respuesta = self.client.get(self.elegir, self.estado(tipo="entidad", en=ANIO))
+        self.assertContains(respuesta, f"Agregar una entidad aportante a {ANIO}")
+        self.assertContains(respuesta, "Ministerio de Transporte")
+        self.assertNotContains(respuesta, "<span>Departamento de Sucre</span>")          # ya esta en la vigencia
+        self.assertContains(respuesta, "agregar_entidad")
+        self.assertContains(respuesta, reverse("admin:siifweb_entidadaportante_add"))
+        bloques = {ANIO: ({pf.SIN_ENTIDAD: [self.fuente]}, [self.meta])}
+        respuesta = self.client.get(self.elegir, self.estado(bloques, tipo="entidad", en=ANIO, asignar="1"))
+        self.assertContains(respuesta, f"Asignar la entidad aportante de lo programado en {ANIO}")
+        self.assertContains(respuesta, "asignar_entidad")
+        self.assertEqual(self.client.get(self.elegir, self.estado(tipo="fuente", en=ANIO)).status_code, 400)
+
+    def test_el_catalogo_de_entidades(self):
+        self.assertEqual(self.client.get(reverse("admin:siifweb_entidadaportante_changelist")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("admin:siifweb_programacionfinanciera_changelist")).status_code, 200)
 
 
 class Fisica(Base):
@@ -314,7 +408,8 @@ class Fisica(Base):
 
 
 class Coincidencia(Base):
-    """Las metas de la financiera y de la fisica deben ser las mismas en cada vigencia."""
+    """Las metas de la financiera y de la fisica deben ser las mismas en el proyecto, no en cada
+    vigencia."""
 
     def setUp(self):
         self.client.force_login(self.admin)
@@ -354,7 +449,7 @@ class Coincidencia(Base):
         respuesta = self.client.post(self.guardar_url, {"panel": "fisica", "vigencias": [ANIO]})
         self.assertContains(respuesta, "Guardado: 1 borrados.")
         self.assertContains(respuesta, "no coinciden")
-        self.assertContains(respuesta, f"{ANIO}: sin valor físico MT001")
+        self.assertContains(respuesta, "no coinciden en ninguna vigencia: sin valor físico MT001")
         self.assertFalse(ProgramacionFisica.objects.exists())
         self.assertEqual(ProgramacionFinanciera.objects.count(), 2)
         self.assertEqual(self.total(), D("3000"))
@@ -393,11 +488,33 @@ class Coincidencia(Base):
         respuesta = self.client.get(self.matriz, {"panel": "financiera", "vigencias": [ANIO], f"fuentes-{ANIO}": [],
                                                   f"metas-{ANIO}": [], "agregar_vigencia": ANIO + 1})
         self.assertContains(respuesta, f'name="metas-{ANIO + 1}" value="{self.meta2.pk}"')
+        self.assertNotContains(respuesta, f'name="metas-{ANIO}" value="{self.meta2.pk}"')   # la que ya estaba
+
+    def test_las_vigencias_de_las_dos_pestanas_no_tienen_que_coincidir(self):
+        """El caso real: fuentes programadas en dos vigencias y la meta fisica en la de en medio."""
+        self.programar("1000")
+        self.programar("2000", vigencia=ANIO + 2)
+        self.fisica("5", vigencia=ANIO + 1)
+        self.assertEqual(pf.descuadres(self.proy), {})
+        for panel, propias, ajenas in (("financiera", (ANIO, ANIO + 2), (ANIO + 1,)),
+                                       ("fisica", (ANIO + 1,), (ANIO, ANIO + 2))):
+            with self.subTest(panel=panel):
+                respuesta = self.client.get(self.url, {"panel": panel})
+                self.assertNotContains(respuesta, "no coinciden")
+                for v in propias:
+                    self.assertContains(respuesta, f'name="vigencias" value="{v}"')
+                for v in ajenas:
+                    self.assertNotContains(respuesta, f'name="vigencias" value="{v}"')
+        respuesta = self.client.post(self.guardar_url, {"panel": "fisica", "vigencias": [ANIO + 1],
+                                                        f"metas-{ANIO + 1}": [self.meta.pk],
+                                                        f"v-{ANIO + 1}-{self.meta.pk}": "6"})
+        self.assertContains(respuesta, "Guardado: 1 cambiados.")
+        self.assertNotContains(respuesta, "no coinciden")
 
     def test_descuadres(self):
         self.programar("1000")
         self.fisica("5", meta=self.meta2)
-        self.assertEqual(pf.descuadres(self.proy), {ANIO: {"sin_fisica": ["MT001"], "sin_financiera": ["MT002"]}})
+        self.assertEqual(pf.descuadres(self.proy), {"sin_fisica": ["MT001"], "sin_financiera": ["MT002"]})
         self.fisica("6")
         self.programar("7", meta=self.meta2)
         self.assertEqual(pf.descuadres(self.proy), {})

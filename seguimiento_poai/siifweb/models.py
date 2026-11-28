@@ -1554,10 +1554,30 @@ class MetaVigenciaIndicador(Fechas):
 # va de cada fuente de SIIFWEB a cada meta del plan en el proyecto. Se diligencia en la
 # pantalla "Programacion financiera" del proyecto (siifweb/programacion_financiera.py).
 
+class EntidadAportante(Fechas):
+    """Quien pone los recursos de un proyecto: el Departamento, la Nacion, un municipio... Un
+    proyecto puede tener recursos de varias, asi que la programacion financiera va por entidad.
+    Catalogo que mantiene el equipo; lo usa tambien la app regalias."""
+    nombre = models.CharField(max_length=255, unique=True, verbose_name="Nombre")
+    nit = models.CharField(max_length=20, blank=True, verbose_name="NIT")
+
+    class Meta:
+        verbose_name = "Entidad aportante"
+        verbose_name_plural = "Entidades aportantes"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
 class ProgramacionFinanciera(Fechas):
     proyecto = models.ForeignKey(Proyecto, on_delete=models.CASCADE, related_name="programacion_financiera",
                                  verbose_name="Proyecto")
     vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
+    # Vacia solo en lo programado antes de que existiera el campo (27/11/2026): la pantalla no
+    # guarda esos valores hasta que se les asigna la entidad
+    entidad_aportante = models.ForeignKey(EntidadAportante, on_delete=models.PROTECT, null=True, blank=False,
+                                          related_name="programacion_financiera", verbose_name="Entidad aportante")
     fuente = models.ForeignKey(Fuente, on_delete=models.PROTECT, related_name="programacion_financiera",
                                verbose_name="Fuente")
     meta = models.ForeignKey(MetaIndicador, on_delete=models.PROTECT, related_name="programacion_financiera",
@@ -1568,14 +1588,16 @@ class ProgramacionFinanciera(Fechas):
     class Meta:
         verbose_name = "Programación financiera"
         verbose_name_plural = "Programación financiera"
-        ordering = ("proyecto__bpin", "-vigencia", "fuente__codigo", "meta__codigo")
-        constraints = [models.UniqueConstraint(fields=["proyecto", "vigencia", "fuente", "meta"],
+        ordering = ("proyecto__bpin", "-vigencia", "entidad_aportante__nombre", "fuente__codigo", "meta__codigo")
+        constraints = [models.UniqueConstraint(fields=["proyecto", "vigencia", "entidad_aportante", "fuente", "meta"],
                                                name="programacion_financiera_unica",
                                                violation_error_message="Ya hay un valor programado para ese "
-                                               "proyecto, vigencia, fuente y meta.")]
+                                               "proyecto, vigencia, entidad aportante, fuente y meta.")]
 
     def __str__(self):
-        return f"{self.proyecto.bpin} · {self.vigencia} · {self.fuente.codigo} · {self.meta.codigo}: {self.valor}"
+        entidad = self.entidad_aportante or "sin entidad aportante"
+        return (f"{self.proyecto.bpin} · {self.vigencia} · {entidad} · {self.fuente.codigo} · "
+                f"{self.meta.codigo}: {self.valor}")
 
     def clean(self):
         if self.valor is not None and self.valor < 0:

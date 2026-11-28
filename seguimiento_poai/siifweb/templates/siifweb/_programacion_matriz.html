@@ -1,7 +1,9 @@
 {% comment %}
-La programacion financiera como formulario: un bloque por vigencia, cada uno con sus fuentes
-(filas) y sus metas (columnas). Agregar o quitar no guarda; el boton Guardar deja la
-programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
+La programacion financiera como formulario: un bloque por vigencia, cada uno con sus entidades
+aportantes, las fuentes de cada una (filas) y sus metas (columnas). Agregar o quitar no guarda;
+el boton Guardar deja la programacion del proyecto como se ve. Lo que no tiene entidad aportante
+(lo programado antes de que existiera el campo) sale primero, con un boton para asignarla.
+Ver siifweb/programacion_financiera.py.
 {% endcomment %}
 {% url 'admin:siifweb_proyecto_pf_matriz' proyecto.pk as u_matriz %}{% url 'admin:siifweb_proyecto_pf_guardar' proyecto.pk as u_guardar %}{% url 'admin:siifweb_proyecto_pf_elegir' proyecto.pk as u_elegir %}
 <form class="pf-matriz" id="pf-matriz" autocomplete="off"{% if editable %} hx-post="{{ u_guardar }}" hx-target="this" hx-swap="outerHTML"{% else %} onsubmit="return false"{% endif %}>
@@ -10,7 +12,8 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
     <input type="hidden" name="panel" value="financiera">
     {% for b in m.bloques %}
     <input type="hidden" name="vigencias" value="{{ b.vigencia }}">
-    {% for f in b.fuentes %}<input type="hidden" name="fuentes-{{ b.vigencia }}" value="{{ f }}">{% endfor %}
+    {% for g in b.grupos %}<input type="hidden" name="entidades-{{ b.vigencia }}" value="{{ g.id }}">
+    {% for f in g.fuentes %}<input type="hidden" name="fuentes-{{ b.vigencia }}-{{ g.id }}" value="{{ f }}">{% endfor %}{% endfor %}
     {% for x in b.metas %}<input type="hidden" name="metas-{{ b.vigencia }}" value="{{ x }}">{% endfor %}
     {% endfor %}
   </div>
@@ -30,10 +33,16 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
     {% if mensaje %}<p class="aviso ok" role="status">{{ mensaje }}</p>{% endif %}
     {% if advertencia %}<p class="aviso mal" role="alert">{{ advertencia }}</p>{% endif %}
     {% if m.errores %}<p class="aviso mal" role="alert">{{ m.errores }} casilla{{ m.errores|pluralize }} con error (en rojo; el detalle al pasar el mouse). No se guardó nada.</p>{% endif %}
+    {% if m.sin_entidad %}<p class="aviso mal" role="alert">Hay valores sin entidad aportante en {{ m.sin_entidad|join:", " }}. Asígnela con el botón «Asignar entidad»: mientras tengan valor, esta pestaña no se guarda.</p>{% endif %}
     {% if editable %}
     <p class="aviso pendiente" id="pf-pendiente"{% if not m.pendiente or m.errores %} hidden{% endif %}>
       Hay cambios sin guardar{% if m.por_borrar %}: al guardar se borran {{ m.por_borrar }} valor{{ m.por_borrar|pluralize:"es" }} de lo que se quitó{% endif %}.
     </p>
+    {% endif %}
+    {% if m.descuadre and not advertencia %}
+    <p class="aviso pendiente">Las metas no coinciden con la programación física en ninguna vigencia:
+      {% if m.descuadre.sin_fisica %}sin valor físico {{ m.descuadre.sin_fisica|join:", " }}{% endif %}{% if m.descuadre.sin_fisica and m.descuadre.sin_financiera %}; {% endif %}
+      {% if m.descuadre.sin_financiera %}sin valor financiero {{ m.descuadre.sin_financiera|join:", " }}{% endif %}.</p>
     {% endif %}
     {% if not m.bloques %}<p class="vacio">Sin vigencias.{% if editable %} Agregue una con el botón de arriba.{% endif %}</p>{% endif %}
   </section>
@@ -49,33 +58,27 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
       <span class="dato">Total {{ b.vigencia }} <b class="num">{{ b.total|floatformat:"2g" }}</b></span>
       {% if editable %}
       <span class="acciones">
-        <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=fuente&en={{ b.vigencia }}" hx-include="#pf-matriz"
-                hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Fuente</button>
+        <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=entidad&en={{ b.vigencia }}" hx-include="#pf-matriz"
+                hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Entidad aportante</button>
         <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=meta&en={{ b.vigencia }}" hx-include="#pf-matriz"
                 hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Meta</button>
       </span>
       {% endif %}
     </div>
 
-    {% if b.descuadre %}
-    <p class="aviso pendiente">Las metas no coinciden con la programación física de {{ b.vigencia }}:
-      {% if b.descuadre.sin_fisica %}sin valor físico {{ b.descuadre.sin_fisica|join:", " }}{% endif %}{% if b.descuadre.sin_fisica and b.descuadre.sin_financiera %}; {% endif %}
-      {% if b.descuadre.sin_financiera %}sin valor financiero {{ b.descuadre.sin_financiera|join:", " }}{% endif %}.</p>
-    {% endif %}
-    {% if not b.filas or not b.columnas %}
+    {% if not b.grupos or not b.columnas %}
     <p class="vacio">
-      {% if not b.filas and not b.columnas %}Sin fuentes ni metas.{% elif not b.columnas %}Sin metas.{% else %}Sin fuentes.{% endif %}
-      {% if b.columnas and not b.filas %}{% for c in b.columnas %}{% if forloop.first %}Metas: {% endif %}<b>{{ c.meta.codigo }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}.{% endif %}
-      {% if b.filas and not b.columnas %}{% for f in b.filas %}{% if forloop.first %}Fuentes: {% endif %}<b>{{ f.fuente.codigo }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}.{% endif %}
+      {% if not b.grupos and not b.columnas %}Sin entidades aportantes ni metas.{% elif not b.columnas %}Sin metas.{% else %}Agrega una entidad aportante y una fuente.{% endif %}
+      {% if b.columnas and not b.grupos %}{% for c in b.columnas %}{% if forloop.first %}Metas: {% endif %}<b>{{ c.meta.codigo }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}.{% endif %}
     </p>
     {% endif %}
 
-    {% if b.filas and b.columnas %}
+    {% if b.grupos %}
     <div class="tabla">
       <table>
         <thead>
           <tr>
-            <th>Fuente</th>
+            <th>Entidad aportante y fuente</th>
             {% for c in b.columnas %}
             <th class="meta" title="{{ c.meta.descripcion }}">
               <b>{{ c.meta.codigo }}</b>
@@ -90,13 +93,29 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
             <th class="num">Total</th>
           </tr>
         </thead>
+        {% for g in b.grupos %}
         <tbody>
-          {% for f in b.filas %}
+          <tr class="entidad{% if not g.entidad %} sin-entidad{% endif %}">
+            <td colspan="{{ b.columnas|length|add:1 }}">
+              {% if editable %}<button type="button" class="quitar" title="Quitar {% if g.entidad %}la entidad {{ g.entidad.nombre }}{% else %}lo que no tiene entidad aportante{% endif %} de {{ b.vigencia }}"
+                aria-label="Quitar {% if g.entidad %}la entidad {{ g.entidad.nombre }}{% else %}lo que no tiene entidad aportante{% endif %} de {{ b.vigencia }}"
+                hx-get="{{ u_matriz }}" hx-vals='{"quitar_entidad": "{{ g.id }}", "en": "{{ b.vigencia }}"}' hx-include="#pf-matriz"
+                hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
+              <b>{% if g.entidad %}{{ g.entidad.nombre }}{% else %}Sin entidad aportante{% endif %}</b>
+              {% if editable %}{% if g.entidad %}<button type="button" class="boton gris chico" hx-get="{{ u_elegir }}?tipo=fuente&en={{ b.vigencia }}&entidad={{ g.id }}"
+                hx-include="#pf-matriz" hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Fuente</button>
+              {% else %}<button type="button" class="boton chico" hx-get="{{ u_elegir }}?tipo=entidad&en={{ b.vigencia }}&asignar=1"
+                hx-include="#pf-matriz" hx-target="#pf-elegir" hx-swap="innerHTML">Asignar entidad</button>{% endif %}{% endif %}
+              {% if not g.filas %}<span class="nota">Sin fuentes.</span>{% endif %}
+            </td>
+            <td class="num total">{{ g.total|floatformat:"2g" }}</td>
+          </tr>
+          {% for f in g.filas %}
           <tr>
             <td class="fuente">
               {% if editable %}<button type="button" class="quitar" title="Quitar la fuente {{ f.fuente.codigo }} de {{ b.vigencia }}"
                 aria-label="Quitar la fuente {{ f.fuente.codigo }} de {{ b.vigencia }}"
-                hx-get="{{ u_matriz }}" hx-vals='{"quitar_fuente": "{{ f.fuente.pk }}", "en": "{{ b.vigencia }}"}' hx-include="#pf-matriz"
+                hx-get="{{ u_matriz }}" hx-vals='{"quitar_fuente": "{{ f.fuente.pk }}", "en": "{{ b.vigencia }}", "entidad": "{{ g.id }}"}' hx-include="#pf-matriz"
                 hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
               <b>{{ f.fuente.codigo }}</b>{{ f.fuente.nombre }}
             </td>
@@ -104,7 +123,7 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
             <td class="num">
               <input class="entrada{% if c.con %} con{% endif %}{% if c.cambio and editable %} cambio{% endif %}{% if c.error %} mal{% endif %}"
                      name="{{ c.nombre }}" id="pf-{{ c.nombre }}" value="{{ c.texto }}" inputmode="decimal"
-                     aria-label="Vigencia {{ b.vigencia }}, fuente {{ f.fuente.codigo }}, meta {{ c.meta.codigo }}"
+                     aria-label="Vigencia {{ b.vigencia }}, {% if g.entidad %}entidad {{ g.entidad.nombre }}{% else %}sin entidad aportante{% endif %}, fuente {{ f.fuente.codigo }}, meta {{ c.meta.codigo }}"
                      {% if c.error %}title="{{ c.error }}" aria-invalid="true"{% endif %}{% if not editable %} disabled{% endif %}>
             </td>
             {% endfor %}
@@ -112,6 +131,7 @@ programacion del proyecto como se ve. Ver siifweb/programacion_financiera.py.
           </tr>
           {% endfor %}
         </tbody>
+        {% endfor %}
         <tfoot>
           <tr>
             <td>Total meta</td>

@@ -39,7 +39,7 @@ from .models import (MESES, Municipio, ObservacionProyecto, PeriodoReporte, Prog
                      ProgramacionProyectos, SeguimientoMeta, TipoBanco, listado_vigencias_metas)
 from .models import (PASOS, RADICACION, TRAMITES, Departamento, FormulacionProyecto, IndicadorCatalogo, IndicadorProyecto,
                      MedidaTiempo, ObservacionProyectoSiifweb, ProductoCatalogo, ProgramacionFinanciera,
-                     ProgramacionFisica)
+                     ProgramacionFisica, EntidadAportante)
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import User, Group
@@ -1466,10 +1466,11 @@ class ProyectoAdmin(ModelAdmin):
         proyecto = self._proyecto_programable(request, pk)
         datos = request.GET
         panel = self._panel_pf(request, datos)
+        digitados = programacion_financiera.digitados_de(datos)
         estado = programacion_financiera.cambiar_estado(programacion_financiera.estado_de(datos), datos,
-                                                        proyecto=proyecto, fisica=panel == "fisica")
-        return self._matriz_pf(request, proyecto, panel, estado=estado,
-                               digitados=programacion_financiera.digitados_de(datos))
+                                                        proyecto=proyecto, fisica=panel == "fisica",
+                                                        digitados=digitados)
+        return self._matriz_pf(request, proyecto, panel, estado=estado, digitados=digitados)
 
     def pf_guardar(self, request, pk):
         """Deja la programacion de la pestana como se ve. Con un error en alguna casilla no guarda nada."""
@@ -1492,26 +1493,43 @@ class ProyectoAdmin(ModelAdmin):
                                advertencia=programacion_financiera.mensaje_descuadre(proyecto))
 
     def pf_elegir(self, request, pk):
-        """La ventana para agregar una vigencia, o una fuente o una meta a una vigencia (en=):
-        buscador y listado por paginas. Con solo=resultados devuelve solo el listado."""
+        """La ventana para agregar una vigencia; en una vigencia (en=), una entidad aportante, una
+        meta o una fuente de una entidad (entidad=); o para asignar la entidad a lo que no la tiene
+        (tipo=entidad&asignar=1). Buscador y listado por paginas. Con solo=resultados devuelve solo
+        el listado."""
         proyecto = self._proyecto_programable(request, pk)
         datos = request.GET
         self._panel_pf(request, datos)
         tipo = datos.get("tipo")
-        tipo = tipo if tipo in ("vigencia", "meta") else "fuente"
+        tipo = tipo if tipo in ("vigencia", "entidad", "meta") else "fuente"
         estado = programacion_financiera.estado_de(datos)
         en = datos.get("en", "")
         en = int(en) if en.isdigit() and int(en) in estado else None
+        entidad, programadas = None, set()
         if tipo == "vigencia":
-            presentes, programadas = list(estado), set()
+            presentes = list(estado)
         else:
             if en is None:
                 return HttpResponseBadRequest("Falta la vigencia")
-            presentes = estado[en][tipo + "s"]
-            programadas = programacion_financiera.metas_programadas(proyecto, en) if tipo == "meta" else set()
+            bloque = estado[en]
+            if tipo == "entidad":
+                presentes = bloque["entidades"]
+            elif tipo == "fuente":
+                entidad = datos.get("entidad", "")
+                entidad = int(entidad) if entidad.isdigit() else None
+                if entidad is None or entidad == programacion_financiera.SIN_ENTIDAD or entidad not in bloque["entidades"]:
+                    return HttpResponseBadRequest("Falta la entidad aportante")
+                presentes = bloque["fuentes"].get(entidad, [])
+            else:
+                presentes = bloque["metas"]
+                programadas = programacion_financiera.metas_programadas(proyecto, en)
+        asignar = tipo == "entidad" and datos.get("asignar") == "1"
         texto = datos.get("q", "")
         opciones = programacion_financiera.opciones(tipo, texto, presentes, datos.get("pagina", 1), programadas)
-        contexto = {"proyecto": proyecto, "tipo": tipo, "texto": texto, "en": en or "", **opciones}
+        contexto = {"proyecto": proyecto, "tipo": tipo, "texto": texto, "en": en or "", "entidad": entidad or "",
+                    "nombre_entidad": EntidadAportante.objects.filter(pk=entidad).first() if entidad else None,
+                    "asignar": "1" if asignar else "", "accion": "asignar_entidad" if asignar else f"agregar_{tipo}",
+                    **opciones}
         plantilla = "siifweb/_programacion_opciones.html" if datos.get("solo") == "resultados" \
             else "siifweb/_programacion_elegir.html"
         return HttpResponse(render_to_string(plantilla, contexto, request=request))
@@ -2864,19 +2882,32 @@ class ProgramacionFisicaAdmin(ModelAdmin):
         return cifra(obj.valor)
 
 
+@admin.register(EntidadAportante)
+class EntidadAportanteAdmin(ModelAdmin):
+    """Quien pone los recursos de los proyectos. La programacion financiera va por entidad; la usa
+    tambien la app regalias."""
+    compressed_fields = True
+    list_display = ("nombre", "nit")
+    search_fields = ("nombre", "nit")
+    fields = ("nombre", "nit")
+
+
 @admin.register(ProgramacionFinanciera)
 class ProgramacionFinancieraAdmin(ModelAdmin):
     """Todos los valores programados. Se diligencian en la pantalla de cada proyecto; aqui se
     revisan. Al guardar o borrar, el proyecto recalcula su valor programado (senales del modelo)."""
     compressed_fields = True
     list_fullwidth = True
-    list_display = ("proyecto_bpin", "vigencia", "fuente", "meta", "valor_texto", "fecha_actualizacion")
-    list_filter = (("vigencia", ChoicesDropdownFilter), ("fuente", RelatedDropdownFilter))
+    list_display = ("proyecto_bpin", "vigencia", "entidad_aportante", "fuente", "meta", "valor_texto",
+                    "fecha_actualizacion")
+    list_filter = (("vigencia", ChoicesDropdownFilter), ("entidad_aportante", RelatedDropdownFilter),
+                   ("fuente", RelatedDropdownFilter))
     list_filter_submit = True
-    search_fields = ("proyecto__bpin", "proyecto__nombre", "meta__codigo", "fuente__codigo", "fuente__nombre")
-    list_select_related = ("proyecto", "fuente", "meta")
-    autocomplete_fields = ("proyecto", "fuente", "meta")
-    fields = ("proyecto", "vigencia", "fuente", "meta", "valor")
+    search_fields = ("proyecto__bpin", "proyecto__nombre", "meta__codigo", "fuente__codigo", "fuente__nombre",
+                     "entidad_aportante__nombre")
+    list_select_related = ("proyecto", "entidad_aportante", "fuente", "meta")
+    autocomplete_fields = ("proyecto", "entidad_aportante", "fuente", "meta")
+    fields = ("proyecto", "vigencia", "entidad_aportante", "fuente", "meta", "valor")
 
     @display(description="Proyecto", ordering="proyecto__bpin")
     def proyecto_bpin(self, obj):

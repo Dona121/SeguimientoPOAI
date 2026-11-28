@@ -7,12 +7,12 @@ Esc cierra.
 <div class="fondo" onclick="if (event.target === this) { document.getElementById('pf-elegir').innerHTML = ''; }">
   <div class="ventana" role="dialog" aria-label="Agregar {{ tipo }}">
     <div class="cab">
-      <b>{% if tipo == "meta" %}Agregar una meta a {{ en }}{% elif tipo == "vigencia" %}Agregar una vigencia{% else %}Agregar una fuente a {{ en }}{% endif %}</b>
+      <b>{% if tipo == "meta" %}Agregar una meta a {{ en }}{% elif tipo == "vigencia" %}Agregar una vigencia{% elif tipo == "entidad" and asignar %}Asignar la entidad aportante de lo programado en {{ en }}{% elif tipo == "entidad" %}Agregar una entidad aportante a {{ en }}{% else %}Agregar una fuente de {{ nombre_entidad }} a {{ en }}{% endif %}</b>
       <button type="button" class="boton gris" onclick="document.getElementById('pf-elegir').innerHTML = ''">Cerrar</button>
     </div>
     <input class="entrada buscar" name="q" type="search" autocomplete="off" autofocus
-           placeholder="{% if tipo == 'meta' %}Buscar por código de la meta, del indicador o por palabras{% elif tipo == 'vigencia' %}Buscar el año{% else %}Buscar por código o nombre de la fuente{% endif %}"
-           hx-get="{{ u_elegir }}?tipo={{ tipo }}&en={{ en }}&solo=resultados" hx-include="#pf-matriz"
+           placeholder="{% if tipo == 'meta' %}Buscar por código de la meta, del indicador o por palabras{% elif tipo == 'vigencia' %}Buscar el año{% elif tipo == 'entidad' %}Buscar por nombre o NIT de la entidad{% else %}Buscar por código o nombre de la fuente{% endif %}"
+           hx-get="{{ u_elegir }}?tipo={{ tipo }}&en={{ en }}&entidad={{ entidad }}&asignar={{ asignar }}&solo=resultados" hx-include="#pf-matriz"
            hx-trigger="input changed delay:250ms" hx-target="#pf-resultados" hx-sync="this:replace">
     <div class="lista" id="pf-resultados">{% include "siifweb/_programacion_opciones.html" %}</div>
   </div>
