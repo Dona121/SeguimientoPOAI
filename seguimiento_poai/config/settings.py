@@ -615,10 +615,6 @@ UNFOLD = {
                     {"title": "Fuentes SGR", "icon": "savings",
                      "link": reverse_lazy("admin:regalias_fuentesgr_changelist"),
                      "permission": _con_permiso("regalias.view_fuentesgr")},
-                    # Catalogo de SIIFWEB: la programacion financiera de las dos apps va por entidad
-                    {"title": "Entidades aportantes", "icon": "handshake",
-                     "link": reverse_lazy("admin:siifweb_entidadaportante_changelist"),
-                     "permission": _con_permiso("siifweb.view_entidadaportante")},
                     {"title": "Entidades ejecutoras", "icon": "domain",
                      "link": reverse_lazy("admin:regalias_entidadejecutora_changelist"),
                      "permission": _con_permiso("regalias.view_entidadejecutora")},
@@ -641,9 +637,12 @@ UNFOLD = {
                     {"title": "Dependencias responsables", "icon": "badge",
                      "link": reverse_lazy("admin:siifweb_dependenciaresponsable_changelist"),
                      "permission": _administra_los_datos},
+                    # Una sola entrada para las dos apps: la programacion financiera de SIIFWEB y
+                    # la de regalias van por entidad. La ve quien puede ver el catalogo (tambien
+                    # el rol Regalias, que agrega las que falten)
                     {"title": "Entidades aportantes", "icon": "handshake",
                      "link": reverse_lazy("admin:siifweb_entidadaportante_changelist"),
-                     "permission": _administra_los_datos},
+                     "permission": _con_permiso("siifweb.view_entidadaportante")},
                     {"title": "Cargas del reporte", "icon": "upload_file",
                      "link": reverse_lazy("admin:siifweb_cargareporte_changelist"),
                      "permission": _administra_los_datos},

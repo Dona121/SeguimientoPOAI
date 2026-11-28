@@ -852,9 +852,30 @@ contraste de marzo a noviembre (secciones 14 y 15).
     recalcula al abrir;
   - departamento sin CERRADO ni DESAPROBADO; descentralizadas y municipios, todos;
   - evaluadas con pycel, las formulas del archivo dan lo mismo que el sistema.
-- **Falta:** fase 8 (produccion).
+- **Produccion** (27/11 en la noche, a pedido del usuario y despues de su copia de Supabase):
+  - **Despliegue:** push de `regalias-base` a `main` por avance rapido. Railway aplico
+    `siifweb/0029` y `regalias/0001` a `0013` el 28/11 a las 03:06 UTC.
+  - **Datos:** se cargaron con `cargar_regalias` contra Supabase, desde los archivos locales:
+    primero la matriz de octubre (fecha 27/11/2026) y despues CG-proy, CG-cttos y CG-carga del
+    20/11.
+  - **Resultado,** igual que en la sqlite local:
+    - 226 proyectos: 106 del departamento, 16 descentralizadas y 104 de municipios;
+    - 289 contratos, 251 comentarios y el historial de las cuatro cargas.
+  - **Municipios fuera del catalogo:** 55 en produccion y 57 en local, porque produccion ya
+    tiene Barranquilla y San Andres.
+- **Entidades ejecutoras:** la importacion habia creado "MUNICIPIO DE SINCE" y "MUNICIPIO DE
+  SINCÉ".
+  - La carga ahora reconoce la entidad por el nombre normalizado.
+  - El comando `homologar_entidades_ejecutoras` las junto en local y en produccion: 4 proyectos
+    movidos, con historial. Quedan 50 entidades.
+- **Menu:** "Entidades aportantes" sale una sola vez, en Configuracion y parametrizacion, para
+  quien puede ver el catalogo (tambien el rol Regalias).
+- **Falta en la fase 8:**
+  - un ciclo de reportes en paralelo con el Streamlit;
+  - crear las entidades aportantes;
+  - asignar la entidad a los 2 valores de SIIFWEB que no la tienen.
 
-**Pruebas.** 737 en total (106 de `regalias`), todas pasan.
+**Pruebas.** 740 en total (109 de `regalias`), todas pasan.
 
 ## 29. Programacion financiera: vigencias independientes y entidad aportante (27 de noviembre)
 
@@ -867,7 +888,8 @@ Pedidos del usuario mientras se hacia la programacion de regalias, en la misma r
   - Una vigencia nueva trae las metas que la otra pestana tiene guardadas, de cualquier vigencia.
   - El aviso dice que metas tienen valor en una pestana y en la otra en ninguna vigencia.
 - **Entidad aportante** (migracion `0029`):
-  - catalogo `EntidadAportante` (nombre y NIT), en Configuracion y parametrizacion;
+  - catalogo `EntidadAportante` (nombre y NIT), en Configuracion y parametrizacion (la unica
+    entrada del menu, que ve tambien el rol Regalias);
   - la financiera es la combinacion proyecto, vigencia, entidad, fuente y meta;
   - en la pantalla, las fuentes de cada vigencia van agrupadas por entidad, con su total, y se
     agregan desde la entidad (+ Fuente);

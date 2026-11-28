@@ -13,30 +13,37 @@ repositorio, proyecto Django `seguimiento_poai`, app nueva `regalias`.
 Excel global de la otra app de Streamlit ("Seguimiento Regalias") quedan para después y se
 construirán sobre la tabla de proyectos de este plan.
 
-### Estado al 27 de noviembre de 2026 (noche) y cómo retomar
+### Estado al 28 de noviembre de 2026 y cómo retomar
 
 El trabajo se hizo desde una sesión abierta en el repo del Streamlit
 (`Estudio/python/Consolidacion Regalias`). Se sigue desde una sesión en este repo:
 
 1. Leer este bloque y `docs/CAMBIOS_2026-10.md` §28 (regalías) y §29 (lo que cambió en `siifweb`).
-2. Leer `respaldo_claude/memory/modulo-regalias.md` y `git status` en la rama `regalias-base`.
-3. El servidor local está apagado: se levanta con el último comando de abajo.
+2. Leer `respaldo_claude/memory/modulo-regalias.md`.
 
-- **Rama y commits:** todo está en `regalias-base`.
-  - **Con commit:** `0ca566b`, con las fases 1 a 5.
-  - **Sin commit:**
-    - las fases 6 y 7;
-    - los cambios de `siifweb` (§29 de CAMBIOS);
-    - esta documentación: el plan, CAMBIOS §28 y §29, ESTRUCTURA_BD §12 y el README.
-  - **No van en el commit:** `data/comprobante_pagos/` y `obsidian/`, que aparecen sin
-    seguimiento pero no son de este trabajo.
-- **Migraciones sin commit:** `regalias/0010` a `0013` y `siifweb/0029`. `regalias/0012`
-  depende de `siifweb/0029`. Solo están aplicadas en la sqlite local.
+- **En producción.** Todo está en `main`, que es `regalias-base` por avance rápido.
+  - Commits: `0ca566b` (fases 1 a 5), `a47307d` (`siifweb`, §29), `d9b55da` (fases 6 y 7),
+    `39b0b09` (documentación), `cc90510` (entidades ejecutoras sin repetir) y el del menú con
+    esta documentación.
+  - Railway aplicó `siifweb/0029` y `regalias/0001` a `0013` el 28/11 a las 03:06 UTC.
+- **Datos en producción** (27/11 en la noche, a pedido del usuario y después de su copia de
+  Supabase):
+  - se cargaron con `cargar_regalias` desde los archivos locales de `Regalias octubre/`: la
+    matriz de octubre y después CG-proy, CG-cttos y CG-carga del 20/11;
+  - quedan 226 proyectos (106 del departamento, 16 descentralizadas y 104 de municipios), 289
+    contratos y 251 comentarios, igual que en la sqlite local;
+  - las entidades ejecutoras repetidas por la tilde (SINCE y SINCÉ) se juntaron con
+    `homologar_entidades_ejecutoras`; quedan 50.
+- **Cómo se corrieron los comandos contra producción:** con un script de la sesión que toma la
+  base de `seguimiento_poai/.env` sin mostrarla. Antes de cargar, el script verificaba que la base
+  fuera PostgreSQL y que no quedaran migraciones sin aplicar. Las migraciones las aplicó Railway.
+  De aquí en adelante los reportes se suben desde el admin.
 - **Cambios en `siifweb`**, pedidos por el usuario el 27/11 (§29 de CAMBIOS):
-  - las vigencias de la programación financiera y la física ya no tienen que coincidir;
-  - la financiera va por entidad aportante: catálogo `EntidadAportante` y migración `0029`;
-  - los encabezados separan el BPIN del nombre con un guion;
-  - las casillas ya no se colorean por tener valor ni por haber cambiado, solo por error.
+  - la programación financiera y la física ya no exigen las mismas vigencias;
+  - la financiera va por entidad aportante (`EntidadAportante`, migración `0029`);
+  - el BPIN y el nombre van separados por un guion;
+  - las casillas solo se colorean cuando tienen error.
+  - "Entidades aportantes" sale una sola vez en el menú, en Configuración y parametrización.
 - **Fases:**
 
   | Fase | Estado |
@@ -44,26 +51,16 @@ El trabajo se hizo desde una sesión abierta en el repo del Streamlit
   | 1. Base | Hecha |
   | 2. Cálculos | Hecha |
   | 3. Comentarios | Hecha |
-  | 4. Importación de la matriz | Hecha |
-  | 5. Cargas de GESPROY | Hecha |
-  | 6. Programación | Hecha, sin commit (con la entidad aportante, migraciones 0012 y 0013) |
-  | 7. Descarga de la matriz | Hecha, sin commit |
-  | 8. Producción | Pendiente |
+  | 4. Importación de la matriz | Hecha (en producción, el 27/11) |
+  | 5. Cargas de GESPROY | Hecha (en producción, los reportes del 20/11) |
+  | 6. Programación | Hecha (con la entidad aportante, migraciones 0012 y 0013) |
+  | 7. Descarga de la matriz | Hecha |
+  | 8. Producción | En curso: desplegado y con datos; falta el ciclo en paralelo con el Streamlit |
 
-- **Ajustes del 27/11 en la noche**, además de las fases:
-  - las listas de proyectos abren sin CERRADO ni DESAPROBADO (§8);
-  - la pantalla de programación no lleva las etiquetas "en la física" ni "del producto";
-  - la clasificación de la fuente va en negrilla, sin fondo.
-- **Pruebas:** `manage.py test regalias` da 106; la suite completa, 737. Todas pasan.
-- **Datos en la sqlite local:**
-  - **Reportes y matrices:** los reportes de marzo a noviembre de 2026, más la matriz de junio
-    y la de octubre (§15). Quedan 226 proyectos, 289 contratos y el historial desde marzo.
-  - **Archivos de muestra:** en `Estudio/python/Consolidacion Regalias/Regalias octubre/` y
-    `Contexto/`.
-  - **Usuario de prueba:** `prueba_regalias`, con el rol Regalías. Solo existe en la sqlite
-    local.
-  - **Programación de prueba:** la que dejó el usuario en las dos apps. La de SIIFWEB quedó sin
-    entidad aportante después de la migración `0029`, como quedarán los 2 valores de producción.
+- **Pruebas:** `manage.py test regalias` da 109; la suite completa, 740. Todas pasan.
+- **Datos en la sqlite local:** los mismos proyectos y contratos que producción, más el historial
+  desde marzo (§15), la programación de prueba que dejó el usuario y el usuario `prueba_regalias`
+  (rol Regalías), que solo existe en la sqlite local. El servidor local está apagado.
 - **Comandos** (desde `seguimiento_poai`, siempre con `DATABASE_URL` apuntando a la sqlite
   local; ver `respaldo_claude/memory/pruebas-en-sqlite-local.md`):
 
@@ -71,31 +68,22 @@ El trabajo se hizo desde una sesión abierta en el repo del Streamlit
   export DATABASE_URL="sqlite:///C:/Users/Donal/Documents/MEGA/Paginas/Siifweb/seguimiento_poai/db.sqlite3"
   ../.venv/Scripts/python.exe manage.py test regalias
   ../.venv/Scripts/python.exe manage.py cargar_regalias proyectos "ruta/CG-proy.xlsx" --fecha 20/11/2026
+  ../.venv/Scripts/python.exe manage.py homologar_entidades_ejecutoras    # sin --aplicar solo muestra
   DEBUG=True ../.venv/Scripts/python.exe manage.py runserver   # para revisar el admin
   ```
 
-- **Decisiones pendientes del usuario:**
-  1. **Dónde hacer el commit.**
-     - Una opción es hacerlo todo en `regalias-base`.
-     - La otra es pasar los cambios de `siifweb` (§29) a una rama aparte desde `main`, para
-       desplegarlos antes que regalías. En ese caso, la rama de `siifweb` lleva la migración
-       `0029`, y `regalias-base` se actualiza después con `main`.
-  2. **Antes de desplegar la entidad aportante:**
-     - El catálogo empieza vacío en producción, y el equipo tiene que crear las entidades.
-     - Los 2 valores que hay hoy sin entidad (proyecto pk 815, vigencia 2027) se asignan en la
-       pantalla.
-     - Como en cada despliegue con migraciones, antes va la copia de Supabase.
-  3. **La búsqueda en las listas de proyectos.** Hoy respeta el filtro de estado: un BPIN
-     cerrado solo se encuentra con "Todos". El usuario no ha dicho si la búsqueda debe
-     encontrarlos siempre.
-  4. **Preguntas abiertas de §12:**
-     - (8) municipios de fuera de Sucre;
-     - (9) EN PROCESO DE CONTRATACIÓN en los cálculos;
-     - (10) cómo se hace en producción la importación única de la matriz (§6).
-  5. **Corregir o no en el Streamlit** el error del contrato principal (§14), mientras corran
-     en paralelo.
-- **Siguiente paso sugerido:** resolver la 1, hacer el commit y empezar la fase 8 por la
-  pregunta 10.
+- **Pendiente:**
+  1. Crear las entidades aportantes en producción, porque el catálogo está vacío, y asignar la
+     entidad a los 2 valores de SIIFWEB que no la tienen (proyecto pk 815, vigencia 2027).
+  2. Un ciclo de reportes en paralelo con el Streamlit, y comparar las dos matrices (§10, fase 8).
+  3. Decidir si la búsqueda en las listas de proyectos debe encontrar también los cerrados (hoy
+     respeta el filtro de estado).
+  4. Preguntas 8 y 9 de §12: municipios de fuera de Sucre y EN PROCESO DE CONTRATACIÓN en los
+     cálculos.
+  5. Si se corrige en el Streamlit el error del contrato principal (§14), mientras corran en
+     paralelo.
+  6. Revisar el nombre "FundaciónBotánica yZoológica deBarranquilla", que viene así, sin
+     espacios, de la matriz.
 
 ---
 
@@ -806,7 +794,7 @@ Cada fase en una rama desde `main`, con sus pruebas, y revisada antes de fusiona
 | 5. Cargas de GESPROY | Tipos `proyectos`, `contratos`, `cargue`; regla general; contrato principal; mensaje; Volver a procesar | **Hecha el 27/11** (§14), con el comando `cargar_regalias` para cargar archivos locales. El principal difiere del de la consolidación en 23 BPIN por un error del Streamlit |
 | 6. Programación | `FuenteSGR`, programación financiera y física, pantalla, valores calculados | Sumas por clasificación, concatenaciones y avisos de descuadre. **Hecha el 27/11** (migraciones 0010 y 0011, `regalias/programacion.py`, `regalias/tests/test_programacion.py`). Los valores del proyecto se recalculan al guardar la pantalla, en el mismo `servicios.guardar_proyecto`, y no con señales: así el historial queda con el usuario y no con un registro por casilla. Las listas de programación del admin son de consulta |
 | 7. Descarga de la matriz | Acción Descargar matriz, con fórmulas | Mismas hojas, columnas y formato que el Excel de hoy. Al abrirlo en Excel, las fórmulas dan los mismos valores que el sistema. **Hecha el 27/11** (`regalias/excel.py`, `regalias/tests/test_excel.py`). Hojas, tablas, encabezados, secciones, colores, columnas ocultas y columnas de fórmula iguales a la matriz de octubre. Las fórmulas del archivo se evaluaron con pycel y dan lo mismo que el sistema: 502 con los datos locales y 564 con casos de las cuatro correcciones, sin diferencias. pycel no corre en Python 3.14 y por eso esa evaluación no está en la suite. La prueba de estructura contra la matriz de octubre se salta si el archivo no está (`REGALIAS_MATRIZ_OCTUBRE`) |
-| 8. Producción | Migraciones por Railway; importación única de la matriz con el comando (§6, por definir cómo); después, los reportes más recientes desde el admin; un ciclo de reportes en paralelo con el Streamlit | Las dos matrices coinciden proyecto por proyecto, salvo las diferencias de §7.6. Después se apaga el Streamlit y se quita el enlace del menú |
+| 8. Producción | Migraciones por Railway; importación única de la matriz con el comando (§6; hecha el 27/11 con los reportes del 20/11); después, los reportes más recientes desde el admin; un ciclo de reportes en paralelo con el Streamlit | Las dos matrices coinciden proyecto por proyecto, salvo las diferencias de §7.6. Después se apaga el Streamlit y se quita el enlace del menú |
 
 ---
 
@@ -886,8 +874,9 @@ Cada fase en una rama desde `main`, con sus pruebas, y revisada antes de fusiona
    Las fórmulas solo miran SIN CONTRATAR, CONTRATADO SIN ACTA DE INICIO y CONTRATADO EN
    EJECUCIÓN, así que hoy no tiene días ni calificación. ¿Cuenta como SIN CONTRATAR para los
    días (hitos 0 y 2)?
-10. **Importación de la matriz en producción.** Se hace una sola vez con el comando. Falta
-    decidir quién lo corre contra Supabase, o si va como una migración de datos (§6).
+10. **Importación de la matriz en producción.** Resuelta el 27/11. A pedido del usuario,
+    Claude corrió el comando contra Supabase después de la copia de seguridad: la matriz de
+    octubre y después los reportes del 20/11 (CAMBIOS §28).
 
 ---
 

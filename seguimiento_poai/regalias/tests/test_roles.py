@@ -107,14 +107,14 @@ class LoQueAbre(TestCase):
         self.assertEqual(self.client.get(url).status_code, 403)
         self.assertTrue(ProyectoRegalias.objects.filter(pk=self.del_departamento.pk).exists())
 
-    def test_el_menu_solo_trae_la_seccion_de_regalias(self):
+    def test_el_menu_trae_la_seccion_de_regalias_y_las_entidades_aportantes(self):
         peticion = RequestFactory().get("/admin/")
         peticion.user = self.usuario
         enlaces = [str(item["link"]) for grupo in admin.site.get_sidebar_list(peticion)
                    for item in grupo["items"] if item["has_permission"]]
         esperados = [reverse(f"admin:regalias_{modelo}_changelist") for modelo in LISTADOS]
-        # el catalogo de entidades aportantes es de SIIFWEB, pero va en la seccion de regalias
-        esperados.insert(LISTADOS.index("fuentesgr") + 1, reverse("admin:siifweb_entidadaportante_changelist"))
+        # y, en Configuracion y parametrizacion, el catalogo de entidades aportantes de SIIFWEB
+        esperados.append(reverse("admin:siifweb_entidadaportante_changelist"))
         self.assertEqual(enlaces, esperados)
 
 

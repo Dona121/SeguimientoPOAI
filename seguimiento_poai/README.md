@@ -764,7 +764,8 @@ misma URL (`?panel=financiera|fisica`), como la ficha de ejecucion. Logica en
   - La llave es proyecto, vigencia, entidad aportante, fuente y meta: un proyecto puede tener
     recursos de varias entidades.
   - Las entidades son un catalogo del equipo (Configuracion y parametrizacion -> Entidades
-    aportantes); la ventana de agregar trae el boton "Agregar entidad aportante".
+    aportantes, que ve tambien el rol Regalias); la ventana de agregar trae el enlace "Agregar
+    entidad aportante".
   - Lo programado antes de que existiera la entidad sale como "Sin entidad aportante", con el
     boton "Asignar entidad". Mientras tenga valor, la pestana no se guarda.
 - **Fisica**: un bloque por vigencia con sus metas y un valor por meta, con la unidad de
@@ -848,6 +849,11 @@ en `docs/PLAN_REGALIAS_CONSOLIDACION.md`. Desde el 27/11/2026 esta en la rama `r
     `contratos`, `cargue`). Procesa el archivo sin subirlo al almacenamiento.
   - Antes de correrlo hay que exportar `DATABASE_URL` con la base que se quiere cargar (ver
     Pruebas en la sqlite local).
+  - En produccion ya se hizo (27/11/2026): la matriz de octubre y los reportes del 20/11. De ahi
+    en adelante, los reportes se suben desde el admin.
+- **Entidades ejecutoras:** la carga las reconoce sin tildes ni mayusculas. Si aparecen repetidas,
+  `manage.py homologar_entidades_ejecutoras` muestra cuales juntaria y `--aplicar` las junta en la
+  variante con tilde, con historial.
   - En local el almacenamiento por defecto es el bucket de produccion: se carga con el
     comando, no subiendo el archivo en el admin.
 - **Historial:** cada cambio de un proyecto (carga, importacion o edicion) queda en Historial de
