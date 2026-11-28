@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'siifweb',
     'cuipo',
+    'regalias',
 ]
 
 MIDDLEWARE = [
@@ -584,6 +585,45 @@ UNFOLD = {
                     {"title": "Terceros", "icon": "groups",
                      "link": reverse_lazy("admin:cuipo_tercerocuipo_changelist"),
                      "permission": _con_permiso("cuipo.view_tercerocuipo")},
+                ],
+            },
+            {
+                # La base de proyectos de regalias (app regalias): una entrada por hoja de la
+                # matriz de seguimiento, el historial de cambios y sus catalogos
+                "title": "Regalías",
+                "collapsible": True,
+                "separator": True,
+                "items": [
+                    {"title": "Departamento", "icon": "account_balance",
+                     "link": reverse_lazy("admin:regalias_proyectodepartamento_changelist"),
+                     "permission": _con_permiso("regalias.view_proyectodepartamento")},
+                    {"title": "Descentralizadas", "icon": "corporate_fare",
+                     "link": reverse_lazy("admin:regalias_proyectodescentralizada_changelist"),
+                     "permission": _con_permiso("regalias.view_proyectodescentralizada")},
+                    {"title": "Municipios", "icon": "location_city",
+                     "link": reverse_lazy("admin:regalias_proyectomunicipio_changelist"),
+                     "permission": _con_permiso("regalias.view_proyectomunicipio")},
+                    {"title": "Contratos", "icon": "contract",
+                     "link": reverse_lazy("admin:regalias_contratoregalias_changelist"),
+                     "permission": _con_permiso("regalias.view_contratoregalias")},
+                    {"title": "Cargas", "icon": "upload_file",
+                     "link": reverse_lazy("admin:regalias_cargaregalias_changelist"),
+                     "permission": _con_permiso("regalias.view_cargaregalias")},
+                    {"title": "Historial de cambios", "icon": "history",
+                     "link": reverse_lazy("admin:regalias_cambioproyectoregalias_changelist"),
+                     "permission": _con_permiso("regalias.view_cambioproyectoregalias")},
+                    {"title": "Entidades ejecutoras", "icon": "domain",
+                     "link": reverse_lazy("admin:regalias_entidadejecutora_changelist"),
+                     "permission": _con_permiso("regalias.view_entidadejecutora")},
+                    {"title": "Responsables del cargue", "icon": "badge",
+                     "link": reverse_lazy("admin:regalias_responsablegesproy_changelist"),
+                     "permission": _con_permiso("regalias.view_responsablegesproy")},
+                    {"title": "Estados del proyecto", "icon": "flag",
+                     "link": reverse_lazy("admin:regalias_estadoproyectoregalias_changelist"),
+                     "permission": _con_permiso("regalias.view_estadoproyectoregalias")},
+                    {"title": "Clasificaciones", "icon": "category",
+                     "link": reverse_lazy("admin:regalias_clasificacionregalias_changelist"),
+                     "permission": _con_permiso("regalias.view_clasificacionregalias")},
                 ],
             },
             {

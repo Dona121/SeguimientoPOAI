@@ -1,0 +1,104 @@
+{% extends "admin/base_site.html" %}
+{% comment %}
+Comentarios de un proyecto de regalias: agregar arriba y la lista del mas reciente al mas antiguo,
+con editar y borrar para su autor durante 5 dias. Copia adaptada de siifweb/observaciones_proyecto.html.
+Vista en ProyectoRegaliasAdmin.comentarios.
+{% endcomment %}
+{% load admin_urls %}
+
+{% block title %}Comentarios {{ proyecto.bpin }} | POAI{% endblock %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap text-sm">
+      <li><a href="{% url 'admin:index' %}" class="font-medium text-primary-600">Inicio</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url opts|admin_urlname:'changelist' %}" class="font-medium text-primary-600">{{ opts.verbose_name_plural|capfirst }}</a></li>
+      <li class="mx-2">/</li>
+      <li><a href="{% url opts|admin_urlname:'change' proyecto.pk %}" class="font-medium text-primary-600">{{ proyecto.bpin }}</a></li>
+      <li class="mx-2">/</li>
+      <li>Comentarios</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .co { display:flex; flex-direction:column; gap:1rem; max-width:56rem; }
+  .co .caja { background:#fff; border:1px solid var(--color-base-200); border-radius:6px; padding:1rem 1.25rem; }
+  .dark .co .caja { background:var(--color-base-900); border-color:var(--color-base-800); }
+  .co h2 { font-size:1.05rem; font-weight:600; }
+  .co .dato { font-size:.8rem; color:var(--color-base-500); }
+  .co textarea { width:100%; min-height:5.5rem; border:1px solid var(--color-base-200); border-radius:6px; padding:.55rem .7rem;
+                 font-size:.875rem; line-height:1.5; background:#fff; color:var(--color-base-800); resize:vertical; }
+  .dark .co textarea { background:var(--color-base-900); border-color:var(--color-base-700); color:var(--color-base-100); }
+  .co textarea:focus { outline:2px solid var(--color-primary-600); outline-offset:-1px; border-color:transparent; }
+  .co .acciones { display:flex; gap:.5rem; justify-content:flex-end; margin-top:.6rem; align-items:center; }
+  .co .boton { display:inline-flex; align-items:center; gap:.3rem; background:var(--color-primary-600); color:#fff;
+               border-radius:6px; padding:.4rem .85rem; font-size:.85rem; font-weight:500; cursor:pointer; }
+  .co .boton:hover { background:var(--color-primary-700); }
+  .co .boton.gris { background:var(--color-base-100); color:var(--color-base-700); border:1px solid var(--color-base-200); }
+  .dark .co .boton.gris { background:var(--color-base-800); color:var(--color-base-200); border-color:var(--color-base-700); }
+  .co .boton.rojo { background:transparent; color:#b42318; border:1px solid #f3c1bb; }
+  .co .boton.rojo:hover { background:#fdecea; }
+  .co .nota { white-space:normal; font-size:.9rem; line-height:1.55; margin:.4rem 0 0; overflow-wrap:anywhere; }
+  .co .cabeza { display:flex; justify-content:space-between; gap:1rem; align-items:baseline; flex-wrap:wrap; }
+  .co details > summary { list-style:none; cursor:pointer; }
+  .co details > summary::-webkit-details-marker { display:none; }
+  .co details[open] .ver { display:none; }
+  .co .vacio { font-size:.875rem; color:var(--color-base-500); }
+</style>
+
+<div class="co">
+  <section class="caja">
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem 2rem;align-items:baseline">
+      <h2>{{ proyecto.bpin }} · {{ proyecto.nombre|truncatechars:120 }}</h2>
+      <span class="dato">{{ comentarios|length }} comentario{{ comentarios|length|pluralize }}</span>
+      <a href="{% url opts|admin_urlname:'change' proyecto.pk %}" class="border font-medium px-3 py-2 rounded-default text-sm
+         text-base-700 dark:text-base-300 dark:border-base-700" style="margin-left:auto">Volver al proyecto</a>
+    </div>
+    {% if puede.add %}
+    <form method="post" style="margin-top:.8rem">{% csrf_token %}
+      <input type="hidden" name="accion" value="agregar">
+      <label for="co-nuevo" class="dato">Nuevo comentario</label>
+      <textarea id="co-nuevo" name="texto" required></textarea>
+      <div class="acciones"><button class="boton" type="submit"><span class="material-symbols-outlined" style="font-size:18px">add</span>Agregar</button></div>
+    </form>
+    {% endif %}
+  </section>
+
+  {% for c in comentarios %}
+  <article class="caja">
+    <div class="cabeza">
+      <span class="dato">{% if c.usuario %}<b>{{ c.usuario.get_full_name|default:c.usuario.get_username }}</b> · {% else %}<b>Importado de la matriz</b> · {% endif %}{{ c.fecha_creacion|date:"d/m/Y H:i" }}{% if c.fecha_actualizacion|date:"YmdHi" != c.fecha_creacion|date:"YmdHi" %} · editado el {{ c.fecha_actualizacion|date:"d/m/Y H:i" }}{% endif %}
+        {% if c.editable and c.mio %}{% if puede.change or puede.delete %} · se puede modificar hasta el {{ c.editable_hasta|date:"d/m/Y H:i" }}{% endif %}{% endif %}</span>
+      {% if puede.delete and c.editable and c.mio %}
+      <form method="post" onsubmit="return confirm('¿Borrar este comentario?');">{% csrf_token %}
+        <input type="hidden" name="accion" value="borrar"><input type="hidden" name="id" value="{{ c.pk }}">
+        <button class="boton rojo" type="submit">Borrar</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if puede.change and c.editable and c.mio %}
+    <details>
+      <summary><p class="nota ver">{{ c.texto|linebreaksbr }}</p><span class="dato ver">Clic para editar</span></summary>
+      <form method="post" style="margin-top:.4rem">{% csrf_token %}
+        <input type="hidden" name="accion" value="editar"><input type="hidden" name="id" value="{{ c.pk }}">
+        <textarea name="texto" required aria-label="Editar el comentario">{{ c.texto }}</textarea>
+        <div class="acciones">
+          <button class="boton gris" type="button" onclick="this.closest('details').open = false">Cancelar</button>
+          <button class="boton" type="submit">Guardar</button>
+        </div>
+      </form>
+    </details>
+    {% else %}
+    <p class="nota">{{ c.texto|linebreaksbr }}</p>
+    {% endif %}
+  </article>
+  {% empty %}
+  <p class="vacio">Sin comentarios.</p>
+  {% endfor %}
+</div>
+{% endblock %}

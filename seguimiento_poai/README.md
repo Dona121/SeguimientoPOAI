@@ -812,6 +812,50 @@ tramite (soporte si/no), contratos de SIIFWEB, SECOP II y observaciones. Corre e
 falla. Antes de subirla: borrar la vista en Supabase, subir y volver a crearla con el script
 actualizado.
 
+## Regalias (app `regalias`)
+
+La base de proyectos de regalias, que reemplaza la "Matriz de Seguimiento y Evaluacion" del
+aplicativo de Streamlit de consolidacion. El diseno, las decisiones y el avance por fases estan
+en `docs/PLAN_REGALIAS_CONSOLIDACION.md`. Desde el 27/11/2026 esta en la rama `regalias-base`.
+
+- **Una fila por BPIN** (`ProyectoRegalias`) con su clasificacion: Departamento,
+  Descentralizada o Municipio. Las tres hojas de la matriz son tres entradas del menu, que son
+  modelos proxy sobre la misma tabla.
+- **Las cargas de GESPROY** se suben en Regalias -> Cargas: CG-proy, CG-cttos y CG-carga, en
+  ese orden.
+  - Se actualizan solo los campos de los BPIN que vienen, y solo con valores llenos: lo vacio
+    no borra.
+  - CG-proy crea los BPIN nuevos.
+  - CG-cttos reemplaza los contratos de cada BPIN que viene y elige el contrato principal.
+  - CG-carga actualiza avances y fecha de aprobacion.
+- **La matriz no se carga desde el sistema.** Se importa una sola vez, antes de los reportes,
+  con el comando:
+
+  ```bash
+  uv run --directory seguimiento_poai python manage.py cargar_regalias matriz "ruta/Matriz.xlsx"
+  ```
+
+  - Con el mismo comando se cargan los reportes desde un archivo local (`proyectos`,
+    `contratos`, `cargue`). Procesa el archivo sin subirlo al almacenamiento.
+  - Antes de correrlo hay que exportar `DATABASE_URL` con la base que se quiere cargar (ver
+    Pruebas en la sqlite local).
+  - En local el almacenamiento por defecto es el bucket de produccion: se carga con el
+    comando, no subiendo el archivo en el admin.
+- **Historial:** cada cambio de un proyecto (carga, importacion o edicion) queda en Historial de
+  cambios con el valor anterior, el nuevo, el usuario y la carga.
+- **Comentarios:** el boton "Comentarios" del formulario del proyecto abre su pantalla. Tiene las
+  mismas reglas que las observaciones de SIIFWEB: solo el autor modifica o borra, durante 5 dias.
+  Los que dejo la importacion de la matriz no tienen autor.
+- **Edicion:** todo lo que no se calcula se edita en las tres clasificaciones.
+- **Calculados:** los dias y las formulas de la matriz son de solo lectura. Los pone al dia
+  `regalias/calculos.py` cada vez que se guarda un proyecto: en el formulario, en las cargas y en
+  las acciones Recalcular y Asignar fecha de corte de las listas.
+  - Siguen las formulas de Excel del Streamlit, con cuatro correcciones acordadas (plan, §7.6).
+  - Sin estado no se calcula nada.
+- **Sin cambios en las otras apps:** no modifica `siifweb` ni `cuipo`, solo usa sus catalogos
+  (sector MGA, dependencia, municipio y los productos e indicadores del catalogo PIIP). Fuera de
+  la app solo toca `config/settings.py` (`INSTALLED_APPS` y la seccion Regalias del menu).
+
 ## Roles y permisos
 
 Dos grupos que crea la migracion `0009`, para no repartir permisos a mano:
@@ -853,6 +897,17 @@ Los modelos de noviembre (programacion financiera y fisica, observaciones del pr
 medidas de tiempo, recursos del CUIPO) no estan en los roles de la migracion `0009`: se
 asignan en Usuarios y roles a quien corresponda.
 
+El rol **Regalias** lo crean las migraciones `regalias/0003`, `0006` y `0009`.
+- **Lo que hace:** ve, agrega y edita los proyectos de las tres hojas, los contratos, las
+  cargas, las entidades ejecutoras y los responsables del cargue.
+- **Lo que solo ve:** el historial, los estados y las clasificaciones.
+- **De SIIFWEB:** solo ve sector MGA, dependencia y municipio, y ve y agrega productos e
+  indicadores del catalogo PIIP, porque los pide el formulario.
+- **No borra**, salvo sus propios comentarios durante 5 dias. En el menu solo ve la seccion
+  Regalias.
+
+Se prueba en `regalias/tests/test_roles.py`.
+
 ## Estructura
 
 - `siifweb/models.py` — los modelos (cabecera + lineas, catalogos, cierre)
@@ -874,6 +929,14 @@ asignan en Usuarios y roles a quien corresponda.
   `0012`, la `0014` y la `0017`, el Access y el catalogo MGA de origen
 - `siifweb/migrations/0009_roles_seguimiento_y_consulta.py` — los dos roles del equipo
 - `siifweb/tests/` — la bateria automatica (`manage.py test siifweb`)
+- `regalias/` — la base de proyectos de regalias. Tiene:
+  - `models.py`;
+  - `lectura.py` (los reportes de GESPROY y la matriz);
+  - `cargas.py` (importacion y cargas);
+  - `calculos.py` (dias y formulas);
+  - `servicios.py` (guardar con historial);
+  - el comando `cargar_regalias`;
+  - `tests/`.
 - `prueba_admin.py` — ejerce el flujo del admin (subir + procesar) sin navegador
 - `prueba_admin_unfold.py` — verifica que las 18 paginas cargan y que los inlines traen datos
 - `prueba_secop.py` — carga el consolidado de SECOP II real en la sqlite local
@@ -946,6 +1009,21 @@ datos cada vez que se crea la base de pruebas, que asi trae el catalogo real.
 
 Las cifras del archivo real (`data/secop/ReporteSIIFWEB_20260814.xlsx`) se comprueban solo
 si el archivo esta a mano; en otra maquina esas pruebas se saltan solas.
+
+Las de regalias corren con `manage.py test regalias`: 73 pruebas en cinco modulos.
+- `test_roles.py`: el rol y el menu.
+- `test_historial.py`: el formulario y el historial.
+- `test_cargas.py`: lectura de los reportes, importacion de la matriz, las tres cargas, el
+  admin de cargas y el comando.
+- `test_calculos.py`: cada formula y los dias, el recalculo al guardar, las acciones de la lista
+  y la paridad con los valores que Excel dejo en la matriz real de junio.
+- `test_comentarios.py`: autor, edicion y borrado de los propios, el limite de 5 dias y los
+  importados.
+
+Arman en memoria los libros con la forma de los reales, asi que no dependen de los archivos
+de GESPROY. La de paridad es la excepcion: lee la matriz de junio desde
+`Estudio/python/Consolidacion Regalias/Contexto/` (o `REGALIAS_MATRIZ_JUNIO`) y se salta si no
+esta. Con ellas, la suite completa (`manage.py test`) da 697 pruebas.
 
 Las pruebas se verificaron por mutacion: se rompio el codigo a proposito en veinte puntos
 (la subconsulta que evita multiplicar filas, la deduplicacion, la validacion de columnas,

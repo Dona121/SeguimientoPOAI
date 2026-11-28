@@ -452,3 +452,41 @@ App `siifweb`. Lo diligencia el equipo desde el detalle del proyecto; no viene d
   las dos.
 - `ObservacionProyectoSiifweb` es distinta de `ObservacionProyecto`, que cuelga de
   `ProgramacionProyectos` (lo que vino del Access).
+
+
+## 12. Regalías: base de proyectos (noviembre de 2026)
+
+App `regalias`, en la rama `regalias-base`, todavía sin fusionar. Reemplaza la matriz de
+seguimiento que arma el Streamlit de consolidación. Diseño completo en
+`docs/PLAN_REGALIAS_CONSOLIDACION.md`. Usa catálogos de `siifweb` sin modificarlos.
+
+| modelo | llave natural | relaciones |
+|---|---|---|
+| `ClasificacionRegalias` | `codigo` (departamento, descentralizada, municipio) | — (los crea la migración 0002) |
+| `EstadoProyectoRegalias` | `codigo` | `nombre`, `orden`. Los 8 estados de GESPROY, creados por las migraciones 0002 y 0005 |
+| `EntidadEjecutora` | `nombre` | `nit`. Ejecutores de los proyectos de municipios |
+| `ResponsableGesproy` | `nombre` | Quien carga el proyecto en GESPROY |
+| `ProyectoRegalias` | `bpin` (CharField 25) | → `ClasificacionRegalias`, → `EstadoProyectoRegalias` (nulo en la base, obligatorio en el formulario), → `siifweb.SectorMGA`, → `siifweb.DependenciaResponsable`, → `EntidadEjecutora` (todas PROTECT); ↔ `siifweb.Municipio`, ↔ `ResponsableGesproy` |
+| `ProyectoDepartamento`, `ProyectoDescentralizada`, `ProyectoMunicipio` | — | Proxies de `ProyectoRegalias`: una entrada del admin y sus permisos por hoja de la matriz |
+| `ContratoRegalias` | — (sin llave: se reemplazan por BPIN en cada carga de CG-cttos) | → `ProyectoRegalias` (CASCADE); `es_principal` |
+| `CargaRegalias` | `hash` por `tipo` | `tipo` (matriz, proyectos, contratos, cargue), archivo (vacío si se cargó con el comando), `usuario`, estado y mensaje |
+| `CambioProyectoRegalias` | — | → `ProyectoRegalias` (CASCADE), → `usuario` y → `CargaRegalias` (SET_NULL); `campo`, `valor_anterior`, `valor_nuevo`, `origen` |
+| `ComentarioProyectoRegalias` | — | → `ProyectoRegalias` (CASCADE), → `usuario` (SET_NULL). Solo su autor lo edita, durante 5 días |
+
+- **`ProyectoRegalias` tiene tres grupos de campos:**
+  - **Los que traen los reportes:** nombre, sector, estado y pagos (CG-proy); estado, tipo y
+    fechas del contrato principal (CG-cttos); avances y fecha de aprobación (CG-carga).
+  - **Los manuales:** entidad, alcance, CPI, SPI, horizonte, fecha de corte, información
+    solicitada y recibida, externalidades, calificaciones, municipios y responsables.
+  - **Los calculados** (`editable=False`): días, desempeños, columnas de apoyo, brecha,
+    calificación de ejecución y `ejecucion_revisar` (el "Revisar" de Excel). En el departamento
+    también la calificación de información a tiempo. Los escribe `regalias/calculos.py` antes de
+    cada guardado. Las fuentes, los valores y el indicador MGA saldrán de la programación (fase
+    6, todavía sin modelos).
+- **Decimales:**
+  - avances, índice de eficiencia y calificaciones: `Decimal(6,3)`;
+  - CPI y SPI: `Decimal(5,3)`;
+  - pesos: `Decimal(20,5)`;
+  - plazo del contrato: `Decimal(8,2)`.
+- **Historial:** todo lo que guarda un proyecto pasa por `regalias/servicios.py`, que compara
+  los valores como texto y deja una fila de `CambioProyectoRegalias` por campo que cambió.

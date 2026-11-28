@@ -767,3 +767,59 @@ Rama `cuipo-fase7-pruebas`, sobre `cuipo-fase6-plano`.
 
 **Pruebas.** 622, todas pasan.
 
+---
+
+## 28. Regalias: base de proyectos y cargas de GESPROY (27 de noviembre)
+
+App nueva `regalias`, en la rama `regalias-base`, **sin commit todavia**. Reemplaza la matriz de
+seguimiento que arma el Streamlit "Consolidacion de regalias"
+(`Estudio/python/Consolidacion Regalias`). Diseno, decisiones y fases en
+`docs/PLAN_REGALIAS_CONSOLIDACION.md`, que tiene ademas el resumen de la carga de octubre y del
+contraste de marzo a noviembre (secciones 14 y 15).
+
+- **No toca `siifweb` ni `cuipo`.** Fuera de la app solo cambia `config/settings.py`:
+  `regalias` en `INSTALLED_APPS` y la seccion Regalias del menu. La seccion va antes de
+  "Configuracion y parametrizacion", porque `test_plan_desarrollo` exige que "Plan de Desarrollo"
+  siga a "Seguimiento".
+- **Modelos** (migraciones `regalias/0001` a `0008`):
+  - `ProyectoRegalias`, una fila por BPIN, con proxies para Departamento, Descentralizadas y
+    Municipios;
+  - catalogos (clasificaciones, 8 estados de GESPROY, entidades ejecutoras, responsables del
+    cargue);
+  - `ContratoRegalias`, `CargaRegalias`, `CambioProyectoRegalias` (historial) y
+    `ComentarioProyectoRegalias`.
+  - Detalle en `ESTRUCTURA_BD.md`, seccion 12.
+- **Rol Regalias** (`0003` y `0006`): ve, agrega y edita lo de regalias, sin borrar. De SIIFWEB
+  solo los catalogos que pide el formulario, y agrega productos e indicadores PIIP.
+- **Cargas:**
+  - en el admin se suben CG-proy, CG-cttos y CG-carga;
+  - la matriz se importa una sola vez con `manage.py cargar_regalias matriz`, nunca desde el
+    sistema (decision del 27/11);
+  - el mismo comando carga los reportes desde un archivo local sin subirlo al bucket.
+- **Regla:** se actualizan los campos de los BPIN que vienen, y solo con valores llenos. Los
+  contratos de cada BPIN que viene se reemplazan por los del reporte: con los reportes de marzo
+  a noviembre, una llave BPIN + numero + fecha dejaba 12 contratos sobrantes.
+- **Hallazgo en el Streamlit:** elige mal el contrato principal porque ordena VALOR TOTAL FUENTES
+  SGR como texto. Pasa en 23 de 92 BPIN del CG-cttos de octubre. El sistema nuevo lo elige por
+  valor.
+- **Datos en la sqlite local:** reportes de marzo a noviembre cargados en orden, la matriz de
+  junio como importacion inicial y al final la de octubre. Quedan 226 proyectos, 289 contratos y
+  el historial desde marzo. Hay un usuario de prueba con el rol Regalias, `prueba_regalias`, que
+  solo existe en la sqlite local.
+- **Fase 2, calculos** (`regalias/calculos.py`):
+  - los tres dias y las formulas de la matriz, con las cuatro correcciones del plan (§7.6);
+  - se recalculan cada vez que se guarda un proyecto (formulario, cargas, importacion);
+  - las listas tienen dos acciones nuevas: Recalcular y Asignar fecha de corte, esta ultima
+    con una pagina intermedia que pide la fecha;
+  - paridad con la matriz real de junio: en los 74 proyectos del departamento y de
+    descentralizadas solo difieren las correcciones 3 y 4;
+  - los proyectos de la sqlite local quedaron recalculados.
+- **Fase 3, comentarios:**
+  - boton "Comentarios" en el formulario de cada proyecto, con una pantalla copiada y adaptada
+    de la de observaciones de SIIFWEB: solo el autor modifica o borra, durante 5 dias;
+  - el rol suma los permisos de comentarios (migracion 0009) y es lo unico que puede borrar;
+  - la lista general de comentarios es de consulta y no borra.
+- **Falta:** fase 6 (programacion), 7 (descarga de la matriz con formulas) y 8 (produccion).
+
+**Pruebas.** 697 en total (73 de `regalias`), todas pasan.
+
