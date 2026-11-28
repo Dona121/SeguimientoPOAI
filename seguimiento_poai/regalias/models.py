@@ -14,7 +14,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from siifweb.models import DependenciaResponsable, Fechas, Municipio, SectorMGA
+from siifweb.models import (DependenciaResponsable, EntidadAportante, Fechas, IndicadorCatalogo, Municipio,
+                            ProductoCatalogo, SectorMGA, listado_vigencias_metas)
 
 
 class ClasificacionRegalias(Fechas):
@@ -397,3 +398,80 @@ class CambioProyectoRegalias(Fechas):
 
     def __str__(self):
         return f"{self.proyecto.bpin} · {self.campo}"
+
+
+# ---------- Programacion (fase 6) ----------
+# Las fuentes, los valores y el indicador MGA del proyecto salen de aqui (regalias.servicios).
+# Solo se escriben desde la pantalla Programacion del proyecto (regalias.programacion), que
+# registra en el historial lo que cambia en el proyecto.
+
+class FuenteSGR(Fechas):
+    """Una fuente de financiacion de los proyectos de regalias. No son las fuentes de SIIFWEB."""
+    class Clasificacion(models.TextChoices):
+        SGR = "sgr", "SGR"
+        NACION = "nacion", "Nación"
+        OTROS = "otros", "Otros"
+        NO_SUIFP = "no_suifp", "Otras fuentes no SUIFP"
+
+    nombre = models.CharField(max_length=255, unique=True, verbose_name="Nombre")
+    clasificacion = models.CharField(max_length=10, choices=Clasificacion.choices, verbose_name="Clasificación")
+
+    class Meta:
+        verbose_name = "Fuente SGR"
+        verbose_name_plural = "Fuentes SGR"
+        ordering = ("nombre",)
+
+    def __str__(self):
+        return self.nombre
+
+
+def _valor_programado():
+    # Como la programacion financiera de SIIFWEB: 20 digitos, 15 enteros y 5 decimales
+    return models.DecimalField(max_digits=20, decimal_places=5, verbose_name="Valor")
+
+
+class ProgramacionFinancieraRegalias(Fechas):
+    """Cuanto pone cada entidad aportante, de cada fuente, a cada producto del proyecto en una
+    vigencia. Las entidades son el catalogo de SIIFWEB (siifweb.EntidadAportante)."""
+    proyecto = models.ForeignKey(ProyectoRegalias, on_delete=models.CASCADE, related_name="programacion_financiera",
+                                 verbose_name="Proyecto")
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
+    # Vacia solo en lo programado antes de que existiera el campo (27/11/2026): la pantalla no
+    # guarda esos valores hasta que se les asigna la entidad
+    entidad_aportante = models.ForeignKey(EntidadAportante, on_delete=models.PROTECT, null=True, blank=False,
+                                          related_name="programacion_regalias", verbose_name="Entidad aportante")
+    fuente = models.ForeignKey(FuenteSGR, on_delete=models.PROTECT, related_name="programacion", verbose_name="Fuente")
+    producto = models.ForeignKey(ProductoCatalogo, on_delete=models.PROTECT, related_name="programacion_regalias",
+                                 verbose_name="Producto")
+    valor = _valor_programado()
+
+    class Meta:
+        verbose_name = "Programación financiera de regalías"
+        verbose_name_plural = "Programación financiera de regalías"
+        ordering = ("proyecto__bpin", "-vigencia", "entidad_aportante__nombre", "fuente__nombre", "producto__codigo")
+        constraints = [models.UniqueConstraint(fields=["proyecto", "vigencia", "entidad_aportante", "fuente", "producto"],
+                                               name="programacion_financiera_regalias_unica")]
+
+    def __str__(self):
+        entidad = self.entidad_aportante or "sin entidad aportante"
+        return f"{self.proyecto.bpin} · {self.vigencia} · {entidad} · {self.fuente} · {self.producto.codigo}: {self.valor}"
+
+
+class ProgramacionFisicaRegalias(Fechas):
+    """Lo que el proyecto programa avanzar en cada indicador del catalogo PIIP, por vigencia."""
+    proyecto = models.ForeignKey(ProyectoRegalias, on_delete=models.CASCADE, related_name="programacion_fisica",
+                                 verbose_name="Proyecto")
+    vigencia = models.IntegerField(choices=listado_vigencias_metas, verbose_name="Vigencia")
+    indicador = models.ForeignKey(IndicadorCatalogo, on_delete=models.PROTECT, related_name="programacion_regalias",
+                                  verbose_name="Indicador")
+    valor = _valor_programado()
+
+    class Meta:
+        verbose_name = "Programación física de regalías"
+        verbose_name_plural = "Programación física de regalías"
+        ordering = ("proyecto__bpin", "-vigencia", "indicador__codigo")
+        constraints = [models.UniqueConstraint(fields=["proyecto", "vigencia", "indicador"],
+                                               name="programacion_fisica_regalias_unica")]
+
+    def __str__(self):
+        return f"{self.proyecto.bpin} · {self.vigencia} · {self.indicador.codigo}: {self.valor}"

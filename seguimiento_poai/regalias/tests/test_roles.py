@@ -11,17 +11,19 @@ from django.contrib.auth.models import Group
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from regalias.models import ProyectoRegalias
+from regalias.models import EstadoProyectoRegalias, ProyectoRegalias
 
-from .fabricas import DEPARTAMENTO, MUNICIPIO, catalogos, proyecto, usuario_de
+from .fabricas import DEPARTAMENTO, MUNICIPIO, catalogos, estado, proyecto, usuario_de
 
 ROL = "Regalías"
 migracion_del_rol = importlib.import_module("regalias.migrations.0003_rol_regalias")
 migracion_de_cargas = importlib.import_module("regalias.migrations.0006_permisos_cargas_y_contratos")
 migracion_de_comentarios = importlib.import_module("regalias.migrations.0009_permisos_comentarios")
+migracion_de_programacion = importlib.import_module("regalias.migrations.0011_permisos_programacion")
+migracion_de_entidades = importlib.import_module("regalias.migrations.0013_permisos_entidad_aportante")
 
 LISTADOS = ("proyectodepartamento", "proyectodescentralizada", "proyectomunicipio", "contratoregalias",
-            "cargaregalias", "cambioproyectoregalias", "entidadejecutora", "responsablegesproy",
+            "cargaregalias", "cambioproyectoregalias", "fuentesgr", "entidadejecutora", "responsablegesproy",
             "estadoproyectoregalias", "clasificacionregalias")
 
 
@@ -30,20 +32,26 @@ class ElRolExiste(TestCase):
         grupo = Group.objects.get(name=ROL)
         tiene = {(p.content_type.app_label, p.codename) for p in grupo.permissions.select_related("content_type")}
         esperados = {(app, codigo) for app, codigos in migracion_del_rol.PERMISOS.items() for codigo in codigos}
-        esperados |= {("regalias", codigo) for codigo in migracion_de_cargas.PERMISOS + migracion_de_comentarios.PERMISOS}
+        esperados |= {("regalias", codigo) for codigo in migracion_de_cargas.PERMISOS + migracion_de_comentarios.PERMISOS
+                      + migracion_de_programacion.PERMISOS}
+        esperados |= {("siifweb", codigo) for codigo in migracion_de_entidades.PERMISOS}
         self.assertEqual(tiene, esperados)
 
-    def test_solo_borra_comentarios(self):
-        """Los propios y durante 5 dias: lo controla la pantalla de comentarios."""
+    def test_solo_borra_comentarios_y_programacion(self):
+        """Los comentarios propios durante 5 dias, y los valores en cero de la programacion: lo
+        controlan sus pantallas. Proyectos, contratos y cargas no se borran."""
         codigos = Group.objects.get(name=ROL).permissions.values_list("codename", flat=True)
-        self.assertEqual([c for c in codigos if c.startswith("delete_")], ["delete_comentarioproyectoregalias"])
+        self.assertEqual(sorted(c for c in codigos if c.startswith("delete_")),
+                         ["delete_comentarioproyectoregalias", "delete_programacionfinancieraregalias",
+                          "delete_programacionfisicaregalias"])
 
-    def test_de_siifweb_solo_ve_los_catalogos_del_formulario_y_agrega_productos_e_indicadores(self):
+    def test_de_siifweb_solo_ve_los_catalogos_del_formulario_y_agrega_productos_indicadores_y_entidades(self):
         codigos = set(Group.objects.get(name=ROL).permissions
                       .filter(content_type__app_label="siifweb").values_list("codename", flat=True))
         self.assertEqual(codigos, {"view_sectormga", "view_dependenciaresponsable", "view_municipio",
                                    "view_productocatalogo", "add_productocatalogo",
-                                   "view_indicadorcatalogo", "add_indicadorcatalogo"})
+                                   "view_indicadorcatalogo", "add_indicadorcatalogo",
+                                   "view_entidadaportante", "add_entidadaportante"})
 
     def test_nada_de_cuipo(self):
         self.assertFalse(Group.objects.get(name=ROL).permissions.filter(content_type__app_label="cuipo").exists())
@@ -64,6 +72,10 @@ class LoQueAbre(TestCase):
         for modelo in LISTADOS:
             with self.subTest(modelo=modelo):
                 self.assertEqual(self.client.get(reverse(f"admin:regalias_{modelo}_changelist")).status_code, 200)
+
+    def test_ve_y_agrega_entidades_aportantes(self):
+        self.assertEqual(self.client.get(reverse("admin:siifweb_entidadaportante_changelist")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("admin:siifweb_entidadaportante_add")).status_code, 200)
 
     def test_abre_el_formulario_de_alta_y_el_de_un_proyecto(self):
         self.assertEqual(self.client.get(reverse("admin:regalias_proyectodepartamento_add")).status_code, 200)
@@ -100,4 +112,41 @@ class LoQueAbre(TestCase):
         peticion.user = self.usuario
         enlaces = [str(item["link"]) for grupo in admin.site.get_sidebar_list(peticion)
                    for item in grupo["items"] if item["has_permission"]]
-        self.assertEqual(enlaces, [reverse(f"admin:regalias_{modelo}_changelist") for modelo in LISTADOS])
+        esperados = [reverse(f"admin:regalias_{modelo}_changelist") for modelo in LISTADOS]
+        # el catalogo de entidades aportantes es de SIIFWEB, pero va en la seccion de regalias
+        esperados.insert(LISTADOS.index("fuentesgr") + 1, reverse("admin:siifweb_entidadaportante_changelist"))
+        self.assertEqual(enlaces, esperados)
+
+
+class LaListaAlEntrar(TestCase):
+    """Al entrar, la lista no trae los cerrados ni los desaprobados; siguen existiendo."""
+
+    @classmethod
+    def setUpTestData(cls):
+        E = EstadoProyectoRegalias
+        cls.usuario = usuario_de(ROL, "regalias")
+        cls.activo = proyecto("2025000020011", DEPARTAMENTO, estado=estado(E.CONTRATADO_EN_EJECUCION))
+        cls.sin_estado = proyecto("2025000020012", DEPARTAMENTO, estado=None)
+        cls.cerrado = proyecto("2025000020013", DEPARTAMENTO, estado=estado(E.CERRADO))
+        cls.desaprobado = proyecto("2025000020014", DEPARTAMENTO, estado=estado(E.DESAPROBADO))
+
+    def setUp(self):
+        self.client.force_login(self.usuario)
+
+    def lista(self, **filtros):
+        respuesta = self.client.get(reverse("admin:regalias_proyectodepartamento_changelist"), filtros)
+        return sorted(p.bpin for p in respuesta.context["cl"].result_list)
+
+    def test_al_entrar_no_salen_cerrados_ni_desaprobados(self):
+        self.assertEqual(self.lista(), [self.activo.bpin, self.sin_estado.bpin])
+        self.assertContains(self.client.get(reverse("admin:regalias_proyectodepartamento_changelist")),
+                            "Sin cerrados ni desaprobados")
+
+    def test_con_todos_o_con_su_estado_si_salen(self):
+        self.assertEqual(len(self.lista(estado="todos")), 4)
+        self.assertEqual(self.lista(estado=str(self.cerrado.estado_id)), [self.cerrado.bpin])
+        self.assertEqual(self.lista(estado="sin"), [self.sin_estado.bpin])
+
+    def test_un_proyecto_cerrado_se_sigue_abriendo(self):
+        url = reverse("admin:regalias_proyectodepartamento_change", args=[self.cerrado.pk])
+        self.assertEqual(self.client.get(url).status_code, 200)

@@ -4,20 +4,26 @@ from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin import helpers
 from django.core.exceptions import PermissionDenied
-from django.http import Http404, HttpResponseRedirect
+from django.db.models import Q
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import redirect
+from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
-from django.urls import reverse
+from django.urls import path, reverse
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import ChoicesDropdownFilter, DropdownFilter, RelatedDropdownFilter
 from unfold.decorators import action, display
 
 from siifweb.admin import SoloLectura, hash_archivo
+from siifweb.models import EntidadAportante
 
-from . import calculos, cargas, servicios
+from django.utils import timezone
+
+from . import cargas, excel, programacion, servicios
 from .models import (CambioProyectoRegalias, CargaRegalias, ClasificacionRegalias, ComentarioProyectoRegalias,
-                     ContratoRegalias, EntidadEjecutora, EstadoProyectoRegalias, ProyectoDepartamento,
+                     ContratoRegalias, EntidadEjecutora, EstadoProyectoRegalias, FuenteSGR,
+                     ProgramacionFinancieraRegalias, ProgramacionFisicaRegalias, ProyectoDepartamento,
                      ProyectoDescentralizada, ProyectoMunicipio, ProyectoRegalias, ResponsableGesproy)
 
 # El admin de cada clasificacion, para enlazar un proyecto desde el historial
@@ -29,22 +35,31 @@ PROXY_DE = {
 
 
 class EstadoFilter(DropdownFilter):
-    """El estado, con la opcion de ver los que quedaron sin estado despues de una carga."""
+    """El estado, con la opcion de ver los que quedaron sin estado despues de una carga.
+
+    Al entrar, la lista no trae los CERRADO ni los DESAPROBADO (decision del usuario, 27/11/2026):
+    siguen existiendo y se ven con "Todos" o eligiendo su estado. Es solo la lista: el proyecto se
+    abre, se edita y sale en la matriz igual."""
     title = "Estado del proyecto"
     parameter_name = "estado"
     SIN_ESTADO = "sin"
+    TODOS = "todos"
+    OCULTOS_AL_ENTRAR = (EstadoProyectoRegalias.CERRADO, EstadoProyectoRegalias.DESAPROBADO)
+    all_option = ["", "Sin cerrados ni desaprobados"]
 
     def lookups(self, request, model_admin):
-        return [(str(e.pk), e.nombre) for e in EstadoProyectoRegalias.objects.all()] + [
+        return [(self.TODOS, "Todos")] + [(str(e.pk), e.nombre) for e in EstadoProyectoRegalias.objects.all()] + [
             (self.SIN_ESTADO, "Sin estado")]
 
     def queryset(self, request, queryset):
         valor = self.value()
+        if valor == self.TODOS:
+            return queryset
         if valor == self.SIN_ESTADO:
             return queryset.filter(estado__isnull=True)
         if valor:
             return queryset.filter(estado_id=valor)
-        return queryset
+        return queryset.filter(Q(estado__isnull=True) | ~Q(estado__codigo__in=self.OCULTOS_AL_ENTRAR))
 
 
 class FechaDeCorteForm(forms.Form):
@@ -72,7 +87,7 @@ class ProyectoRegaliasAdmin(ModelAdmin):
     search_fields = ("bpin", "nombre")
     ordering = ("bpin",)
     autocomplete_fields = ("sector", "dependencia", "entidad_ejecutora", "municipios", "responsables_cargue")
-    actions_detail = ("comentarios", "historial")
+    actions_detail = ("programacion", "comentarios", "historial")
     readonly_fields = DE_LA_PROGRAMACION + CALCULADOS
     columna_entidad = "dependencia"
     fieldsets = (
@@ -128,10 +143,21 @@ class ProyectoRegaliasAdmin(ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         request._regalias_antes = servicios.foto_de_la_base(obj.pk if change else None)
-        calculos.aplicar(obj)
+        servicios.recalcular(obj)
         super().save_model(request, obj, form, change)
 
     actions = ["recalcular", "asignar_fecha_corte"]
+    actions_list = ["descargar_matriz"]
+
+    @action(description="Descargar matriz", url_path="descargar-matriz", icon="download", permissions=["view"])
+    def descargar_matriz(self, request):
+        """La matriz de seguimiento de las tres hojas, con la estructura y las formulas de la de hoy
+        (regalias/excel.py). Sale igual desde cualquiera de las tres listas."""
+        nombre = f"MatrizSeguimientoEvaluacion_{timezone.localtime():%Y%m%d_%H%M}.xlsx"
+        respuesta = HttpResponse(excel.matriz(),
+                                 content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        respuesta["Content-Disposition"] = f'attachment; filename="{nombre}"'
+        return respuesta
 
     def _guardar_varios(self, request, proyectos):
         for proyecto in proyectos:
@@ -166,6 +192,141 @@ class ProyectoRegaliasAdmin(ModelAdmin):
         antes = getattr(request, "_regalias_antes", None) or servicios.foto_de_la_base(None)
         servicios.registrar_cambios(form.instance, antes, servicios.foto(form.instance), usuario=request.user,
                                     origen=CambioProyectoRegalias.Origen.EDICION)
+
+    # -- Programacion: pantalla propia con HTMX, copia adaptada de la de SIIFWEB (ProyectoAdmin).
+    # Logica en regalias/programacion.py. Ver pide view de cada programacion; guardar, agregar,
+    # cambiar y borrar. Al guardar, el proyecto se recalcula y el cambio queda en el historial.
+
+    PANELES_PROGRAMACION = (("financiera", "Financiera", "programacionfinancieraregalias"),
+                            ("fisica", "Física", "programacionfisicaregalias"))
+
+    def get_urls(self):
+        info = (self.model._meta.app_label, self.model._meta.model_name)
+        propias = [
+            path("<int:pk>/programacion/matriz/", self.admin_site.admin_view(self.pf_matriz),
+                 name="%s_%s_pf_matriz" % info),
+            path("<int:pk>/programacion/guardar/", self.admin_site.admin_view(self.pf_guardar),
+                 name="%s_%s_pf_guardar" % info),
+            path("<int:pk>/programacion/elegir/", self.admin_site.admin_view(self.pf_elegir),
+                 name="%s_%s_pf_elegir" % info),
+        ]
+        return propias + super().get_urls()
+
+    def _paneles_pf(self, request):
+        return [(clave, titulo) for clave, titulo, modelo in self.PANELES_PROGRAMACION
+                if request.user.has_perm(f"regalias.view_{modelo}")]
+
+    def has_ver_programacion_permission(self, request, object_id=None):
+        return bool(self._paneles_pf(request))
+
+    def _panel_pf(self, request, datos):
+        paneles = [clave for clave, _ in self._paneles_pf(request)]
+        if not paneles:
+            raise PermissionDenied
+        return datos.get("panel") if datos.get("panel") in paneles else paneles[0]
+
+    def _puede_programar(self, request, panel):
+        modelo = {clave: modelo for clave, _, modelo in self.PANELES_PROGRAMACION}[panel]
+        return all(request.user.has_perm(f"regalias.{p}_{modelo}") for p in ("add", "change", "delete"))
+
+    def _proyecto_programable(self, request, object_id):
+        if not self.has_ver_programacion_permission(request):
+            raise PermissionDenied
+        proyecto = self.get_object(request, str(object_id))
+        if proyecto is None:
+            raise Http404("No hay proyecto con ese id en esta lista.")
+        return proyecto
+
+    def _contexto_pf(self, request, proyecto, panel, mensaje="", parcial=False, advertencia="", **kwargs):
+        matriz = programacion.matriz_fisica if panel == "fisica" else programacion.matriz
+        return {"opts": self.model._meta, "proyecto": proyecto, "panel": panel, "m": matriz(proyecto, **kwargs),
+                "mensaje": mensaje, "advertencia": advertencia, "parcial": parcial,
+                "editable": self._puede_programar(request, panel)}
+
+    def _matriz_pf(self, request, proyecto, panel, **kwargs):
+        contexto = self._contexto_pf(request, proyecto, panel, parcial=True, **kwargs)
+        plantilla = "regalias/_programacion_fisica.html" if panel == "fisica" else "regalias/_programacion_matriz.html"
+        return HttpResponse(render_to_string(plantilla, contexto, request=request))
+
+    @action(description="Programación", url_path="programacion", icon="account_balance_wallet",
+            permissions=["ver_programacion"])
+    def programacion(self, request, object_id):
+        """La programacion del proyecto por vigencia: financiera (fuente por producto) y fisica (indicador)."""
+        proyecto = self._proyecto_programable(request, object_id)
+        panel = self._panel_pf(request, request.GET)
+        return TemplateResponse(request, "regalias/programacion.html", {
+            **self.admin_site.each_context(request), "title": f"Programación {proyecto.bpin}",
+            "paneles": self._paneles_pf(request), **self._contexto_pf(request, proyecto, panel)})
+
+    def pf_matriz(self, request, pk):
+        """La pestana otra vez, sin guardar, con lo agregado o quitado y lo ya digitado."""
+        proyecto = self._proyecto_programable(request, pk)
+        datos = request.GET
+        panel = self._panel_pf(request, datos)
+        fisica = panel == "fisica"
+        digitados = programacion.digitados_de(datos)
+        estado = programacion.cambiar_estado(programacion.estado_de(datos, fisica), datos, proyecto=proyecto,
+                                             fisica=fisica, digitados=digitados)
+        return self._matriz_pf(request, proyecto, panel, estado=estado, digitados=digitados)
+
+    def pf_guardar(self, request, pk):
+        """Deja la pestana como se ve y recalcula el proyecto. Con un error no guarda nada."""
+        proyecto = self._proyecto_programable(request, pk)
+        if request.method != "POST":
+            return HttpResponseBadRequest("Solo POST")
+        panel = self._panel_pf(request, request.POST)
+        if not self._puede_programar(request, panel):
+            raise PermissionDenied
+        fisica = panel == "fisica"
+        estado = programacion.estado_de(request.POST, fisica)
+        digitados = programacion.digitados_de(request.POST)
+        guardar = programacion.guardar_fisica if fisica else programacion.guardar
+        errores, mensaje = guardar(proyecto, estado, digitados)
+        if errores:
+            return self._matriz_pf(request, proyecto, panel, estado=estado, digitados=digitados, errores=errores)
+        servicios.guardar_proyecto(proyecto, usuario=request.user, origen=CambioProyectoRegalias.Origen.PROGRAMACION)
+        # Guarda aunque no coincida con la otra pestana (se puede llenar cualquiera primero), pero avisa
+        return self._matriz_pf(request, proyecto, panel, mensaje=mensaje, estado=estado,
+                               advertencia=programacion.mensaje_descuadre(proyecto))
+
+    def pf_elegir(self, request, pk):
+        """La ventana para agregar una vigencia, o una fuente, un producto o un indicador a una
+        vigencia (en=). Con solo=resultados devuelve solo el listado."""
+        proyecto = self._proyecto_programable(request, pk)
+        datos = request.GET
+        panel = self._panel_pf(request, datos)
+        fisica = panel == "fisica"
+        validos = ("vigencia", "indicador") if fisica else ("vigencia", "entidad", "fuente", "producto")
+        tipo = datos.get("tipo") if datos.get("tipo") in validos else ("indicador" if fisica else "fuente")
+        estado = programacion.estado_de(datos, fisica)
+        en = datos.get("en", "")
+        en = int(en) if en.isdigit() and int(en) in estado else None
+        entidad, marcados = None, set()
+        if tipo == "vigencia":
+            presentes = list(estado)
+        else:
+            if en is None:
+                return HttpResponseBadRequest("Falta la vigencia")
+            if tipo == "fuente":
+                entidad = datos.get("entidad", "")
+                entidad = int(entidad) if entidad.isdigit() else None
+                if entidad is None or entidad == programacion.SIN_ENTIDAD or entidad not in estado[en]["entidades"]:
+                    return HttpResponseBadRequest("Falta la entidad aportante")
+                presentes = estado[en]["fuentes"].get(entidad, [])
+            else:
+                presentes = estado[en][programacion.PLURAL[tipo]]
+                marcados = programacion.marcadas(proyecto, tipo)
+        asignar = tipo == "entidad" and datos.get("asignar") == "1"
+        texto = datos.get("q", "")
+        opciones = programacion.opciones(tipo, texto, presentes, datos.get("pagina", 1), marcados)
+        contexto = {"opts": self.model._meta, "proyecto": proyecto, "tipo": tipo, "texto": texto, "en": en or "",
+                    "entidad": entidad or "",
+                    "nombre_entidad": EntidadAportante.objects.filter(pk=entidad).first() if entidad else None,
+                    "asignar": "1" if asignar else "", "accion": "asignar_entidad" if asignar else f"agregar_{tipo}",
+                    **opciones}
+        plantilla = "regalias/_programacion_opciones.html" if datos.get("solo") == "resultados" \
+            else "regalias/_programacion_elegir.html"
+        return HttpResponse(render_to_string(plantilla, contexto, request=request))
 
     def has_ver_comentarios_permission(self, request, object_id=None):
         return request.user.has_perm("regalias.view_comentarioproyectoregalias")
@@ -437,3 +598,39 @@ class ResponsableGesproyAdmin(ModelAdmin):
     list_fullwidth = True
     list_display = ("nombre",)
     search_fields = ("nombre",)
+
+
+@admin.register(FuenteSGR)
+class FuenteSGRAdmin(ModelAdmin):
+    """Las fuentes de la programacion financiera de regalias. Las mantiene el equipo."""
+    compressed_fields = True
+    list_fullwidth = True
+    list_display = ("nombre", "clasificacion")
+    list_filter = (("clasificacion", ChoicesDropdownFilter),)
+    search_fields = ("nombre",)
+
+
+class ProgramacionRegaliasAdmin(SoloLectura):
+    """Para consultar. Se escribe en la pantalla Programacion de cada proyecto, que recalcula el
+    proyecto y deja el historial: por eso aqui no se agrega, cambia ni borra."""
+    list_filter = ("vigencia",)
+    search_fields = ("proyecto__bpin",)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @display(description="BPIN", ordering="proyecto__bpin")
+    def bpin(self, obj):
+        return obj.proyecto.bpin
+
+
+@admin.register(ProgramacionFinancieraRegalias)
+class ProgramacionFinancieraRegaliasAdmin(ProgramacionRegaliasAdmin):
+    list_display = ("bpin", "vigencia", "entidad_aportante", "fuente", "producto", "valor")
+    list_select_related = ("proyecto", "entidad_aportante", "fuente", "producto")
+
+
+@admin.register(ProgramacionFisicaRegalias)
+class ProgramacionFisicaRegaliasAdmin(ProgramacionRegaliasAdmin):
+    list_display = ("bpin", "vigencia", "indicador", "valor")
+    list_select_related = ("proyecto", "indicador")

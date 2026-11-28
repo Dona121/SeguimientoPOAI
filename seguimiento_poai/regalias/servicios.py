@@ -8,16 +8,18 @@ con el usuario y el origen.
 Los valores se comparan como texto: asi una fecha, un decimal con ceros de mas o una lista de
 municipios en otro orden no cuentan como cambio si dicen lo mismo.
 
-Antes de guardar se recalculan los campos calculados (regalias.calculos), asi que lo que
-cambia en ellos tambien queda en el historial.
+Antes de guardar se recalcula todo lo que no se digita: los valores que salen de la
+programacion y los calculados (regalias.calculos). Lo que cambia en ellos tambien queda en el
+historial.
 """
 from datetime import date
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Sum
 
 from . import calculos
-from .models import CambioProyectoRegalias, ProyectoRegalias
+from .models import CambioProyectoRegalias, FuenteSGR, ProyectoRegalias
 
 # Lo que no es un dato del proyecto
 EXCLUIDOS = {"id", "fecha_creacion", "fecha_actualizacion"}
@@ -100,6 +102,50 @@ def registrar_cambios(proyecto, antes, despues, *, usuario, origen, carga=None):
     return len(filas)
 
 
+CLASIFICACION_A_CAMPO = {
+    FuenteSGR.Clasificacion.SGR: "valor_sgr",
+    FuenteSGR.Clasificacion.NACION: "valor_nacion",
+    FuenteSGR.Clasificacion.OTROS: "valor_otros",
+    FuenteSGR.Clasificacion.NO_SUIFP: "valor_otras_no_suifp",
+}
+
+
+def valores_de_programacion(proyecto):
+    """Fuentes, valores por clasificacion, total e indicador MGA desde la programacion.
+
+    - fuentes: los nombres distintos de las fuentes con valor, ordenados, separados por ", ".
+    - valores: la suma de cada clasificacion de fuente en todas las vigencias, y el total.
+      Sin programacion financiera quedan vacios.
+    - indicador MGA: "codigo - nombre" de los indicadores de la programacion fisica, con "; "
+      (los nombres traen comas).
+    """
+    valores = {"fuentes": "", "indicadores_mga": "", "valor_total": None, **{c: None for c in CLASIFICACION_A_CAMPO.values()}}
+    if proyecto.pk is None:
+        return valores
+    filas = list(proyecto.programacion_financiera.values("fuente__nombre", "fuente__clasificacion")
+                 .annotate(total=Sum("valor")))
+    if filas:
+        for campo in CLASIFICACION_A_CAMPO.values():
+            valores[campo] = Decimal(0)
+        for fila in filas:
+            campo = CLASIFICACION_A_CAMPO[fila["fuente__clasificacion"]]
+            valores[campo] += fila["total"]
+        valores["valor_total"] = sum((f["total"] for f in filas), Decimal(0))
+        valores["fuentes"] = ", ".join(sorted({f["fuente__nombre"] for f in filas}))
+    indicadores = (proyecto.programacion_fisica.values_list("indicador__codigo", "indicador__nombre")
+                   .distinct().order_by("indicador__codigo"))
+    valores["indicadores_mga"] = "; ".join(f"{codigo} - {nombre}" for codigo, nombre in indicadores)
+    return valores
+
+
+def recalcular(proyecto):
+    """Pone al dia en memoria todo lo que no se digita: lo de la programacion y los calculados."""
+    for campo, valor in valores_de_programacion(proyecto).items():
+        setattr(proyecto, campo, valor)
+    calculos.aplicar(proyecto)
+    return proyecto
+
+
 @transaction.atomic
 def guardar_proyecto(proyecto, *, usuario, origen, m2m=None, carga=None):
     """Guarda el proyecto y registra lo que cambio.
@@ -109,7 +155,7 @@ def guardar_proyecto(proyecto, *, usuario, origen, m2m=None, carga=None):
     registrar_cambios por su cuenta, ver ProyectoRegaliasAdmin).
     """
     antes = foto_de_la_base(proyecto.pk)
-    calculos.aplicar(proyecto)
+    recalcular(proyecto)
     proyecto.save()
     for nombre, objetos in (m2m or {}).items():
         getattr(proyecto, nombre).set(objetos)

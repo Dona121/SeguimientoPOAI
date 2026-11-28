@@ -1,0 +1,148 @@
+{% comment %}
+La programacion financiera como formulario: un bloque por vigencia, cada uno con sus entidades
+aportantes, las fuentes de cada una (filas) y sus productos (columnas). Agregar o quitar no guarda;
+el boton Guardar deja la programacion del proyecto como se ve. Lo que no tiene entidad aportante
+(lo programado antes de que existiera el campo) sale primero, con un boton para asignarla.
+Copia adaptada de siifweb/_programacion_matriz.html. Ver regalias/programacion.py.
+{% endcomment %}
+{% load admin_urls %}
+{% url opts|admin_urlname:'pf_matriz' proyecto.pk as u_matriz %}{% url opts|admin_urlname:'pf_guardar' proyecto.pk as u_guardar %}{% url opts|admin_urlname:'pf_elegir' proyecto.pk as u_elegir %}
+<form class="pf-matriz" id="pf-matriz" autocomplete="off"{% if editable %} hx-post="{{ u_guardar }}" hx-target="this" hx-swap="outerHTML"{% else %} onsubmit="return false"{% endif %}>
+  {# Lo que se ve: viaja en cada pedido para no perder lo agregado sin guardar #}
+  <div hidden>
+    <input type="hidden" name="panel" value="financiera">
+    {% for b in m.bloques %}
+    <input type="hidden" name="vigencias" value="{{ b.vigencia }}">
+    {% for g in b.grupos %}<input type="hidden" name="entidades-{{ b.vigencia }}" value="{{ g.id }}">
+    {% for f in g.fuentes %}<input type="hidden" name="fuentes-{{ b.vigencia }}-{{ g.id }}" value="{{ f }}">{% endfor %}{% endfor %}
+    {% for x in b.productos %}<input type="hidden" name="productos-{{ b.vigencia }}" value="{{ x }}">{% endfor %}
+    {% endfor %}
+  </div>
+
+  <section class="caja">
+    <div class="barra">
+      <span class="titulo">Programación financiera</span>
+      {% if m.bloques|length > 1 %}<span class="dato">Total en pantalla <b class="num">{{ m.total|floatformat:"2g" }}</b></span>{% endif %}
+      {% if editable %}
+      <span class="acciones">
+        <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=vigencia&panel=financiera" hx-include="#pf-matriz"
+                hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Vigencia</button>
+        <button type="submit" class="boton"><span class="material-symbols-outlined">save</span>Guardar</button>
+      </span>
+      {% endif %}
+    </div>
+    {% if mensaje %}<p class="aviso ok" role="status">{{ mensaje }}</p>{% endif %}
+    {% if advertencia %}<p class="aviso mal" role="alert">{{ advertencia }}</p>{% endif %}
+    {% if m.errores %}<p class="aviso mal" role="alert">{{ m.errores }} casilla{{ m.errores|pluralize }} con error (en rojo; el detalle al pasar el mouse). No se guardó nada.</p>{% endif %}
+    {% if m.sin_entidad %}<p class="aviso mal" role="alert">Hay valores sin entidad aportante en {{ m.sin_entidad|join:", " }}. Asígnela con el botón «Asignar entidad»: mientras tengan valor, esta pestaña no se guarda.</p>{% endif %}
+    {% if editable %}
+    <p class="aviso pendiente" id="pf-pendiente"{% if not m.pendiente or m.errores %} hidden{% endif %}>
+      Hay cambios sin guardar{% if m.por_borrar %}: al guardar se borran {{ m.por_borrar }} valor{{ m.por_borrar|pluralize:"es" }} de lo que se quitó{% endif %}.
+    </p>
+    {% endif %}
+    {% if m.descuadre and not advertencia %}
+    <p class="aviso pendiente">No coincide con la programación física en ninguna vigencia:
+      {% if m.descuadre.sin_fisica %}productos sin indicador en la física {{ m.descuadre.sin_fisica|join:", " }}{% endif %}{% if m.descuadre.sin_fisica and m.descuadre.sin_financiera %}; {% endif %}
+      {% if m.descuadre.sin_financiera %}indicadores sin valor financiero de su producto {{ m.descuadre.sin_financiera|join:", " }}{% endif %}.</p>
+    {% endif %}
+    {% if not m.bloques %}<p class="vacio">Sin vigencias.{% if editable %} Agregue una con el botón de arriba.{% endif %}</p>{% endif %}
+  </section>
+
+  {% for b in m.bloques %}
+  <section class="caja bloque">
+    <div class="barra">
+      <span class="titulo">Vigencia {{ b.vigencia }}
+        {% if editable %}<button type="button" class="quitar" title="Quitar la vigencia {{ b.vigencia }}" aria-label="Quitar la vigencia {{ b.vigencia }}"
+          hx-get="{{ u_matriz }}" hx-vals='{"quitar_vigencia": "{{ b.vigencia }}"}' hx-include="#pf-matriz"
+          hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
+      </span>
+      <span class="dato">Total {{ b.vigencia }} <b class="num">{{ b.total|floatformat:"2g" }}</b></span>
+      {% if editable %}
+      <span class="acciones">
+        <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=entidad&en={{ b.vigencia }}" hx-include="#pf-matriz"
+                hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Entidad aportante</button>
+        <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=producto&en={{ b.vigencia }}" hx-include="#pf-matriz"
+                hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Producto</button>
+      </span>
+      {% endif %}
+    </div>
+
+    {% if not b.grupos or not b.columnas %}
+    <p class="vacio">
+      {% if not b.grupos and not b.columnas %}Sin entidades aportantes ni productos.{% elif not b.columnas %}Sin productos.{% else %}Agrega una entidad aportante y una fuente.{% endif %}
+      {% if b.columnas and not b.grupos %}{% for c in b.columnas %}{% if forloop.first %}Productos: {% endif %}<b>{{ c.producto.codigo }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}.{% endif %}
+    </p>
+    {% endif %}
+
+    {% if b.grupos %}
+    <div class="tabla">
+      <table>
+        <thead>
+          <tr>
+            <th>Entidad aportante y fuente</th>
+            {% for c in b.columnas %}
+            <th class="meta" title="{{ c.producto.nombre }}">
+              <b>{{ c.producto.codigo }}</b>
+              {% if editable %}<button type="button" class="quitar" title="Quitar el producto {{ c.producto.codigo }} de {{ b.vigencia }}"
+                aria-label="Quitar el producto {{ c.producto.codigo }} de {{ b.vigencia }}"
+                hx-get="{{ u_matriz }}" hx-vals='{"quitar_producto": "{{ c.producto.pk }}", "en": "{{ b.vigencia }}"}' hx-include="#pf-matriz"
+                hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
+              <span class="desc">{{ c.producto.nombre|truncatechars:90 }}</span>
+            </th>
+            {% endfor %}
+            <th class="num">Total</th>
+          </tr>
+        </thead>
+        {% for g in b.grupos %}
+        <tbody>
+          <tr class="entidad{% if not g.entidad %} sin-entidad{% endif %}">
+            <td colspan="{{ b.columnas|length|add:1 }}">
+              {% if editable %}<button type="button" class="quitar" title="Quitar {% if g.entidad %}la entidad {{ g.entidad.nombre }}{% else %}lo que no tiene entidad aportante{% endif %} de {{ b.vigencia }}"
+                aria-label="Quitar {% if g.entidad %}la entidad {{ g.entidad.nombre }}{% else %}lo que no tiene entidad aportante{% endif %} de {{ b.vigencia }}"
+                hx-get="{{ u_matriz }}" hx-vals='{"quitar_entidad": "{{ g.id }}", "en": "{{ b.vigencia }}"}' hx-include="#pf-matriz"
+                hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
+              <b>{% if g.entidad %}{{ g.entidad.nombre }}{% else %}Sin entidad aportante{% endif %}</b>
+              {% if editable %}{% if g.entidad %}<button type="button" class="boton gris chico" hx-get="{{ u_elegir }}?tipo=fuente&en={{ b.vigencia }}&entidad={{ g.id }}"
+                hx-include="#pf-matriz" hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Fuente</button>
+              {% else %}<button type="button" class="boton chico" hx-get="{{ u_elegir }}?tipo=entidad&en={{ b.vigencia }}&asignar=1"
+                hx-include="#pf-matriz" hx-target="#pf-elegir" hx-swap="innerHTML">Asignar entidad</button>{% endif %}{% endif %}
+              {% if not g.filas %}<span class="nota">Sin fuentes.</span>{% endif %}
+            </td>
+            <td class="num total">{{ g.total|floatformat:"2g" }}</td>
+          </tr>
+          {% for f in g.filas %}
+          <tr>
+            <td class="fuente">
+              {% if editable %}<button type="button" class="quitar" title="Quitar la fuente {{ f.fuente.nombre }} de {{ b.vigencia }}"
+                aria-label="Quitar la fuente {{ f.fuente.nombre }} de {{ b.vigencia }}"
+                hx-get="{{ u_matriz }}" hx-vals='{"quitar_fuente": "{{ f.fuente.pk }}", "en": "{{ b.vigencia }}", "entidad": "{{ g.id }}"}' hx-include="#pf-matriz"
+                hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
+              {{ f.fuente.nombre }} <span class="clase-fuente">{{ f.fuente.get_clasificacion_display }}</span>
+            </td>
+            {% for c in f.celdas %}
+            <td class="num">
+              <input class="entrada{% if c.con %} con{% endif %}{% if c.cambio and editable %} cambio{% endif %}{% if c.error %} mal{% endif %}"
+                     name="{{ c.nombre }}" id="pf-{{ c.nombre }}" value="{{ c.texto }}" inputmode="decimal"
+                     aria-label="Vigencia {{ b.vigencia }}, {% if g.entidad %}entidad {{ g.entidad.nombre }}{% else %}sin entidad aportante{% endif %}, fuente {{ f.fuente.nombre }}, producto {{ c.producto.codigo }}"
+                     {% if c.error %}title="{{ c.error }}" aria-invalid="true"{% endif %}{% if not editable %} disabled{% endif %}>
+            </td>
+            {% endfor %}
+            <td class="num total">{{ f.total|floatformat:"2g" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% endfor %}
+        <tfoot>
+          <tr>
+            <td>Total producto</td>
+            {% for c in b.columnas %}<td class="num">{{ c.total|floatformat:"2g" }}</td>{% endfor %}
+            <td class="num">{{ b.total|floatformat:"2g" }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+</form>
+{% if parcial %}{% include "regalias/_programacion_totales.html" with oob=True %}{% endif %}

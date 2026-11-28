@@ -53,7 +53,7 @@ El formulario vuelve a la lista con la misma accion y los mismos proyectos.
       <a href="{% url opts|admin_urlname:'changelist' %}" class="gris">Cancelar</a>
     </div>
     <ul class="lista">
-      {% for proyecto in proyectos %}<li>{{ proyecto.bpin }} · {{ proyecto.nombre|truncatechars:90 }}{% if proyecto.fecha_corte %} · hoy {{ proyecto.fecha_corte|date:"d/m/Y" }}{% endif %}</li>{% endfor %}
+      {% for proyecto in proyectos %}<li>{{ proyecto.bpin }} - {{ proyecto.nombre|truncatechars:90 }}{% if proyecto.fecha_corte %} · hoy {{ proyecto.fecha_corte|date:"d/m/Y" }}{% endif %}</li>{% endfor %}
     </ul>
   </form>
 </div>

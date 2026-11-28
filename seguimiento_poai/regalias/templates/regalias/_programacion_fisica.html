@@ -1,0 +1,95 @@
+{% comment %}
+La programacion fisica como formulario: un bloque por vigencia con sus indicadores del catalogo
+PIIP y un valor por indicador (sin totales: cada indicador tiene su unidad). Agregar o quitar no
+guarda; el boton Guardar deja la programacion fisica como se ve. Copia adaptada de
+siifweb/_programacion_fisica.html. Ver regalias/programacion.py.
+{% endcomment %}
+{% load admin_urls %}
+{% url opts|admin_urlname:'pf_matriz' proyecto.pk as u_matriz %}{% url opts|admin_urlname:'pf_guardar' proyecto.pk as u_guardar %}{% url opts|admin_urlname:'pf_elegir' proyecto.pk as u_elegir %}
+<form class="pf-matriz" id="pf-matriz" autocomplete="off"{% if editable %} hx-post="{{ u_guardar }}" hx-target="this" hx-swap="outerHTML"{% else %} onsubmit="return false"{% endif %}>
+  <div hidden>
+    <input type="hidden" name="panel" value="fisica">
+    {% for b in m.bloques %}
+    <input type="hidden" name="vigencias" value="{{ b.vigencia }}">
+    {% for x in b.indicadores %}<input type="hidden" name="indicadores-{{ b.vigencia }}" value="{{ x }}">{% endfor %}
+    {% endfor %}
+  </div>
+
+  <section class="caja">
+    <div class="barra">
+      <span class="titulo">Programación física</span>
+      {% if editable %}
+      <span class="acciones">
+        <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=vigencia&panel=fisica" hx-include="#pf-matriz"
+                hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Vigencia</button>
+        <button type="submit" class="boton"><span class="material-symbols-outlined">save</span>Guardar</button>
+      </span>
+      {% endif %}
+    </div>
+    {% if mensaje %}<p class="aviso ok" role="status">{{ mensaje }}</p>{% endif %}
+    {% if advertencia %}<p class="aviso mal" role="alert">{{ advertencia }}</p>{% endif %}
+    {% if m.errores %}<p class="aviso mal" role="alert">{{ m.errores }} casilla{{ m.errores|pluralize }} con error (en rojo; el detalle al pasar el mouse). No se guardó nada.</p>{% endif %}
+    {% if editable %}
+    <p class="aviso pendiente" id="pf-pendiente"{% if not m.pendiente or m.errores %} hidden{% endif %}>
+      Hay cambios sin guardar{% if m.por_borrar %}: al guardar se borran {{ m.por_borrar }} valor{{ m.por_borrar|pluralize:"es" }} de lo que se quitó{% endif %}.
+    </p>
+    {% endif %}
+    {% if m.descuadre and not advertencia %}
+    <p class="aviso pendiente">No coincide con la programación financiera en ninguna vigencia:
+      {% if m.descuadre.sin_fisica %}productos sin indicador en la física {{ m.descuadre.sin_fisica|join:", " }}{% endif %}{% if m.descuadre.sin_fisica and m.descuadre.sin_financiera %}; {% endif %}
+      {% if m.descuadre.sin_financiera %}indicadores sin valor financiero de su producto {{ m.descuadre.sin_financiera|join:", " }}{% endif %}.</p>
+    {% endif %}
+    {% if not m.bloques %}<p class="vacio">Sin vigencias.{% if editable %} Agregue una con el botón de arriba.{% endif %}</p>{% endif %}
+  </section>
+
+  {% for b in m.bloques %}
+  <section class="caja bloque">
+    <div class="barra">
+      <span class="titulo">Vigencia {{ b.vigencia }}
+        {% if editable %}<button type="button" class="quitar" title="Quitar la vigencia {{ b.vigencia }}" aria-label="Quitar la vigencia {{ b.vigencia }}"
+          hx-get="{{ u_matriz }}" hx-vals='{"quitar_vigencia": "{{ b.vigencia }}"}' hx-include="#pf-matriz"
+          hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
+      </span>
+      {% if editable %}
+      <span class="acciones">
+        <button type="button" class="boton gris" hx-get="{{ u_elegir }}?tipo=indicador&en={{ b.vigencia }}" hx-include="#pf-matriz"
+                hx-target="#pf-elegir" hx-swap="innerHTML"><span class="material-symbols-outlined">add</span>Indicador</button>
+      </span>
+      {% endif %}
+    </div>
+
+    {% if b.filas %}
+    <div class="tabla">
+      <table>
+        <thead>
+          <tr><th>Indicador</th><th>Producto</th><th>Unidad de medida</th><th class="num">Valor {{ b.vigencia }}</th></tr>
+        </thead>
+        <tbody>
+          {% for f in b.filas %}
+          <tr>
+            <td class="fuente">
+              {% if editable %}<button type="button" class="quitar" title="Quitar el indicador {{ f.indicador.codigo }} de {{ b.vigencia }}"
+                aria-label="Quitar el indicador {{ f.indicador.codigo }} de {{ b.vigencia }}"
+                hx-get="{{ u_matriz }}" hx-vals='{"quitar_indicador": "{{ f.indicador.pk }}", "en": "{{ b.vigencia }}"}' hx-include="#pf-matriz"
+                hx-target="#pf-matriz" hx-swap="outerHTML">×</button>{% endif %}
+              <b>{{ f.indicador.codigo }}</b>{{ f.indicador.nombre }}
+            </td>
+            <td>{{ f.indicador.producto.codigo }}</td>
+            <td>{{ f.indicador.unidad_medida|default:"—" }}</td>
+            <td class="num" style="width:12rem">
+              <input class="entrada{% if f.con %} con{% endif %}{% if f.cambio and editable %} cambio{% endif %}{% if f.error %} mal{% endif %}"
+                     name="{{ f.nombre }}" id="pf-{{ f.nombre }}" value="{{ f.texto }}" inputmode="decimal"
+                     aria-label="Vigencia {{ b.vigencia }}, indicador {{ f.indicador.codigo }}"
+                     {% if f.error %}title="{{ f.error }}" aria-invalid="true"{% endif %}{% if not editable %} disabled{% endif %}>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="vacio">Sin indicadores.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</form>

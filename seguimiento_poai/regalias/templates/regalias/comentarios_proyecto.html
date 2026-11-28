@@ -54,7 +54,7 @@ Vista en ProyectoRegaliasAdmin.comentarios.
 <div class="co">
   <section class="caja">
     <div style="display:flex;flex-wrap:wrap;gap:.6rem 2rem;align-items:baseline">
-      <h2>{{ proyecto.bpin }} · {{ proyecto.nombre|truncatechars:120 }}</h2>
+      <h2>{{ proyecto.bpin }} - {{ proyecto.nombre|truncatechars:120 }}</h2>
       <span class="dato">{{ comentarios|length }} comentario{{ comentarios|length|pluralize }}</span>
       <a href="{% url opts|admin_urlname:'change' proyecto.pk %}" class="border font-medium px-3 py-2 rounded-default text-sm
          text-base-700 dark:text-base-300 dark:border-base-700" style="margin-left:auto">Volver al proyecto</a>
