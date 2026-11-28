@@ -98,6 +98,8 @@ class Catalogos:
         self.sectores = {normalizar(str(s)): s for s in SectorMGA.objects.all()}
         self.dependencias = {normalizar(d.nombre): d for d in DependenciaResponsable.objects.all()}
         self.municipios = {normalizar(m.nombre): m for m in Municipio.objects.all()}
+        # Sin tildes ni mayusculas: "MUNICIPIO DE SINCE" y "MUNICIPIO DE SINCÉ" son la misma
+        self.entidades = {normalizar(e.nombre): e for e in EntidadEjecutora.objects.order_by("pk")}
         self.clasificaciones = {c.codigo: c for c in ClasificacionRegalias.objects.all()}
 
     def estado(self, valor, bpin):
@@ -132,10 +134,11 @@ class Catalogos:
         nombre = " ".join(lectura.texto(valor).split())
         if not nombre:
             return None
-        entidad, creada = EntidadEjecutora.objects.get_or_create(nombre=nombre[:255])
-        if creada:
+        clave = normalizar(nombre)
+        if clave not in self.entidades:
+            self.entidades[clave] = EntidadEjecutora.objects.create(nombre=nombre[:255])
             self.resumen.contar("entidades ejecutoras creadas")
-        return entidad
+        return self.entidades[clave]
 
     def responsables(self, valor):
         nombres = [" ".join(p.split()) for p in lectura.texto(valor).splitlines() if p.strip()]
